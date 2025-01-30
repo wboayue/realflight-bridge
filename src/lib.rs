@@ -5,6 +5,8 @@ use std::error::Error;
 
 use uom::si::f64::*;
 
+const EMPTY_BODY: &str = "<a>1</a><b>2</b>";
+
 pub struct RealFlightLink {
 }
 
@@ -20,11 +22,11 @@ pub struct SimulatorState {
     pub altitude_asl: Length,
     pub altitude_agl: Length,
     pub groundspeed: Velocity,
-    pub pitch_rate: AngularVelocity
-    // double m_rollRate_DEGpSEC;
+    pub pitch_rate: AngularVelocity,
+    pub roll_rate: AngularVelocity,
     // double m_yawRate_DEGpSEC;
-    // double m_azimuth_DEG;
-    // double m_inclination_DEG;
+    pub azimuth: Angle,
+    pub inclination: Angle,
     // double m_roll_DEG;
     // double m_aircraftPositionX_MTR;
     // double m_aircraftPositionY_MTR;
@@ -71,23 +73,20 @@ impl RealFlightLink {
 
     ///  Set Spektrum as the RC input
     pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
-        // RestoreOriginalControllerDevice
-        // <a>1</a><b>2</b>
+        self.send_action("RestoreOriginalControllerDevice", EMPTY_BODY)?;
         Ok(())
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
     pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
-        // InjectUAVControllerInterface
-        // <a>1</a><b>2</b>
+        self.send_action("InjectUAVControllerInterface", EMPTY_BODY)?;
         Ok(())
     }
 
     /// Reset Real Flight simulator,
     /// per post here: https://www.knifeedge.com/forums/index.php?threads/realflight-reset-soap-envelope.52333/
     pub fn reset_sim(&self) -> Result<(), Box<dyn Error>> {
-        // ResetAircraft
-        // <a>1</a><b>2</b>
+        self.send_action("ResetAircraft", EMPTY_BODY)?;
         Ok(())
     }
 
@@ -114,6 +113,10 @@ impl RealFlightLink {
         Ok(SimulatorState::default())
     }
 
+    pub fn send_action(&self, action: &str, body: &str) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+
 }
 
 /*
@@ -128,7 +131,4 @@ headers = {'content-type': "text/xml;charset='UTF-8'",
         </soap:Envelope>"
 */
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-}
+mod tests;
