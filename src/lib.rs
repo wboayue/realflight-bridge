@@ -1,14 +1,12 @@
 /// https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py
 //REALFLIGHT_URL = "http://192.168.55.54:18083"
-
 use std::error::Error;
 
 use uom::si::f64::*;
 
 const EMPTY_BODY: &str = "<a>1</a><b>2</b>";
 
-pub struct RealFlightLink {
-}
+pub struct RealFlightLink {}
 
 #[derive(Default)]
 pub struct ControlInputs {
@@ -24,7 +22,7 @@ pub struct SimulatorState {
     pub groundspeed: Velocity,
     pub pitch_rate: AngularVelocity,
     pub roll_rate: AngularVelocity,
-    // double m_yawRate_DEGpSEC;
+    pub yaw_rate: AngularVelocity,
     pub azimuth: Angle,
     pub inclination: Angle,
     // double m_roll_DEG;
@@ -91,44 +89,63 @@ impl RealFlightLink {
     }
 
     pub fn exchange_data(&self, control: ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
-        // ExchangeData
-        /*          <pControlInputs>\
-        <m-selectedChannels>4095</m-selectedChannels>\
-        <m-channelValues-0to1>\
-        <item>{self.rcin[0]}</item>\
-        <item>{self.rcin[1]}</item>\
-        <item>{self.rcin[2]}</item>\
-        <item>{self.rcin[3]}</item>\
-        <item>{self.rcin[4]}</item>\
-        <item>{self.rcin[5]}</item>\
-        <item>{self.rcin[6]}</item>\
-        <item>{self.rcin[7]}</item>\
-        <item>{self.rcin[8]}</item>\
-        <item>{self.rcin[9]}</item>\
-        <item>{self.rcin[10]}</item>\
-        <item>{self.rcin[11]}</item>\
-        </m-channelValues-0to1>\
-        </pControlInputs>\
+        let body = encode_control_inputs(control);
+        let response = self.send_action("ResetAircraft", &body)?;
+        decode_simulator_state(&response)
+    }
+
+    pub fn send_action(&self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
+        /*
+        headers = {'content-type': "text/xml;charset='UTF-8'",
+                        'soapaction': 'InjectUAVControllerInterface'}
+
+                body = "<?xml version='1.0' encoding='UTF-8'?>\
+                <soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>\
+                <soap:Body>\
+                <InjectUAVControllerInterface><a>1</a><b>2</b></InjectUAVControllerInterface>\
+                </soap:Body>\
+                </soap:Envelope>"
         */
-        Ok(SimulatorState::default())
-    }
 
-    pub fn send_action(&self, action: &str, body: &str) -> Result<(), Box<dyn Error>> {
-        Ok(())
-    }
+        let envelope = encode_envelope(action, body);
 
+        Ok(envelope.to_string())
+    }
 }
 
-/*
-headers = {'content-type': "text/xml;charset='UTF-8'",
-                'soapaction': 'InjectUAVControllerInterface'}
+const CONTROL_INPUTS_CAPACITY: usize = 291;
 
-        body = "<?xml version='1.0' encoding='UTF-8'?>\
-        <soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>\
-        <soap:Body>\
-        <InjectUAVControllerInterface><a>1</a><b>2</b></InjectUAVControllerInterface>\
-        </soap:Body>\
-        </soap:Envelope>"
-*/
+fn encode_envelope(action: &str, body: &str) -> String {
+    let mut envelope = String::with_capacity(200 + body.len());
+
+    envelope.push_str("<?xml version='1.0' encoding='UTF-8'?>");
+    envelope.push_str("<soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>");
+    envelope.push_str("<soap:Body>");
+    envelope.push_str(&format!("<{}>{}</{}>", action, body, action));
+    envelope.push_str("<soap:Body>");
+    envelope.push_str("<soap:Envelope>");
+
+    envelope
+}
+
+fn encode_control_inputs(inputs: ControlInputs) -> String {
+    let mut message = String::with_capacity(CONTROL_INPUTS_CAPACITY);
+
+    message.push_str("<pControlInputs>");
+    message.push_str("<m-selectedChannels>4095</m-selectedChannels>");
+    message.push_str("<m-channelValues-0to1>");
+    for num in inputs.channels.iter() {
+        message.push_str(&format!("<item>{}</item>", num));
+    }
+    message.push_str("</m-channelValues-0to1>");
+    message.push_str("</pControlInputs>");
+
+    message
+}
+
+fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Error>> {
+    Ok(SimulatorState::default())
+}
+
 #[cfg(test)]
 mod tests;
