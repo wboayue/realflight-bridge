@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use clap::{arg, Command};
 use log::debug;
 
@@ -22,13 +24,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = RealFlightLink::new(simulator_url);
 
-    // Only record data don't send control commands
-    client.enable_rc()?;
+    client.reset_sim()?;
+//    client.disable_rc()?;
+
+    let start_time = Instant::now();
 
     let control = ControlInputs::default();
-    for i in 0..10 {
+    for i in 0..200 {
         let state = client.exchange_data(&control)?;
-        println!("state: {:?}", state);
+//        println!("state: {:?}", state);
     }
+
+    let elapsed_time = start_time.elapsed();
+    println!("Time taken: {:?}", elapsed_time);
+
     Ok(())
 }

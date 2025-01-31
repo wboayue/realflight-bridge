@@ -11,7 +11,7 @@ pub fn test_encode_control_inputs() {
 pub fn test_encode_envelope() {
     let envelope = "<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><InjectUAVControllerInterface><a>1</a><b>2</b></InjectUAVControllerInterface><soap:Body><soap:Envelope>";
     assert_eq!(
-        encode_envelope("InjectUAVControllerInterface", EMPTY_BODY),
+        encode_envelope("InjectUAVControllerInterface", UNUSED),
         envelope
     );
 }
