@@ -3,7 +3,8 @@ use super::*;
 #[test]
 pub fn test_encode_control_inputs() {
     let soap_body = "<pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item></m-channelValues-0to1></pControlInputs>";
-    assert_eq!(encode_control_inputs(ControlInputs::default()), soap_body);
+    let control = ControlInputs::default();
+    assert_eq!(encode_control_inputs(&control), soap_body);
 }
 
 #[test]
