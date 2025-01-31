@@ -166,3 +166,20 @@ pub struct SimulatorState {
 
 #[cfg(test)]
 mod tests;
+
+
+/*
+    asprintf(&req, R"(POST / HTTP/1.1
+soapaction: '%s'
+content-length: %u
+content-type: text/xml;charset='UTF-8'
+Connection: Keep-Alive
+
+%s)",
+             action,
+             (unsigned)strlen(req1), req1);
+    sock->send(req, strlen(req));
+
+
+https://github.com/ArduPilot/ardupilot/blob/6bf29eca700120153d7404af1f397c2979715427/libraries/SITL/SIM_FlightAxis.cpp#L234    
+*/
