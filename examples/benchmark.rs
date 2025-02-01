@@ -31,9 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     client.reset_sim()?;
-//    client.disable_rc()?;
-
-    std::process::exit(1);
+    client.disable_rc()?;
 
     let start_time = Instant::now();
 

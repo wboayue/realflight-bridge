@@ -1,33 +1,44 @@
 /// https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py
 //REALFLIGHT_URL = "http://192.168.55.54:18083"
 use std::error::Error;
-use std::time::Duration;
+use std::io::BufReader;
 use std::io::Write;
-use std::io::Read;
+use std::io::{Read, BufRead};
+use std::io;
+use std::net::{ToSocketAddrs, UdpSocket};
+use std::time::Duration;
 
+use log::debug;
 use uom::si::f64::*;
-use ureq::Agent;
-use uom::si::time::second;
 use std::net::TcpStream;
 
-//const UNUSED: &str = "<unused>0</unused>";
 const UNUSED: &str = "";
-const HEADER_LEN: usize = 115;
+const HEADER_LEN: usize = 120;
 
 pub struct RealFlightLink {
     simulator_url: String,
     stream: TcpStream,
+    reader: BufReader<TcpStream>,
 }
 
 impl RealFlightLink {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
     pub fn connect(simulator_url: &str) -> Result<RealFlightLink, Box<dyn Error>> {
-        let stream = TcpStream::connect(simulator_url)?;
+        // let server_addr = "127.0.0.1:9000";
 
+        // // 1. Create a UDP socket and bind to any free local port.
+        // let socket = UdpSocket::bind("0.0.0.0:0")?;
+    
+
+        let stream = TcpStream::connect(simulator_url)?;
+        debug!("Connected to RealFlight simulator at {}", simulator_url);
+
+        let reader = BufReader::new(stream.try_clone()?);
         Ok(RealFlightLink {
             simulator_url: simulator_url.to_string(),
             stream,
+            reader,
         })
     }
 
@@ -46,13 +57,15 @@ impl RealFlightLink {
     /// Reset Real Flight simulator,
     /// per post here: https://www.knifeedge.com/forums/index.php?threads/realflight-reset-soap-envelope.52333/
     pub fn reset_sim(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_action("ResetAircraft", UNUSED)?;
+        let response = self.send_action("ResetAircraft", UNUSED)?;
+  //      println!("Response: {}", response);
         Ok(())
     }
 
     pub fn exchange_data(&mut self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
         let response = self.send_action("ExchangeData", &body)?;
+//        println!("Response: {}", response);
         decode_simulator_state(&response)
     }
 
@@ -65,43 +78,75 @@ impl RealFlightLink {
     pub fn send_request(&mut self, action: &str, envelope: &str) {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
-        request.push_str("POST / HTTP/1.1\n");
-        request.push_str(&format!("Soapaction: '{}'\n", action));
-        request.push_str(&format!("Content-Length: {}\n", envelope.len()));
-        request.push_str("Content-Type: text/xml;charset='UTF-8'\n");
-        request.push_str("Connection: Keep-Alive\n");
-        request.push_str("\r\n");
+        request.push_str("POST / HTTP/1.1\r\n");
+        request.push_str(&format!("Soapaction: '{}'\r\n", action));
+        request.push_str(&format!("Content-Length: {}\r\n", envelope.len()));
+        request.push_str("Content-Type: text/xml;charset=utf-8\r\n");
+        request.push_str("Connection: Keep-Alive\r\n");
         request.push_str("\r\n");
         request.push_str(envelope);
 
-        println!("meta len {}", request.len() - (envelope.len() + action.len()));
-        println!("request\n{}", request);
-
-        self.stream.write(request.as_bytes()).unwrap();
+        self.stream.write_all(request.as_bytes()).unwrap();
+        self.stream.flush().unwrap();
     }
 
     pub fn read_response(&mut self) -> String {
-        let mut buffer = [0; 1024];
+        // Read the status line
+        let mut status_line = String::new();
+        self.reader.read_line(&mut status_line).unwrap();
+        // println!("Status Line: {}", status_line.trim());
 
-        let mut response = String::new();
-        let bytes_read = self.stream.read(&mut buffer).unwrap();
-        response.push_str(std::str::from_utf8(&buffer).unwrap());
+        // Read headers
+        let mut headers = String::new();
+        let mut content_length: Option<usize> = None;
+        let mut close_connection = false;
+        loop {
+            let mut line = String::new();
+            self.reader.read_line(&mut line).unwrap();
+            if line == "\r\n" {
+                break; // End of headers
+            }
+            if line.to_lowercase().starts_with("content-length:") {
+                if let Some(length) = line.split_whitespace().nth(1) {
+                    content_length = length.trim().parse().ok();
+                }
+            }
+            if line.to_lowercase().starts_with("connection:") {
+                println!("Connection: {:?}", line);
+                if let Some(length) = line.split_whitespace().nth(1) {
+                    let close: Option<String> = length.trim().parse().ok();
+                    if close == Some("close".to_string()) {
+                        close_connection = true;
+                    }
+                }
+            }
+            headers.push_str(&line);
+        }
 
-        println!("response\n{}", response);
+        // println!("Headers:\n{}", headers);
+        // println!("content length:\n{}", content_length.unwrap());
 
-/*
-HTTP/1.1 200 OK
-Server: gSOAP/2.7
-Content-Type: text/xml; charset=utf-8
-Content-Length: 391
-Connection: close
-
-<?xml version="1.0" encoding="UTF-8"?>
-<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><SOAP-ENV:Body><ResetAircraftResponse><unused>0</unused></ResetAircraftResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
-*/
-        "".to_string()
+        // Read the body based on Content-Length
+        if let Some(length) = content_length {
+            let mut body = vec![0; length];
+            self.reader.read_exact(&mut body).unwrap();
+            if close_connection {
+                self.reset_connection();
+            }
+            String::from_utf8_lossy(&body).to_string()
+        } else {
+            if close_connection {
+                self.reset_connection();
+            }
+            "".to_string()
+        }
     }
 
+    fn reset_connection(&mut self) {
+//        self.stream
+        self.stream = TcpStream::connect(&self.simulator_url).unwrap();
+        self.reader = BufReader::new(self.stream.try_clone().unwrap());
+    }
 }
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
