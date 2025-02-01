@@ -2,75 +2,106 @@
 //REALFLIGHT_URL = "http://192.168.55.54:18083"
 use std::error::Error;
 use std::time::Duration;
+use std::io::Write;
+use std::io::Read;
 
 use uom::si::f64::*;
 use ureq::Agent;
+use uom::si::time::second;
+use std::net::TcpStream;
 
 //const UNUSED: &str = "<unused>0</unused>";
 const UNUSED: &str = "";
+const HEADER_LEN: usize = 115;
 
 pub struct RealFlightLink {
     simulator_url: String,
-    client: ureq::Agent,
+    stream: TcpStream,
 }
 
 impl RealFlightLink {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
-    pub fn new(simulator_url: &str) -> RealFlightLink {
-        let mut config = Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(5)))
-        .build();
+    pub fn connect(simulator_url: &str) -> Result<RealFlightLink, Box<dyn Error>> {
+        let stream = TcpStream::connect(simulator_url)?;
 
-        let agent: Agent = config.into();
-
-        RealFlightLink {
+        Ok(RealFlightLink {
             simulator_url: simulator_url.to_string(),
-            client: agent,
-        }
+            stream,
+        })
     }
 
     ///  Set Spektrum as the RC input
-    pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
+    pub fn enable_rc(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_action("RestoreOriginalControllerDevice", UNUSED)?;
         Ok(())
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
-    pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
+    pub fn disable_rc(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_action("InjectUAVControllerInterface", UNUSED)?;
         Ok(())
     }
 
     /// Reset Real Flight simulator,
     /// per post here: https://www.knifeedge.com/forums/index.php?threads/realflight-reset-soap-envelope.52333/
-    pub fn reset_sim(&self) -> Result<(), Box<dyn Error>> {
+    pub fn reset_sim(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_action("ResetAircraft", UNUSED)?;
         Ok(())
     }
 
-    pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
+    pub fn exchange_data(&mut self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
         let response = self.send_action("ExchangeData", &body)?;
         decode_simulator_state(&response)
     }
 
-    pub fn send_action(&self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
+    pub fn send_action(&mut self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
-       println!("envelope: {}", envelope);
-        let response: String = self
-            .client
-            .post(&self.simulator_url)
-            .header("content-type", "text/xml;charset='UTF-8'")
-            .header("soapaction", action)
-            .send(envelope)?
-            .body_mut()
-            .read_to_string()?;
-
-//        println!("response: {}", response);
-
-        Ok(response)
+        self.send_request(action, &envelope);
+        Ok(self.read_response())
     }
+
+    pub fn send_request(&mut self, action: &str, envelope: &str) {
+        let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
+
+        request.push_str("POST / HTTP/1.1\n");
+        request.push_str(&format!("Soapaction: '{}'\n", action));
+        request.push_str(&format!("Content-Length: {}\n", envelope.len()));
+        request.push_str("Content-Type: text/xml;charset='UTF-8'\n");
+        request.push_str("Connection: Keep-Alive\n");
+        request.push_str("\r\n");
+        request.push_str("\r\n");
+        request.push_str(envelope);
+
+        println!("meta len {}", request.len() - (envelope.len() + action.len()));
+        println!("request\n{}", request);
+
+        self.stream.write(request.as_bytes()).unwrap();
+    }
+
+    pub fn read_response(&mut self) -> String {
+        let mut buffer = [0; 1024];
+
+        let mut response = String::new();
+        let bytes_read = self.stream.read(&mut buffer).unwrap();
+        response.push_str(std::str::from_utf8(&buffer).unwrap());
+
+        println!("response\n{}", response);
+
+/*
+HTTP/1.1 200 OK
+Server: gSOAP/2.7
+Content-Type: text/xml; charset=utf-8
+Content-Length: 391
+Connection: close
+
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><SOAP-ENV:Body><ResetAircraftResponse><unused>0</unused></ResetAircraftResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+*/
+        "".to_string()
+    }
+
 }
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
