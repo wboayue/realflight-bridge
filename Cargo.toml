@@ -8,6 +8,7 @@ uom = "0.36.0"
 env_logger = "0.9.3"
 log = "0.4.17"
 ureq = "3.0.3"
+crossbeam-channel = "0.5"
 
 [dev-dependencies]
 clap = "4.1.8"

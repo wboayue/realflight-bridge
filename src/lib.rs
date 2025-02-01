@@ -12,33 +12,33 @@ use log::debug;
 use uom::si::f64::*;
 use std::net::TcpStream;
 
+
+pub mod connection_manager;
+
+pub use connection_manager::{ConnectionConfig};
+
+use connection_manager::ConnectionManager;
+
 const UNUSED: &str = "";
 const HEADER_LEN: usize = 120;
 
 pub struct RealFlightLink {
     simulator_url: String,
-    stream: TcpStream,
-    reader: BufReader<TcpStream>,
+    connection_manager: ConnectionManager,
 }
 
 impl RealFlightLink {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
     pub fn connect(simulator_url: &str) -> Result<RealFlightLink, Box<dyn Error>> {
-        // let server_addr = "127.0.0.1:9000";
-
-        // // 1. Create a UDP socket and bind to any free local port.
-        // let socket = UdpSocket::bind("0.0.0.0:0")?;
-    
-
-        let stream = TcpStream::connect(simulator_url)?;
-        debug!("Connected to RealFlight simulator at {}", simulator_url);
-
-        let reader = BufReader::new(stream.try_clone()?);
+        let config = ConnectionConfig {
+            simulator_url: simulator_url.to_string(),
+            ..Default::default()
+        };
+        
         Ok(RealFlightLink {
             simulator_url: simulator_url.to_string(),
-            stream,
-            reader,
+            connection_manager: ConnectionManager::new(config)?,
         })
     }
 
@@ -71,11 +71,12 @@ impl RealFlightLink {
 
     pub fn send_action(&mut self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
-        self.send_request(action, &envelope);
-        Ok(self.read_response())
+        let mut stream = self.connection_manager.get_connection()?;
+        self.send_request(&mut stream, action, &envelope);
+        Ok(self.read_response(&mut BufReader::new(stream)))
     }
 
-    pub fn send_request(&mut self, action: &str, envelope: &str) {
+    pub fn send_request(&mut self, stream: &mut TcpStream, action: &str, envelope: &str) {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
         request.push_str("POST / HTTP/1.1\r\n");
@@ -86,15 +87,14 @@ impl RealFlightLink {
         request.push_str("\r\n");
         request.push_str(envelope);
 
-        self.stream.write_all(request.as_bytes()).unwrap();
-        self.stream.flush().unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
     }
 
-    pub fn read_response(&mut self) -> String {
+    pub fn read_response(&mut self, stream: &mut BufReader<TcpStream>) -> String {
         // Read the status line
         let mut status_line = String::new();
-        self.reader.read_line(&mut status_line).unwrap();
-        // println!("Status Line: {}", status_line.trim());
+        stream.read_line(&mut status_line).unwrap();
+        println!("Status Line: {}", status_line.trim());
 
         // Read headers
         let mut headers = String::new();
@@ -102,7 +102,7 @@ impl RealFlightLink {
         let mut close_connection = false;
         loop {
             let mut line = String::new();
-            self.reader.read_line(&mut line).unwrap();
+            stream.read_line(&mut line).unwrap();
             if line == "\r\n" {
                 break; // End of headers
             }
@@ -129,11 +129,13 @@ impl RealFlightLink {
         // Read the body based on Content-Length
         if let Some(length) = content_length {
             let mut body = vec![0; length];
-            self.reader.read_exact(&mut body).unwrap();
+            stream.read_exact(&mut body).unwrap();
             if close_connection {
                 self.reset_connection();
             }
-            String::from_utf8_lossy(&body).to_string()
+            let r = String::from_utf8_lossy(&body).to_string();
+            println!("Body: {}", r);
+            r
         } else {
             if close_connection {
                 self.reset_connection();
@@ -143,9 +145,6 @@ impl RealFlightLink {
     }
 
     fn reset_connection(&mut self) {
-//        self.stream
-        self.stream = TcpStream::connect(&self.simulator_url).unwrap();
-        self.reader = BufReader::new(self.stream.try_clone().unwrap());
     }
 }
 
@@ -229,7 +228,7 @@ pub struct SimulatorState {
     pub has_lost_components: bool,
     pub an_engine_is_running: bool,
     pub is_touching_ground: bool,
-    pub current_aircraft_status: u8,
+    pub current_aircraft_status: String,
     pub current_physics_time: Time,
     pub current_physics_speed_multiplier: f64,
     pub orientation_quaternion_x: f64,
