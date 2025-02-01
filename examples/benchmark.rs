@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let start_time = Instant::now();
 
-    let count = 10;
+    let count = 200;
     let mut control = ControlInputs::default();
     for i in 0..12 {
         control.channels[i] = 1.0;

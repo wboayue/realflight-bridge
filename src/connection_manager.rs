@@ -7,14 +7,16 @@ pub struct ConnectionConfig {
     pub simulator_url: String,
     pub connect_timeout: Duration,
     pub retry_delay: Duration,
+    pub buffer_size: usize,
 }
 
 impl Default for ConnectionConfig {
     fn default() -> Self {
         ConnectionConfig {
             simulator_url: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(100),
+            connect_timeout: Duration::from_millis(50),
             retry_delay: Duration::from_millis(5),
+            buffer_size: 1,
         }
     }
 }
@@ -28,7 +30,7 @@ pub (crate) struct ConnectionManager {
 
 impl ConnectionManager {
     pub fn new(config: ConnectionConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        let (sender, receiver) = bounded(1);
+        let (sender, receiver) = bounded(config.buffer_size);
 
         let running = Arc::new(Mutex::new(true));
 
@@ -49,8 +51,10 @@ impl ConnectionManager {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
 
-        let c = Self::create_connection(&config).unwrap();
-        sender.try_send(c).unwrap();
+        for _ in 0..config.buffer_size {
+            let c = Self::create_connection(&config).unwrap();
+            sender.send(c).unwrap();
+        }
 
         let handle = thread::spawn(move || {
             let mut connection = Some(Self::create_connection(&config).unwrap());
@@ -76,11 +80,11 @@ impl ConnectionManager {
 
     // Create a new TCP connection with timeout
     fn create_connection(config: &ConnectionConfig) -> Result<TcpStream, Box<dyn std::error::Error>> {
-        // let addr = config.simulator_url.parse()?;
-        // let stream = TcpStream::connect_timeout(&addr, config.connect_timeout)?;
+        let addr = config.simulator_url.parse()?;
+        let stream = TcpStream::connect_timeout(&addr, config.connect_timeout)?;
         // stream.set_nonblocking(true)?;
-        // Ok(stream)
-        Ok(TcpStream::connect(&config.simulator_url)?)
+        Ok(stream)
+        // Ok(TcpStream::connect(&config.simulator_url)?)
     }
 
     // Get a new connection, consuming it
