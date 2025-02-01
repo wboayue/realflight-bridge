@@ -25,12 +25,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = RealFlightLink::new(simulator_url);
 
     client.reset_sim()?;
-    // client.disable_rc()?;
+//    client.disable_rc()?;
 
     let start_time = Instant::now();
 
     let count = 10;
     let mut control = ControlInputs::default();
+    for i in 0..control.channels.len() {
+        control.channels[i] = 0.5;
+    }
     for i in 0..count {
 //        control.channels[i] = 1.0;
         let state = client.exchange_data(&control)?;

@@ -21,9 +21,9 @@ impl RealFlightLink {
         let mut config = Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(5)))
         .build();
-    
+
         let agent: Agent = config.into();
-    
+
         RealFlightLink {
             simulator_url: simulator_url.to_string(),
             client: agent,
@@ -57,7 +57,7 @@ impl RealFlightLink {
 
     pub fn send_action(&self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
-//        println!("envelope: {}", envelope);
+       println!("envelope: {}", envelope);
         let response: String = self
             .client
             .post(&self.simulator_url)
@@ -92,8 +92,8 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
     let mut message = String::with_capacity(CONTROL_INPUTS_CAPACITY);
 
     message.push_str("<pControlInputs>");
-//    message.push_str("<m-selectedChannels>4095</m-selectedChannels>");
-    message.push_str("<m-selectedChannels>0</m-selectedChannels>");
+    message.push_str("<m-selectedChannels>4095</m-selectedChannels>");
+    //message.push_str("<m-selectedChannels>0</m-selectedChannels>");
     message.push_str("<m-channelValues-0to1>");
     for num in inputs.channels.iter() {
         message.push_str(&format!("<item>{}</item>", num));
@@ -181,5 +181,5 @@ Connection: Keep-Alive
     sock->send(req, strlen(req));
 
 
-https://github.com/ArduPilot/ardupilot/blob/6bf29eca700120153d7404af1f397c2979715427/libraries/SITL/SIM_FlightAxis.cpp#L234    
+https://github.com/ArduPilot/ardupilot/blob/6bf29eca700120153d7404af1f397c2979715427/libraries/SITL/SIM_FlightAxis.cpp#L234
 */
