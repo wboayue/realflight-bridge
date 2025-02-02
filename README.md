@@ -1,4 +1,4 @@
-[![Build](https://github.com/wboayue/realflight-link/workflows/build/badge.svg)](https://github.com/wboayue/realflight-link/actions/workflows/build.yml)
+[![Build](https://github.com/wboayue/realflight-link/workflows/build/badge.svg)](https://github.com/wboayue/realflight-link/actions/workflows/build.yaml)
 [![License:MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- [![crates.io](https://img.shields.io/crates/v/ibapi.svg)](https://crates.io/crates/ibapi)
 [![Documentation](https://img.shields.io/badge/Documentation-green.svg)](https://docs.rs/ibapi/latest/ibapi/)
@@ -16,6 +16,14 @@ This Rust library interfaces with [RealFlight Link](https://forums.realflight.co
 * Test stabilization and autonomy algorithms in a controlled environment.
 
 Custom aircraft models can also be created to closely match real-world designs, providing a more precise testing and development platform.
+
+# Prerequisites
+
+- RealFlight simulator (tested with RealFlight Evolution)
+- RealFlight Link enabled in simulator settings
+  1. Open RealFlight
+  2. Go to Settings > Link
+  3. Enable external control
 
 # Install
 
@@ -57,13 +65,18 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-```bash
-cargo run --example benchmark -- --simulator_url=192.168.4.117:18083
-```
+See the documentation for a detailed description of Configuration, ControlInputs and SimulatorState.
 
-Sources
-* forums
-* ardupilot src
-* /// https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py
+# Running the Bridge
 
-//REALFLIGHT_URL = "http://192.168.55.54:18083"
+The bridge must run on the same computer as the RealFlight simulator. The RealFlight Link SOAP API requires a new connection for each request, which introduces significant overhead. As a result, running the bridge on a remote host will severely limit communication throughput.
+
+If you need to communicate from a remote host, it is recommended to create your own efficient communication protocol that connects your external system to the bridge running on the same host as the RealFlight simulator.
+
+# Sources
+
+The following sources were useful in understanding the RealFlight Link SOAP API:
+
+* RealFlight developer forums
+* ArduPilot RealFlight SITL
+* Flight axis [python script](https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py) by Michal Podhradsky
