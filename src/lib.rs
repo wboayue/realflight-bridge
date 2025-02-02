@@ -1,21 +1,15 @@
-/// https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py
-//REALFLIGHT_URL = "http://192.168.55.54:18083"
 use std::error::Error;
 use std::io::BufReader;
 use std::io::Write;
 use std::io::{Read, BufRead};
-use std::io;
-use std::net::{ToSocketAddrs, UdpSocket};
-use std::time::Duration;
 
-use log::debug;
 use uom::si::f64::*;
 use std::net::TcpStream;
 
 
 pub mod connection_manager;
 
-pub use connection_manager::{ConnectionConfig};
+pub use connection_manager::ConnectionConfig;
 
 use connection_manager::ConnectionManager;
 
