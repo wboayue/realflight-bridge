@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(
             arg!(--simulator_url <VALUE>)
                 .help("url to RealFlight simulator")
-                .default_value("http://127.0.0.1:18083"),
+                .default_value("127.0.0.1:18083"),
         )
         .get_matches();
 
@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let start_time = Instant::now();
 
-    let count = 200;
+    let count = 400;
     let mut control = ControlInputs::default();
     for i in 0..12 {
         control.channels[i] = 1.0;
