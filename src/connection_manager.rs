@@ -1,4 +1,9 @@
-use std::{net::TcpStream, sync::{Arc, Mutex}, thread, time::Duration};
+use std::{
+    net::TcpStream,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 
@@ -21,11 +26,11 @@ impl Default for ConnectionConfig {
     }
 }
 
-pub (crate) struct ConnectionManager {
+pub(crate) struct ConnectionManager {
     config: ConnectionConfig,
     next_socket: Receiver<TcpStream>,
     creator_thread: Option<thread::JoinHandle<()>>,
-    running: Arc<Mutex<bool>>,    
+    running: Arc<Mutex<bool>>,
 }
 
 impl ConnectionManager {
@@ -47,7 +52,10 @@ impl ConnectionManager {
     }
 
     // Start the background thread that creates new connections
-    fn start_socket_creator(&mut self, sender: Sender<TcpStream>) -> Result<(), Box<dyn std::error::Error>> {
+    fn start_socket_creator(
+        &mut self,
+        sender: Sender<TcpStream>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
 
@@ -79,7 +87,9 @@ impl ConnectionManager {
     }
 
     // Create a new TCP connection with timeout
-    fn create_connection(config: &ConnectionConfig) -> Result<TcpStream, Box<dyn std::error::Error>> {
+    fn create_connection(
+        config: &ConnectionConfig,
+    ) -> Result<TcpStream, Box<dyn std::error::Error>> {
         let addr = config.simulator_url.parse()?;
         let stream = TcpStream::connect_timeout(&addr, config.connect_timeout)?;
         // stream.set_nonblocking(true)?;

@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     client.reset_sim()?;
-//    client.disable_rc()?;
+    //    client.disable_rc()?;
 
     let start_time = Instant::now();
 
@@ -41,9 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         control.channels[i] = 1.0;
     }
     for i in 0..count {
-//        control.channels[i] = 1.0;
+        //        control.channels[i] = 1.0;
         let state = client.exchange_data(&control)?;
-//        println!("state: {:?}", state);
+        //        println!("state: {:?}", state);
     }
 
     let elapsed_time = start_time.elapsed();

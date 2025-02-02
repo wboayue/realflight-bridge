@@ -1,11 +1,10 @@
 use std::error::Error;
 use std::io::BufReader;
 use std::io::Write;
-use std::io::{Read, BufRead};
+use std::io::{BufRead, Read};
 
-use uom::si::f64::*;
 use std::net::TcpStream;
-
+use uom::si::f64::*;
 
 pub mod connection_manager;
 
@@ -29,7 +28,7 @@ impl RealFlightLink {
             simulator_url: simulator_url.to_string(),
             ..Default::default()
         };
-        
+
         Ok(RealFlightLink {
             simulator_url: simulator_url.to_string(),
             connection_manager: ConnectionManager::new(config)?,
@@ -52,14 +51,17 @@ impl RealFlightLink {
     /// per post here: https://www.knifeedge.com/forums/index.php?threads/realflight-reset-soap-envelope.52333/
     pub fn reset_sim(&mut self) -> Result<(), Box<dyn Error>> {
         let response = self.send_action("ResetAircraft", UNUSED)?;
-  //      println!("Response: {}", response);
+        //      println!("Response: {}", response);
         Ok(())
     }
 
-    pub fn exchange_data(&mut self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
+    pub fn exchange_data(
+        &mut self,
+        control: &ControlInputs,
+    ) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
         let response = self.send_action("ExchangeData", &body)?;
-//        println!("Response: {}", response);
+        //        println!("Response: {}", response);
         decode_simulator_state(&response)
     }
 
@@ -106,7 +108,7 @@ impl RealFlightLink {
                 }
             }
             if line.to_lowercase().starts_with("connection:") {
-//                println!("Connection: {:?}", line);
+                //                println!("Connection: {:?}", line);
                 if let Some(length) = line.split_whitespace().nth(1) {
                     let close: Option<String> = length.trim().parse().ok();
                     if close == Some("close".to_string()) {
@@ -138,8 +140,7 @@ impl RealFlightLink {
         }
     }
 
-    fn reset_connection(&mut self) {
-    }
+    fn reset_connection(&mut self) {}
 }
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
@@ -236,7 +237,6 @@ pub struct SimulatorState {
 #[cfg(test)]
 mod tests;
 
-
-/* 
+/*
 https://github.com/ArduPilot/ardupilot/blob/6bf29eca700120153d7404af1f397c2979715427/libraries/SITL/SIM_FlightAxis.cpp#L234
 */
