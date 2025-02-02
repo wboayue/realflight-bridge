@@ -12,21 +12,43 @@ Custom aircraft models can also be created to closely match real-world designs, 
 
 # Install
 
-Add the following to your Cargo.toml
+To add `realflight_bridge` to your Rust project, include the following in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-realflight-link = "1.0.0"
+realflight_bridge = "1.0.0"
 ```
 
-# Examples
+# Example Usage
 
-RealFlight Link provides a SOAP API with four methods
+The following example demonstrates how to connect to RealFlight Link, set up the simulation, and send control inputs in a loop while receiving simulator state feedback.
 
-* RestoreOriginalControllerDevice
-* InjectUAVControllerInterface
-* ResetAircraft
-* ExchangeData
+```rust
+use std::error::Error;
+
+use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge};
+
+
+pub fn main() -> Result<(), Box<dyn Error>> {
+    // Creates bridge with default configuration.
+    // The default configuration connects to RealFlight Link at 127.0.0.1:18083
+    let bridge = RealFlightBridge::new(Configuration::default());
+
+    // Activate the bridge by resetting the simulation and enabling external control input.
+    bridge.activate()?;
+
+    // Initialize control inputs.
+    let mut controls: ControlInputs = ControlInputs::default();
+
+    loop {
+        // Send control inputs and receive simulator state
+        let state = bridge.exchange_data(controls)?;
+
+        // Compute new control inputs based on received state.
+        controls = compute_new_control(state)?;
+    }
+}
+```
 
 ```bash
 cargo run --example benchmark -- --simulator_url=192.168.4.117:18083
