@@ -15,29 +15,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(
             arg!(--simulator_url <VALUE>)
                 .help("url to RealFlight simulator")
-                .default_value("http://127.0.0.1:18083"),
+                .default_value("127.0.0.1:18083"),
         )
         .get_matches();
 
     let simulator_url = matches.get_one::<String>("simulator_url").unwrap();
     debug!("Connecting to RealFlight simulator at {}", simulator_url);
 
-    let client = RealFlightLink::new(simulator_url);
+    let mut client = match RealFlightLink::connect(simulator_url) {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("Error connecting to RealFlight simulator: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     client.reset_sim()?;
-//    client.disable_rc()?;
+    //    client.disable_rc()?;
 
     let start_time = Instant::now();
 
-    let count = 10;
+    let count = 400;
     let mut control = ControlInputs::default();
-    for i in 0..control.channels.len() {
-        control.channels[i] = 0.5;
+    for i in 0..12 {
+        control.channels[i] = 1.0;
     }
     for i in 0..count {
-//        control.channels[i] = 1.0;
+        //        control.channels[i] = 1.0;
         let state = client.exchange_data(&control)?;
-//        println!("state: {:?}", state);
+        //        println!("state: {:?}", state);
     }
 
     let elapsed_time = start_time.elapsed();

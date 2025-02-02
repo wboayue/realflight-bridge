@@ -1,76 +1,146 @@
-/// https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py
-//REALFLIGHT_URL = "http://192.168.55.54:18083"
 use std::error::Error;
-use std::time::Duration;
+use std::io::BufReader;
+use std::io::Write;
+use std::io::{BufRead, Read};
 
+use std::net::TcpStream;
 use uom::si::f64::*;
-use ureq::Agent;
 
-//const UNUSED: &str = "<unused>0</unused>";
+pub mod connection_manager;
+
+pub use connection_manager::ConnectionConfig;
+
+use connection_manager::ConnectionManager;
+
 const UNUSED: &str = "";
+const HEADER_LEN: usize = 120;
 
 pub struct RealFlightLink {
     simulator_url: String,
-    client: ureq::Agent,
+    connection_manager: ConnectionManager,
 }
 
 impl RealFlightLink {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
-    pub fn new(simulator_url: &str) -> RealFlightLink {
-        let mut config = Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(5)))
-        .build();
-
-        let agent: Agent = config.into();
-
-        RealFlightLink {
+    pub fn connect(simulator_url: &str) -> Result<RealFlightLink, Box<dyn Error>> {
+        let config = ConnectionConfig {
             simulator_url: simulator_url.to_string(),
-            client: agent,
-        }
+            ..Default::default()
+        };
+
+        Ok(RealFlightLink {
+            simulator_url: simulator_url.to_string(),
+            connection_manager: ConnectionManager::new(config)?,
+        })
     }
 
     ///  Set Spektrum as the RC input
-    pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
+    pub fn enable_rc(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_action("RestoreOriginalControllerDevice", UNUSED)?;
         Ok(())
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
-    pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
+    pub fn disable_rc(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_action("InjectUAVControllerInterface", UNUSED)?;
         Ok(())
     }
 
     /// Reset Real Flight simulator,
     /// per post here: https://www.knifeedge.com/forums/index.php?threads/realflight-reset-soap-envelope.52333/
-    pub fn reset_sim(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("ResetAircraft", UNUSED)?;
+    pub fn reset_sim(&mut self) -> Result<(), Box<dyn Error>> {
+        let response = self.send_action("ResetAircraft", UNUSED)?;
+        //      println!("Response: {}", response);
         Ok(())
     }
 
-    pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
+    pub fn exchange_data(
+        &mut self,
+        control: &ControlInputs,
+    ) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
         let response = self.send_action("ExchangeData", &body)?;
+        //        println!("Response: {}", response);
         decode_simulator_state(&response)
     }
 
-    pub fn send_action(&self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
+    pub fn send_action(&mut self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
-       println!("envelope: {}", envelope);
-        let response: String = self
-            .client
-            .post(&self.simulator_url)
-            .header("content-type", "text/xml;charset='UTF-8'")
-            .header("soapaction", action)
-            .send(envelope)?
-            .body_mut()
-            .read_to_string()?;
-
-//        println!("response: {}", response);
-
-        Ok(response)
+        let mut stream = self.connection_manager.get_connection()?;
+        self.send_request(&mut stream, action, &envelope);
+        Ok(self.read_response(&mut BufReader::new(stream)))
     }
+
+    pub fn send_request(&mut self, stream: &mut TcpStream, action: &str, envelope: &str) {
+        let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
+
+        request.push_str("POST / HTTP/1.1\r\n");
+        request.push_str(&format!("Soapaction: '{}'\r\n", action));
+        request.push_str(&format!("Content-Length: {}\r\n", envelope.len()));
+        request.push_str("Content-Type: text/xml;charset=utf-8\r\n");
+        request.push_str("Connection: Keep-Alive\r\n");
+        request.push_str("\r\n");
+        request.push_str(envelope);
+
+        stream.write_all(request.as_bytes()).unwrap();
+    }
+
+    pub fn read_response(&mut self, stream: &mut BufReader<TcpStream>) -> String {
+        // Read the status line
+        let mut status_line = String::new();
+        stream.read_line(&mut status_line).unwrap();
+        //println!("Status Line: {}", status_line.trim());
+
+        // Read headers
+        let mut headers = String::new();
+        let mut content_length: Option<usize> = None;
+        let mut close_connection = false;
+        loop {
+            let mut line = String::new();
+            stream.read_line(&mut line).unwrap();
+            if line == "\r\n" {
+                break; // End of headers
+            }
+            if line.to_lowercase().starts_with("content-length:") {
+                if let Some(length) = line.split_whitespace().nth(1) {
+                    content_length = length.trim().parse().ok();
+                }
+            }
+            if line.to_lowercase().starts_with("connection:") {
+                //                println!("Connection: {:?}", line);
+                if let Some(length) = line.split_whitespace().nth(1) {
+                    let close: Option<String> = length.trim().parse().ok();
+                    if close == Some("close".to_string()) {
+                        close_connection = true;
+                    }
+                }
+            }
+            headers.push_str(&line);
+        }
+
+        // println!("Headers:\n{}", headers);
+        // println!("content length:\n{}", content_length.unwrap());
+
+        // Read the body based on Content-Length
+        if let Some(length) = content_length {
+            let mut body = vec![0; length];
+            stream.read_exact(&mut body).unwrap();
+            if close_connection {
+                self.reset_connection();
+            }
+            let r = String::from_utf8_lossy(&body).to_string();
+            // println!("Body: {}", r);
+            r
+        } else {
+            if close_connection {
+                self.reset_connection();
+            }
+            "".to_string()
+        }
+    }
+
+    fn reset_connection(&mut self) {}
 }
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
@@ -153,7 +223,7 @@ pub struct SimulatorState {
     pub has_lost_components: bool,
     pub an_engine_is_running: bool,
     pub is_touching_ground: bool,
-    pub current_aircraft_status: u8,
+    pub current_aircraft_status: String,
     pub current_physics_time: Time,
     pub current_physics_speed_multiplier: f64,
     pub orientation_quaternion_x: f64,
@@ -167,19 +237,6 @@ pub struct SimulatorState {
 #[cfg(test)]
 mod tests;
 
-
 /*
-    asprintf(&req, R"(POST / HTTP/1.1
-soapaction: '%s'
-content-length: %u
-content-type: text/xml;charset='UTF-8'
-Connection: Keep-Alive
-
-%s)",
-             action,
-             (unsigned)strlen(req1), req1);
-    sock->send(req, strlen(req));
-
-
 https://github.com/ArduPilot/ardupilot/blob/6bf29eca700120153d7404af1f397c2979715427/libraries/SITL/SIM_FlightAxis.cpp#L234
 */
