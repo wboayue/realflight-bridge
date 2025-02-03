@@ -14,10 +14,12 @@
 //!
 //! See [README](https://github.com/wboayue/realflight-link) for examples and usage.
 
+use log::error;
 use std::error::Error;
 use std::io::BufReader;
 use std::io::Write;
 use std::io::{BufRead, Read};
+use std::sync::Arc;
 
 use std::net::TcpStream;
 use std::time::Duration;
@@ -33,39 +35,40 @@ const HEADER_LEN: usize = 120;
 /// RealFlightLink client
 pub struct RealFlightBridge {
     connection_manager: ConnectionManager,
+    statistics: Arc<Statistics>,
 }
 
 impl RealFlightBridge {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
-    pub fn connect(simulator_url: &str) -> Result<RealFlightBridge, Box<dyn Error>> {
+    pub fn new(simulator_url: &str) -> Result<RealFlightBridge, Box<dyn Error>> {
         let config = Configuration {
             simulator_url: simulator_url.to_string(),
             ..Default::default()
         };
 
+        let statistics = Arc::new(Statistics {});
+
         Ok(RealFlightBridge {
-            connection_manager: ConnectionManager::new(config)?,
+            connection_manager: ConnectionManager::new(config, statistics.clone())?,
+            statistics,
         })
     }
 
     /// Get statistics for the RealFlightBridge
     pub fn statistics(&self) -> Statistics {
-        Statistics {}
+        self.statistics.as_ref().clone()
     }
 
     /// Reset Real Flight simulator,
-    pub fn activate(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn activate(&self) -> Result<(), Box<dyn Error>> {
         self.reset_sim()?;
         self.disable_rc()?;
         Ok(())
     }
 
     /// Exchange data with the RealFlight simulator
-    pub fn exchange_data(
-        &mut self,
-        control: &ControlInputs,
-    ) -> Result<SimulatorState, Box<dyn Error>> {
+    pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
         let response = self.send_action("ExchangeData", &body)?;
         //        println!("Response: {}", response);
@@ -73,32 +76,32 @@ impl RealFlightBridge {
     }
 
     ///  Set Spektrum as the RC input
-    fn enable_rc(&mut self) -> Result<(), Box<dyn Error>> {
+    fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
         self.send_action("RestoreOriginalControllerDevice", UNUSED)?;
         Ok(())
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
-    fn disable_rc(&mut self) -> Result<(), Box<dyn Error>> {
+    fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
         self.send_action("InjectUAVControllerInterface", UNUSED)?;
         Ok(())
     }
 
     /// Reset Real Flight simulator,
-    fn reset_sim(&mut self) -> Result<(), Box<dyn Error>> {
+    fn reset_sim(&self) -> Result<(), Box<dyn Error>> {
         let response = self.send_action("ResetAircraft", UNUSED)?;
         //      println!("Response: {}", response);
         Ok(())
     }
 
-    fn send_action(&mut self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
+    fn send_action(&self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_manager.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
         Ok(self.read_response(&mut BufReader::new(stream)))
     }
 
-    fn send_request(&mut self, stream: &mut TcpStream, action: &str, envelope: &str) {
+    fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
         request.push_str("POST / HTTP/1.1\r\n");
@@ -112,7 +115,7 @@ impl RealFlightBridge {
         stream.write_all(request.as_bytes()).unwrap();
     }
 
-    fn read_response(&mut self, stream: &mut BufReader<TcpStream>) -> String {
+    fn read_response(&self, stream: &mut BufReader<TcpStream>) -> String {
         // Read the status line
         let mut status_line = String::new();
         stream.read_line(&mut status_line).unwrap();
@@ -166,7 +169,15 @@ impl RealFlightBridge {
         }
     }
 
-    fn reset_connection(&mut self) {}
+    fn reset_connection(&self) {}
+}
+
+impl Drop for RealFlightBridge {
+    fn drop(&mut self) {
+        if let Err(e) = self.enable_rc() {
+            error!("Error enabling RC: {}", e);
+        }
+    }
 }
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
@@ -283,6 +294,7 @@ pub struct SimulatorState {
 }
 
 /// Statistics for the RealFlightBridge
+#[derive(Debug, Clone)]
 pub struct Statistics {}
 
 impl Statistics {

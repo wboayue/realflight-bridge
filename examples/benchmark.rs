@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let simulator_url = matches.get_one::<String>("simulator_url").unwrap();
     info!("Connecting to RealFlight simulator at {}", simulator_url);
 
-    let mut client = match RealFlightBridge::connect(simulator_url) {
+    let bridge = match RealFlightBridge::new(simulator_url) {
         Ok(client) => client,
         Err(e) => {
             eprintln!("Error connecting to RealFlight simulator: {}", e);
@@ -28,16 +28,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    client.activate()?;
+    bridge.activate()?;
 
     let control = ControlInputs::default();
 
     for _ in 0..400 {
-        let state = client.exchange_data(&control)?;
+        let state = bridge.exchange_data(&control)?;
         debug!("state: {:?}", state);
     }
 
-    let statistics = client.statistics();
+    let statistics = bridge.statistics();
 
     println!("Runtime: {:?}", statistics.runtime());
     println!("Frame Rate: {:?}", statistics.frame_rate());

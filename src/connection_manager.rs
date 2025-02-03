@@ -2,10 +2,11 @@ use std::{
     net::TcpStream,
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
 };
 
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+
+use crate::Statistics;
 
 use super::Configuration;
 
@@ -14,10 +15,14 @@ pub(crate) struct ConnectionManager {
     next_socket: Receiver<TcpStream>,
     creator_thread: Option<thread::JoinHandle<()>>,
     running: Arc<Mutex<bool>>,
+    statistics: Arc<Statistics>,
 }
 
 impl ConnectionManager {
-    pub fn new(config: Configuration) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        config: Configuration,
+        statistics: Arc<Statistics>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let (sender, receiver) = bounded(config.buffer_size);
 
         let running = Arc::new(Mutex::new(true));
@@ -27,6 +32,7 @@ impl ConnectionManager {
             next_socket: receiver,
             creator_thread: None,
             running,
+            statistics,
         };
 
         manager.start_socket_creator(sender)?;
