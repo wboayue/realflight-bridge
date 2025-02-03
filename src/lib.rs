@@ -1,60 +1,62 @@
+//! [![github]](https://github.com/wboayue/realflight-link)&ensp;[![crates-io]](https://crates.io/crates/realflight-link)&ensp;[![license]](https://opensource.org/licenses/MIT)
+//!
+//! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
+//! [crates-io]: https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&labelColor=555555&logo=rust
+//! [license]: https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge&labelColor=555555
+//!
+//! RealFlight is a leading RC flight simulator that provides a realistic, physics-based environment for flying fixed-wing aircraft, helicopters, and drones. Used by both hobbyists and professionals, it simulates aerodynamics, wind conditions, and control responses, making it an excellent tool for flight control algorithm validation.
+//!
+//! RealFlightBridge is a Rust library that interfaces with RealFlight Link, enabling external flight controllers to interact with the simulator. It allows developers to:
+//!
+//! * Send control commands to simulated aircraft.
+//! * Receive real-time simulated flight data for state estimation and control.
+//! * Test stabilization and autonomy algorithms in a controlled environment.
+//!
+//! See [README](https://github.com/wboayue/realflight-link) for examples and usage.
+
 use std::error::Error;
 use std::io::BufReader;
 use std::io::Write;
 use std::io::{BufRead, Read};
 
 use std::net::TcpStream;
+use std::time::Duration;
 use uom::si::f64::*;
 
-pub mod connection_manager;
-
-pub use connection_manager::ConnectionConfig;
+mod connection_manager;
 
 use connection_manager::ConnectionManager;
 
 const UNUSED: &str = "";
 const HEADER_LEN: usize = 120;
 
-pub struct RealFlightLink {
-    simulator_url: String,
+/// RealFlightLink client
+pub struct RealFlightBridge {
     connection_manager: ConnectionManager,
 }
 
-impl RealFlightLink {
+impl RealFlightBridge {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
-    pub fn connect(simulator_url: &str) -> Result<RealFlightLink, Box<dyn Error>> {
-        let config = ConnectionConfig {
+    pub fn connect(simulator_url: &str) -> Result<RealFlightBridge, Box<dyn Error>> {
+        let config = Configuration {
             simulator_url: simulator_url.to_string(),
             ..Default::default()
         };
 
-        Ok(RealFlightLink {
-            simulator_url: simulator_url.to_string(),
+        Ok(RealFlightBridge {
             connection_manager: ConnectionManager::new(config)?,
         })
     }
 
-    ///  Set Spektrum as the RC input
-    pub fn enable_rc(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_action("RestoreOriginalControllerDevice", UNUSED)?;
-        Ok(())
-    }
-
-    /// Disable Spektrum as the RC input, and use FlightAxis instead
-    pub fn disable_rc(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_action("InjectUAVControllerInterface", UNUSED)?;
-        Ok(())
-    }
-
     /// Reset Real Flight simulator,
-    /// per post here: https://www.knifeedge.com/forums/index.php?threads/realflight-reset-soap-envelope.52333/
-    pub fn reset_sim(&mut self) -> Result<(), Box<dyn Error>> {
-        let response = self.send_action("ResetAircraft", UNUSED)?;
-        //      println!("Response: {}", response);
+    pub fn activate(&mut self) -> Result<(), Box<dyn Error>> {
+        self.reset_sim()?;
+        self.disable_rc()?;
         Ok(())
     }
 
+    /// Exchange data with the RealFlight simulator
     pub fn exchange_data(
         &mut self,
         control: &ControlInputs,
@@ -65,14 +67,33 @@ impl RealFlightLink {
         decode_simulator_state(&response)
     }
 
-    pub fn send_action(&mut self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
+    ///  Set Spektrum as the RC input
+    fn enable_rc(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_action("RestoreOriginalControllerDevice", UNUSED)?;
+        Ok(())
+    }
+
+    /// Disable Spektrum as the RC input, and use FlightAxis instead
+    fn disable_rc(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_action("InjectUAVControllerInterface", UNUSED)?;
+        Ok(())
+    }
+
+    /// Reset Real Flight simulator,
+    fn reset_sim(&mut self) -> Result<(), Box<dyn Error>> {
+        let response = self.send_action("ResetAircraft", UNUSED)?;
+        //      println!("Response: {}", response);
+        Ok(())
+    }
+
+    fn send_action(&mut self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_manager.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
         Ok(self.read_response(&mut BufReader::new(stream)))
     }
 
-    pub fn send_request(&mut self, stream: &mut TcpStream, action: &str, envelope: &str) {
+    fn send_request(&mut self, stream: &mut TcpStream, action: &str, envelope: &str) {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
         request.push_str("POST / HTTP/1.1\r\n");
@@ -86,7 +107,7 @@ impl RealFlightLink {
         stream.write_all(request.as_bytes()).unwrap();
     }
 
-    pub fn read_response(&mut self, stream: &mut BufReader<TcpStream>) -> String {
+    fn read_response(&mut self, stream: &mut BufReader<TcpStream>) -> String {
         // Read the status line
         let mut status_line = String::new();
         stream.read_line(&mut status_line).unwrap();
@@ -178,11 +199,33 @@ fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Erro
     Ok(SimulatorState::default())
 }
 
+/// Configuration for the RealFlightBridge
+#[derive(Clone, Debug)]
+pub struct Configuration {
+    pub simulator_url: String,
+    pub connect_timeout: Duration,
+    pub retry_delay: Duration,
+    pub buffer_size: usize,
+}
+
+impl Default for Configuration {
+    fn default() -> Self {
+        Configuration {
+            simulator_url: "127.0.0.1:18083".to_string(),
+            connect_timeout: Duration::from_millis(5),
+            retry_delay: Duration::from_millis(5),
+            buffer_size: 1,
+        }
+    }
+}
+
+/// Control inputs for the RealFlight simulator
 #[derive(Default, Debug)]
 pub struct ControlInputs {
     pub channels: [f32; 12],
 }
 
+/// State of the RealFlight simulator
 #[derive(Default, Debug)]
 pub struct SimulatorState {
     pub previous_inputs: ControlInputs,

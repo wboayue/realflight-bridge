@@ -3,7 +3,7 @@ use std::time::Instant;
 use clap::{arg, Command};
 use log::debug;
 
-use realflight_link::{ControlInputs, RealFlightLink};
+use realflight_link::{ControlInputs, RealFlightBridge};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let simulator_url = matches.get_one::<String>("simulator_url").unwrap();
     debug!("Connecting to RealFlight simulator at {}", simulator_url);
 
-    let mut client = match RealFlightLink::connect(simulator_url) {
+    let mut client = match RealFlightBridge::connect(simulator_url) {
         Ok(client) => client,
         Err(e) => {
             eprintln!("Error connecting to RealFlight simulator: {}", e);
@@ -30,8 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    client.reset_sim()?;
-    //    client.disable_rc()?;
+    client.activate()?;
 
     let start_time = Instant::now();
 
@@ -40,7 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..12 {
         control.channels[i] = 1.0;
     }
-    for i in 0..count {
+
+    for _ in 0..count {
         //        control.channels[i] = 1.0;
         let state = client.exchange_data(&control)?;
         //        println!("state: {:?}", state);

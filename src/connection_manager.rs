@@ -7,34 +7,17 @@ use std::{
 
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 
-#[derive(Clone, Debug)]
-pub struct ConnectionConfig {
-    pub simulator_url: String,
-    pub connect_timeout: Duration,
-    pub retry_delay: Duration,
-    pub buffer_size: usize,
-}
-
-impl Default for ConnectionConfig {
-    fn default() -> Self {
-        ConnectionConfig {
-            simulator_url: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(5),
-            retry_delay: Duration::from_millis(5),
-            buffer_size: 1,
-        }
-    }
-}
+use super::Configuration;
 
 pub(crate) struct ConnectionManager {
-    config: ConnectionConfig,
+    config: Configuration,
     next_socket: Receiver<TcpStream>,
     creator_thread: Option<thread::JoinHandle<()>>,
     running: Arc<Mutex<bool>>,
 }
 
 impl ConnectionManager {
-    pub fn new(config: ConnectionConfig) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(config: Configuration) -> Result<Self, Box<dyn std::error::Error>> {
         let (sender, receiver) = bounded(config.buffer_size);
 
         let running = Arc::new(Mutex::new(true));
@@ -87,9 +70,7 @@ impl ConnectionManager {
     }
 
     // Create a new TCP connection with timeout
-    fn create_connection(
-        config: &ConnectionConfig,
-    ) -> Result<TcpStream, Box<dyn std::error::Error>> {
+    fn create_connection(config: &Configuration) -> Result<TcpStream, Box<dyn std::error::Error>> {
         let addr = config.simulator_url.parse()?;
         let stream = TcpStream::connect_timeout(&addr, config.connect_timeout)?;
         // stream.set_nonblocking(true)?;
