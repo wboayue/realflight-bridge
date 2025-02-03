@@ -49,6 +49,11 @@ impl RealFlightBridge {
         })
     }
 
+    /// Get statistics for the RealFlightBridge
+    pub fn statistics(&self) -> Statistics {
+        Statistics {}
+    }
+
     /// Reset Real Flight simulator,
     pub fn activate(&mut self) -> Result<(), Box<dyn Error>> {
         self.reset_sim()?;
@@ -277,6 +282,22 @@ pub struct SimulatorState {
     pub reset_button_has_been_pressed: bool,
 }
 
+/// Statistics for the RealFlightBridge
+pub struct Statistics {}
+
+impl Statistics {
+    pub fn runtime(&self) -> Duration {
+        Duration::from_secs(0)
+    }
+
+    pub fn error_count(&self) -> u32 {
+        0
+    }
+
+    pub fn frame_rate(&self) -> f64 {
+        0.0
+    }
+}
 #[cfg(test)]
 mod tests;
 

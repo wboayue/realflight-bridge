@@ -1,7 +1,5 @@
-use std::time::Instant;
-
 use clap::{arg, Command};
-use log::debug;
+use log::{debug, info};
 
 use realflight_link::{ControlInputs, RealFlightBridge};
 
@@ -20,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get_matches();
 
     let simulator_url = matches.get_one::<String>("simulator_url").unwrap();
-    debug!("Connecting to RealFlight simulator at {}", simulator_url);
+    info!("Connecting to RealFlight simulator at {}", simulator_url);
 
     let mut client = match RealFlightBridge::connect(simulator_url) {
         Ok(client) => client,
@@ -32,23 +30,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     client.activate()?;
 
-    let start_time = Instant::now();
+    let control = ControlInputs::default();
 
-    let count = 400;
-    let mut control = ControlInputs::default();
-    for i in 0..12 {
-        control.channels[i] = 1.0;
-    }
-
-    for _ in 0..count {
-        //        control.channels[i] = 1.0;
+    for _ in 0..400 {
         let state = client.exchange_data(&control)?;
-        //        println!("state: {:?}", state);
+        debug!("state: {:?}", state);
     }
 
-    let elapsed_time = start_time.elapsed();
-    println!("Time taken: {:?}", elapsed_time);
-    println!("RPS: {:?}", count as f64 / elapsed_time.as_secs_f64());
+    let statistics = client.statistics();
+
+    println!("Runtime: {:?}", statistics.runtime());
+    println!("Frame Rate: {:?}", statistics.frame_rate());
+    println!("Error Count: {:?}", statistics.error_count());
 
     Ok(())
 }
