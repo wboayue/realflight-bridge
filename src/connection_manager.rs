@@ -5,8 +5,9 @@ use std::{
 };
 
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use log::error;
 
-use crate::Statistics;
+use crate::StatisticsEngine;
 
 use super::Configuration;
 
@@ -15,13 +16,13 @@ pub(crate) struct ConnectionManager {
     next_socket: Receiver<TcpStream>,
     creator_thread: Option<thread::JoinHandle<()>>,
     running: Arc<Mutex<bool>>,
-    statistics: Arc<Statistics>,
+    statistics: Arc<StatisticsEngine>,
 }
 
 impl ConnectionManager {
     pub fn new(
         config: Configuration,
-        statistics: Arc<Statistics>,
+        statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (sender, receiver) = bounded(config.buffer_size);
 
@@ -47,19 +48,26 @@ impl ConnectionManager {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
+        let statistics = Arc::clone(&self.statistics);
 
         for _ in 0..config.buffer_size {
-            let c = Self::create_connection(&config).unwrap();
-            sender.send(c).unwrap();
+            let stream = Self::create_connection(&config, &statistics)?;
+            sender.send(stream).unwrap();
         }
 
         let handle = thread::spawn(move || {
-            let mut connection = Some(Self::create_connection(&config).unwrap());
+            let mut connection = Some(Self::create_connection(&config, &statistics).unwrap());
             while *running.lock().unwrap() {
                 match sender.try_send(connection.take().unwrap()) {
-                    Ok(_) => {
-                        connection = Some(Self::create_connection(&config).unwrap());
-                    }
+                    Ok(_) => match Self::create_connection(&config, &statistics) {
+                        Ok(stream) => {
+                            connection = Some(stream);
+                        }
+                        Err(e) => {
+                            error!("Error creating connection: {}", e);
+                            break;
+                        }
+                    },
                     Err(TrySendError::Full(_connection)) => {
                         connection = Some(_connection);
                         thread::sleep(config.retry_delay);
@@ -76,12 +84,23 @@ impl ConnectionManager {
     }
 
     // Create a new TCP connection with timeout
-    fn create_connection(config: &Configuration) -> Result<TcpStream, Box<dyn std::error::Error>> {
+    fn create_connection(
+        config: &Configuration,
+        statistics: &Arc<StatisticsEngine>,
+    ) -> Result<TcpStream, Box<dyn std::error::Error>> {
         let addr = config.simulator_url.parse()?;
-        let stream = TcpStream::connect_timeout(&addr, config.connect_timeout)?;
-        // stream.set_nonblocking(true)?;
-        Ok(stream)
-        // Ok(TcpStream::connect(&config.simulator_url)?)
+        for _ in 0..10 {
+            match TcpStream::connect_timeout(&addr, config.connect_timeout) {
+                Ok(stream) => {
+                    return Ok(stream);
+                }
+                Err(e) => {
+                    statistics.increment_error_count();
+                    error!("Error creating connection: {}", e);
+                }
+            }
+        }
+        Err("Failed to create connection".into())
     }
 
     // Get a new connection, consuming it

@@ -32,16 +32,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let control = ControlInputs::default();
 
-    for _ in 0..400 {
+    for _ in 0..200 {
         let state = bridge.exchange_data(&control)?;
         debug!("state: {:?}", state);
     }
 
     let statistics = bridge.statistics();
 
-    println!("Runtime: {:?}", statistics.runtime());
-    println!("Frame Rate: {:?}", statistics.frame_rate());
-    println!("Error Count: {:?}", statistics.error_count());
+    println!("Runtime: {:?}", statistics.runtime);
+    println!("Frame Rate: {:?}", statistics.frame_rate);
+    println!("Error Count: {:?}", statistics.error_count);
+    println!("Request count: {:?}", statistics.request_count);
 
     Ok(())
 }

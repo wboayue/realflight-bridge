@@ -19,10 +19,13 @@ use std::error::Error;
 use std::io::BufReader;
 use std::io::Write;
 use std::io::{BufRead, Read};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use std::net::TcpStream;
 use std::time::Duration;
+use std::time::Instant;
 use uom::si::f64::*;
 
 mod connection_manager;
@@ -35,7 +38,7 @@ const HEADER_LEN: usize = 120;
 /// RealFlightLink client
 pub struct RealFlightBridge {
     connection_manager: ConnectionManager,
-    statistics: Arc<Statistics>,
+    statistics: Arc<StatisticsEngine>,
 }
 
 impl RealFlightBridge {
@@ -47,7 +50,7 @@ impl RealFlightBridge {
             ..Default::default()
         };
 
-        let statistics = Arc::new(Statistics {});
+        let statistics = Arc::new(StatisticsEngine::new());
 
         Ok(RealFlightBridge {
             connection_manager: ConnectionManager::new(config, statistics.clone())?,
@@ -57,7 +60,7 @@ impl RealFlightBridge {
 
     /// Get statistics for the RealFlightBridge
     pub fn statistics(&self) -> Statistics {
-        self.statistics.as_ref().clone()
+        self.statistics.snapshot()
     }
 
     /// Reset Real Flight simulator,
@@ -98,6 +101,7 @@ impl RealFlightBridge {
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_manager.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
+        self.statistics.increment_request_count();
         Ok(self.read_response(&mut BufReader::new(stream)))
     }
 
@@ -228,8 +232,8 @@ impl Default for Configuration {
     fn default() -> Self {
         Configuration {
             simulator_url: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(5),
-            retry_delay: Duration::from_millis(5),
+            connect_timeout: Duration::from_millis(50),
+            retry_delay: Duration::from_millis(50),
             buffer_size: 1,
         }
     }
@@ -294,22 +298,60 @@ pub struct SimulatorState {
 }
 
 /// Statistics for the RealFlightBridge
-#[derive(Debug, Clone)]
-pub struct Statistics {}
+#[derive(Debug)]
+pub struct Statistics {
+    pub runtime: Duration,
+    pub error_count: u32,
+    pub frame_rate: f64,
+    pub request_count: u32,
+}
 
-impl Statistics {
-    pub fn runtime(&self) -> Duration {
-        Duration::from_secs(0)
+/// Statistics for the RealFlightBridge
+pub struct StatisticsEngine {
+    start_time: Instant,
+    error_count: AtomicU32,
+    request_count: AtomicU32,
+}
+
+impl StatisticsEngine {
+    pub fn new() -> Self {
+        StatisticsEngine {
+            start_time: Instant::now(),
+            error_count: AtomicU32::new(0),
+            request_count: AtomicU32::new(0),
+        }
     }
 
-    pub fn error_count(&self) -> u32 {
-        0
+    pub fn snapshot(&self) -> Statistics {
+        Statistics {
+            runtime: self.start_time.elapsed(),
+            error_count: self.error_count(),
+            frame_rate: self.frame_rate(),
+            request_count: self.request_count(),
+        }
     }
 
-    pub fn frame_rate(&self) -> f64 {
-        0.0
+    fn error_count(&self) -> u32 {
+        self.error_count.load(Ordering::Relaxed)
+    }
+
+    fn request_count(&self) -> u32 {
+        self.request_count.load(Ordering::Relaxed)
+    }
+
+    fn increment_request_count(&self) {
+        self.request_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn increment_error_count(&self) {
+        self.error_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn frame_rate(&self) -> f64 {
+        self.request_count() as f64 / self.start_time.elapsed().as_secs_f64()
     }
 }
+
 #[cfg(test)]
 mod tests;
 
