@@ -56,26 +56,14 @@ impl ConnectionManager {
         }
 
         let handle = thread::spawn(move || {
-            let mut connection = Some(Self::create_connection(&config, &statistics).unwrap());
             while *running.lock().unwrap() {
-                match sender.try_send(connection.take().unwrap()) {
-                    Ok(_) => match Self::create_connection(&config, &statistics) {
-                        Ok(stream) => {
-                            connection = Some(stream);
-                        }
-                        Err(e) => {
-                            error!("Error creating connection: {}", e);
-                            break;
-                        }
-                    },
-                    Err(TrySendError::Full(_connection)) => {
-                        connection = Some(_connection);
-                        thread::sleep(config.retry_delay);
-                    }
-                    Err(TrySendError::Disconnected(_connection)) => {
-                        break;
-                    }
+                if sender.is_full() {
+                    thread::sleep(config.retry_delay);
+                    continue;
                 }
+
+                let connection = Self::create_connection(&config, &statistics).unwrap();
+                sender.send(connection).unwrap();
             }
         });
 

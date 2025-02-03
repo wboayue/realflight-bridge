@@ -44,16 +44,11 @@ pub struct RealFlightBridge {
 impl RealFlightBridge {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
-    pub fn new(simulator_url: &str) -> Result<RealFlightBridge, Box<dyn Error>> {
-        let config = Configuration {
-            simulator_url: simulator_url.to_string(),
-            ..Default::default()
-        };
-
+    pub fn new(configuration: Configuration) -> Result<RealFlightBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
 
         Ok(RealFlightBridge {
-            connection_manager: ConnectionManager::new(config, statistics.clone())?,
+            connection_manager: ConnectionManager::new(configuration, statistics.clone())?,
             statistics,
         })
     }
@@ -86,14 +81,13 @@ impl RealFlightBridge {
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
     fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("InjectUAVControllerInterface", UNUSED)?;
+        let _ = self.send_action("InjectUAVControllerInterface", UNUSED)?;
         Ok(())
     }
 
     /// Reset Real Flight simulator,
     fn reset_sim(&self) -> Result<(), Box<dyn Error>> {
-        let response = self.send_action("ResetAircraft", UNUSED)?;
-        //      println!("Response: {}", response);
+        let _ = self.send_action("ResetAircraft", UNUSED)?;
         Ok(())
     }
 
@@ -102,7 +96,14 @@ impl RealFlightBridge {
         let mut stream = self.connection_manager.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
         self.statistics.increment_request_count();
-        Ok(self.read_response(&mut BufReader::new(stream)))
+
+        match self.read_response(&mut BufReader::new(stream)) {
+            Some(response) => {
+                println!("Response: {:?}", response);
+                Ok(response.body)
+            }
+            None => Err("Failed to read response".into()),
+        }
     }
 
     fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
@@ -119,16 +120,24 @@ impl RealFlightBridge {
         stream.write_all(request.as_bytes()).unwrap();
     }
 
-    fn read_response(&self, stream: &mut BufReader<TcpStream>) -> String {
+    fn read_response(&self, stream: &mut BufReader<TcpStream>) -> Option<SoapResponse> {
+        // let mut buf = String::new();
+        // stream.read_to_string(&mut buf).unwrap();
+        // println!("Reading response:\n{}", buf);
         // Read the status line
         let mut status_line = String::new();
         stream.read_line(&mut status_line).unwrap();
-        //println!("Status Line: {}", status_line.trim());
+        println!("Status Line: {}", status_line.trim());
+        let status_code: u32 = status_line
+            .split_whitespace()
+            .nth(1)
+            .unwrap()
+            .parse()
+            .unwrap();
 
         // Read headers
         let mut headers = String::new();
         let mut content_length: Option<usize> = None;
-        let mut close_connection = false;
         loop {
             let mut line = String::new();
             stream.read_line(&mut line).unwrap();
@@ -138,15 +147,6 @@ impl RealFlightBridge {
             if line.to_lowercase().starts_with("content-length:") {
                 if let Some(length) = line.split_whitespace().nth(1) {
                     content_length = length.trim().parse().ok();
-                }
-            }
-            if line.to_lowercase().starts_with("connection:") {
-                //                println!("Connection: {:?}", line);
-                if let Some(length) = line.split_whitespace().nth(1) {
-                    let close: Option<String> = length.trim().parse().ok();
-                    if close == Some("close".to_string()) {
-                        close_connection = true;
-                    }
                 }
             }
             headers.push_str(&line);
@@ -159,17 +159,11 @@ impl RealFlightBridge {
         if let Some(length) = content_length {
             let mut body = vec![0; length];
             stream.read_exact(&mut body).unwrap();
-            if close_connection {
-                self.reset_connection();
-            }
-            let r = String::from_utf8_lossy(&body).to_string();
+            let body = String::from_utf8_lossy(&body).to_string();
             // println!("Body: {}", r);
-            r
+            Some(SoapResponse { status_code, body })
         } else {
-            if close_connection {
-                self.reset_connection();
-            }
-            "".to_string()
+            None
         }
     }
 
@@ -182,6 +176,12 @@ impl Drop for RealFlightBridge {
             error!("Error enabling RC: {}", e);
         }
     }
+}
+
+#[derive(Debug)]
+struct SoapResponse {
+    status_code: u32,
+    body: String,
 }
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
@@ -216,6 +216,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 }
 
 fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Error>> {
+    //    println!("Response: {}", response);
     Ok(SimulatorState::default())
 }
 

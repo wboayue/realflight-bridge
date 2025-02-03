@@ -1,7 +1,7 @@
 use clap::{arg, Command};
 use log::{debug, info};
 
-use realflight_link::{ControlInputs, RealFlightBridge};
+use realflight_link::{Configuration, ControlInputs, RealFlightBridge};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -20,7 +20,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let simulator_url = matches.get_one::<String>("simulator_url").unwrap();
     info!("Connecting to RealFlight simulator at {}", simulator_url);
 
-    let bridge = match RealFlightBridge::new(simulator_url) {
+    let configuration = Configuration {
+        simulator_url: simulator_url.clone(),
+        ..Default::default()
+    };
+
+    let bridge = match RealFlightBridge::new(configuration) {
         Ok(client) => client,
         Err(e) => {
             eprintln!("Error connecting to RealFlight simulator: {}", e);
@@ -32,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let control = ControlInputs::default();
 
-    for _ in 0..200 {
+    for _ in 0..10 {
         let state = bridge.exchange_data(&control)?;
         debug!("state: {:?}", state);
     }
