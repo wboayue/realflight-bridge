@@ -1,93 +1,9 @@
-use std::{io, net::TcpListener, sync::atomic::AtomicBool, thread};
-
-use clap::builder::Str;
-
 use super::*;
-
-#[derive(Debug, Clone)]
-struct MockResponse {
-    response: &'static str,
-}
-
-struct MockServer {
-    tests: Vec<MockResponse>,
-    handle: Option<thread::JoinHandle<()>>,
-    running: Arc<AtomicBool>,
-}
-
-impl Drop for MockServer {
-    fn drop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
-
-        if let Some(handle) = self.handle.take() {
-            handle.join().unwrap();
-        }
-    }
-}
-
-impl MockServer {
-    fn new(tests: Vec<MockResponse>) -> Self {
-        MockServer {
-            tests: tests,
-            handle: None,
-            running: Arc::new(AtomicBool::new(true)),
-        }
-    }
-
-    fn setup(&mut self) {
-        let tests = self.tests.clone();
-        let running = Arc::clone(&self.running);
-
-        let handle = thread::spawn(move || {
-            let listener = TcpListener::bind("0.0.0.0:18083").unwrap();
-            listener.set_nonblocking(true).unwrap();
-
-            println!("Server listening on port 18083...");
-
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => {
-                        handle_client(stream, &tests);
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        if running.load(Ordering::Relaxed) {
-                            thread::sleep(std::time::Duration::from_millis(100));
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-                    Err(e) => eprintln!("Connection failed: {}", e),
-                }
-            }
-        });
-        self.handle = Some(handle);
-    }
-
-    fn requests(&self) -> Vec<&str> {
-        vec![]
-    }
-}
-
-fn handle_client(mut stream: TcpStream, tests: &Vec<MockResponse>) {
-    let body = tests[0].response.as_bytes();
-
-    let mut buffer = String::new();
-
-    buffer.push_str("HTTP/1.1 200 OK\r\n");
-    buffer.push_str("Server: gSOAP/2.7\r\n");
-    buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
-    buffer.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    buffer.push_str("Connection: close\r\n");
-    buffer.push_str("\r\n");
-    buffer.push_str(tests[0].response);
-
-    stream.write_all(buffer.as_bytes()).unwrap();
-}
+use soap_stub::{MockResponse, Server};
 
 #[test]
 pub fn test_activate() {
-    let mut server = MockServer::new(vec![
+    let mut server = Server::new(vec![
             MockResponse {
                 response: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:SOAP-ENC=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"><SOAP-ENV:Body><ResetAircraftResponse><unused>0</unused></ResetAircraftResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>"
             },
@@ -123,3 +39,7 @@ pub fn test_encode_envelope() {
         envelope
     );
 }
+
+#[cfg(test)]
+mod soap_stub;
+
