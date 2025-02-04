@@ -74,13 +74,13 @@ impl RealFlightBridge {
     }
 
     ///  Set Spektrum as the RC input
-    fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
+    pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
         self.send_action("RestoreOriginalControllerDevice", UNUSED)?;
         Ok(())
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
-    fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
+    pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
         let _ = self.send_action("InjectUAVControllerInterface", UNUSED)?;
         Ok(())
     }
@@ -348,6 +348,12 @@ impl StatisticsEngine {
 
     fn frame_rate(&self) -> f64 {
         self.request_count() as f64 / self.start_time.elapsed().as_secs_f64()
+    }
+}
+
+impl Default for StatisticsEngine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
