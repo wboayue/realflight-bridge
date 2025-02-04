@@ -114,7 +114,6 @@ impl RealFlightBridge {
         request.push_str(&format!("Soapaction: '{}'\r\n", action));
         request.push_str(&format!("Content-Length: {}\r\n", envelope.len()));
         request.push_str("Content-Type: text/xml;charset=utf-8\r\n");
-        request.push_str("Connection: Keep-Alive\r\n");
         request.push_str("\r\n");
         request.push_str(envelope);
 
@@ -169,13 +168,13 @@ impl RealFlightBridge {
     }
 }
 
-impl Drop for RealFlightBridge {
-    fn drop(&mut self) {
-        if let Err(e) = self.enable_rc() {
-            error!("Error enabling RC: {}", e);
-        }
-    }
-}
+// impl Drop for RealFlightBridge {
+//     fn drop(&mut self) {
+//         if let Err(e) = self.enable_rc() {
+//             error!("Error enabling RC: {}", e);
+//         }
+//     }
+// }
 
 #[derive(Debug)]
 struct SoapResponse {

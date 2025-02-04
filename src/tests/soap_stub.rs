@@ -1,9 +1,8 @@
 use std::{
     io::{ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
-    os::fd::AsRawFd,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
     thread,
