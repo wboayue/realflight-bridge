@@ -20,6 +20,11 @@ pub fn test_activate() {
     let bridge = RealFlightBridge::new(configuration).unwrap();
     bridge.activate().unwrap();
 
+    let statistics = bridge.statistics();
+
+    assert_eq!(statistics.request_count, 2);
+    assert_eq!(statistics.error_count, 0);
+
     // assert_eq!(server.requests()[0], "Activate");
     // assert_eq!(server.requests()[1], "InjectUAVControllerInterface");
 }

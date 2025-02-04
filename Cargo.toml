@@ -1,13 +1,22 @@
 [package]
-name = "realflight-link"
+name = "realflight-bridge"
 version = "0.1.0"
 edition = "2021"
+readme = "README.md"
+description = "RealFlightBridge is a Rust library that interfaces with RealFlight Link, enabling external flight controllers to interact with the simulator."
+homepage = "https://github.com/wboayue/realflight-bridge/"
+repository = "https://github.com/wboayue/realflight-bridge/"
+documentation = "https://docs.rs/realflight-bridge/latest/realflight-bridge/"
+license = "MIT"
+exclude = [
+    "justfile",
+]
 
 [dependencies]
 uom = "0.36.0"
 env_logger = "0.11.6"
-log = "0.4.17"
+log = "0.4.25"
 crossbeam-channel = "0.5"
 
 [dev-dependencies]
-clap = "4.1.8"
+clap = "4.5.28"
