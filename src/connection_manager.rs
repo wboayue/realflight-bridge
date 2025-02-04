@@ -4,7 +4,7 @@ use std::{
     thread,
 };
 
-use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use crossbeam_channel::{bounded, Receiver, Sender};
 use log::error;
 
 use crate::StatisticsEngine;

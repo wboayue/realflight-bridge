@@ -1,14 +1,20 @@
-use std::{io::{ErrorKind, Write}, net::{TcpListener, TcpStream}, sync::{atomic::{AtomicBool, Ordering}, Arc}, thread};
-
-#[derive(Debug, Clone)]
-pub struct MockResponse {
-    pub response: &'static str,
-}
+use std::{
+    io::{ErrorKind, Read, Write},
+    net::{TcpListener, TcpStream},
+    os::fd::AsRawFd,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+};
 
 pub struct Server {
-    tests: Vec<MockResponse>,
+    port: u16,
+    responses: Vec<String>,
     handle: Option<thread::JoinHandle<()>>,
     running: Arc<AtomicBool>,
+    requests: Arc<Mutex<Vec<String>>>,
 }
 
 impl Drop for Server {
@@ -22,28 +28,50 @@ impl Drop for Server {
 }
 
 impl Server {
-    pub fn new(tests: Vec<MockResponse>) -> Self {
+    pub fn new(port: u16, responses: Vec<String>) -> Self {
         Server {
-            tests: tests,
+            port,
+            responses,
             handle: None,
             running: Arc::new(AtomicBool::new(true)),
+            requests: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
+    pub fn request_count(&self) -> usize {
+        let request = self.requests.lock().unwrap();
+        request.len()
+    }
+
     pub fn setup(&mut self) {
-        let tests = self.tests.clone();
+        let responses = self.responses.clone();
         let running = Arc::clone(&self.running);
+        let requests = Arc::clone(&self.requests);
+        let port = self.port;
 
         let handle = thread::spawn(move || {
-            let listener = TcpListener::bind("0.0.0.0:18083").unwrap();
+            let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
             listener.set_nonblocking(true).unwrap();
 
-            println!("Server listening on port 18083...");
+            eprintln!("Server listening on port {}...", port);
+
+            let mut responses = responses.iter();
 
             for stream in listener.incoming() {
                 match stream {
-                    Ok(stream) => {
-                        handle_client(stream, &tests);
+                    Ok(mut stream) => {
+                        let mut buf: String = String::new();
+                        let request = stream.read_to_string(&mut buf);
+
+                        let mut requests = requests.lock().unwrap();
+                        eprintln!("Adding request: {}", buf);
+                        requests.push(buf);
+
+                        if let Some(response) = responses.next() {
+                            handle_client(&stream, response);
+                        } else {
+                            handle_client(&stream, "error");
+                        }
                     }
                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                         if running.load(Ordering::Relaxed) {
@@ -56,17 +84,22 @@ impl Server {
                     Err(e) => eprintln!("Connection failed: {}", e),
                 }
             }
+
+            let mut requests = requests.lock().unwrap();
+            requests.pop();
         });
+
         self.handle = Some(handle);
     }
 
-    fn requests(&self) -> Vec<&str> {
-        vec![]
+    pub fn requests(&self) -> Vec<String> {
+        let requests = self.requests.lock().unwrap();
+        requests.clone()
     }
 }
 
-fn handle_client(mut stream: TcpStream, tests: &Vec<MockResponse>) {
-    let body = tests[0].response.as_bytes();
+fn handle_client(mut stream: &TcpStream, response_key: &str) {
+    let body = response_key.as_bytes();
 
     let mut buffer = String::new();
 
@@ -76,7 +109,8 @@ fn handle_client(mut stream: TcpStream, tests: &Vec<MockResponse>) {
     buffer.push_str(&format!("Content-Length: {}\r\n", body.len()));
     buffer.push_str("Connection: close\r\n");
     buffer.push_str("\r\n");
-    buffer.push_str(tests[0].response);
+    buffer.push_str(response_key);
 
     stream.write_all(buffer.as_bytes()).unwrap();
+    stream.flush().unwrap();
 }

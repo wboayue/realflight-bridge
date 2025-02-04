@@ -20,3 +20,4 @@ crossbeam-channel = "0.5"
 
 [dev-dependencies]
 clap = "4.5.28"
+rand = "0.8"

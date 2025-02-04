@@ -60,7 +60,7 @@ impl RealFlightBridge {
 
     /// Reset Real Flight simulator,
     pub fn activate(&self) -> Result<(), Box<dyn Error>> {
-        self.reset_sim()?;
+        self.reset_aircraft()?;
         self.disable_rc()?;
         Ok(())
     }
@@ -86,7 +86,8 @@ impl RealFlightBridge {
     }
 
     /// Reset Real Flight simulator,
-    fn reset_sim(&self) -> Result<(), Box<dyn Error>> {
+    /// like pressing spacebar in the simulator
+    pub fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
         let _ = self.send_action("ResetAircraft", UNUSED)?;
         Ok(())
     }
@@ -99,7 +100,7 @@ impl RealFlightBridge {
 
         match self.read_response(&mut BufReader::new(stream)) {
             Some(response) => {
-                println!("Response: {:?}", response);
+                // println!("Response: {:?}", response);
                 Ok(response.body)
             }
             None => Err("Failed to read response".into()),
@@ -127,7 +128,7 @@ impl RealFlightBridge {
         // Read the status line
         let mut status_line = String::new();
         stream.read_line(&mut status_line).unwrap();
-        println!("Status Line: {}", status_line.trim());
+        eprintln!("Status Line ??: {}", status_line.trim());
         let status_code: u32 = status_line
             .split_whitespace()
             .nth(1)
@@ -166,8 +167,6 @@ impl RealFlightBridge {
             None
         }
     }
-
-    fn reset_connection(&self) {}
 }
 
 impl Drop for RealFlightBridge {
@@ -355,7 +354,3 @@ impl StatisticsEngine {
 
 #[cfg(test)]
 mod tests;
-
-/*
-https://github.com/ArduPilot/ardupilot/blob/6bf29eca700120153d7404af1f397c2979715427/libraries/SITL/SIM_FlightAxis.cpp#L234
-*/
