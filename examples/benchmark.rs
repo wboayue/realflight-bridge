@@ -1,7 +1,7 @@
 use clap::{arg, Command};
 use log::{debug, info};
 
-use realflight_link::{Configuration, ControlInputs, RealFlightBridge};
+use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
