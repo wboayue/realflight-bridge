@@ -49,7 +49,7 @@ impl Server {
         let port = self.port;
 
         let handle = thread::spawn(move || {
-            let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+            let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
             listener.set_nonblocking(true).unwrap();
 
             eprintln!("Server listening on port {}...", port);
