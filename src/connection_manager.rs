@@ -50,6 +50,7 @@ impl ConnectionManager {
         let running = Arc::clone(&self.running);
         let statistics = Arc::clone(&self.statistics);
 
+        eprintln!("Creating {} connections...", config.buffer_size);
         for _ in 0..config.buffer_size {
             let stream = Self::create_connection(&config, &statistics)?;
             sender.send(stream).unwrap();
@@ -57,11 +58,12 @@ impl ConnectionManager {
 
         let handle = thread::spawn(move || {
             while *running.lock().unwrap() {
-                if sender.is_full() {
+                if sender.is_full() && sender.capacity().unwrap() > 0 {
                     thread::sleep(config.retry_delay);
                     continue;
                 }
 
+                eprintln!("Creating new connection...");
                 let connection = Self::create_connection(&config, &statistics).unwrap();
                 sender.send(connection).unwrap();
             }

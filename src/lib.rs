@@ -93,6 +93,8 @@ impl RealFlightBridge {
     }
 
     fn send_action(&self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
+        eprintln!("Sending action: {}", action);
+
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_manager.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
@@ -127,7 +129,10 @@ impl RealFlightBridge {
         // Read the status line
         let mut status_line = String::new();
         stream.read_line(&mut status_line).unwrap();
-        eprintln!("Status Line ??: {}", status_line.trim());
+        if status_line.is_empty() {
+            return None;
+        }
+        eprintln!("Status Line: '{}'", status_line.trim());
         let status_code: u32 = status_line
             .split_whitespace()
             .nth(1)
@@ -218,12 +223,125 @@ fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Erro
     Ok(SimulatorState::default())
 }
 
-/// Configuration for the RealFlightBridge
+/// Configuration settings for the RealFlight Link bridge.
+///
+/// The Configuration struct controls how the bridge connects to and communicates with
+/// the RealFlight simulator. It provides settings for connection management, timeouts,
+/// and performance optimization.
+///
+/// # Connection Pool
+///
+/// The bridge maintains a pool of TCP connections to improve performance when making
+/// frequent SOAP requests. The pool size and connection behavior can be tuned using
+/// the `buffer_size`, `connect_timeout`, and `retry_delay` parameters.
+///
+/// # Default Configuration
+///
+/// The default configuration is suitable for most local development:
+/// ```rust
+/// use realflight_link::Configuration;
+/// use std::time::Duration;
+///
+/// let default_config = Configuration {
+///     simulator_url: "127.0.0.1:18083".to_string(),
+///     connect_timeout: Duration::from_millis(50),
+///     retry_delay: Duration::from_millis(50),
+///     buffer_size: 1,
+/// };
+/// ```
+///
+/// # Examples
+///
+/// Basic configuration for local development:
+/// ```rust
+/// use realflight_link::Configuration;
+/// use std::time::Duration;
+///
+/// let config = Configuration::default();
+/// ```
+///
+/// Configuration optimized for high-frequency control:
+/// ```rust
+/// use realflight_link::Configuration;
+/// use std::time::Duration;
+///
+/// let config = Configuration {
+///     simulator_url: "127.0.0.1:18083".to_string(),
+///     connect_timeout: Duration::from_millis(25),  // Faster timeout
+///     retry_delay: Duration::from_millis(10),      // Quick retry
+///     buffer_size: 5,                              // Larger connection pool
+/// };
+/// ```
+///
+/// Configuration for a different network interface:
+/// ```rust
+/// use realflight_link::Configuration;
+/// use std::time::Duration;
+///
+/// let config = Configuration {
+///     simulator_url: "192.168.1.100:18083".to_string(),
+///     connect_timeout: Duration::from_millis(100), // Longer timeout for network
+///     retry_delay: Duration::from_millis(100),     // Longer retry for network
+///     buffer_size: 2,
+/// };
+/// ```
 #[derive(Clone, Debug)]
 pub struct Configuration {
+    /// The URL where the RealFlight simulator is listening for connections.
+    ///
+    /// # Format
+    /// The URL should be in the format "host:port". For local development,
+    /// this is typically "127.0.0.1:18083".
+    ///
+    /// # Important Notes
+    /// * The bridge should run on the same machine as RealFlight for best performance
+    /// * Remote connections may experience significant latency due to SOAP overhead
     pub simulator_url: String,
+
+    /// Maximum time to wait when establishing a new TCP connection.
+    ///
+    /// # Performance Impact
+    /// * Lower values improve responsiveness when the simulator is unavailable
+    /// * Too low values may cause unnecessary connection failures
+    /// * Recommended range: 25-100ms for local connections
+    ///
+    /// # Default
+    /// 50 milliseconds
     pub connect_timeout: Duration,
+
+    /// Time to wait between connection retry attempts.
+    ///
+    /// This delay helps prevent overwhelming the system when the simulator
+    /// is not responding or during connection pool maintenance.
+    ///
+    /// # Performance Impact
+    /// * Lower values allow faster recovery from connection failures
+    /// * Too low values may impact system performance
+    /// * Recommended range: 10-100ms
+    ///
+    /// # Default
+    /// 50 milliseconds
     pub retry_delay: Duration,
+
+
+    /// Size of the connection pool.
+    ///
+    /// The connection pool maintains a set of pre-established TCP connections
+    /// to improve performance when making frequent requests to the simulator.
+    ///
+    /// # Performance Impact
+    /// * Larger values can improve throughput for frequent state updates
+    /// * Too large values may waste system resources
+    /// * Recommended range: 1-5 connections
+    ///
+    /// # Memory Usage
+    /// Each connection in the pool consumes system resources:
+    /// * TCP socket
+    /// * Memory for connection management
+    /// * System file descriptors
+    ///
+    /// # Default
+    /// 1 connection
     pub buffer_size: usize,
 }
 
@@ -238,61 +356,151 @@ impl Default for Configuration {
     }
 }
 
-/// Control inputs for the RealFlight simulator
+/// Control inputs for the RealFlight simulator using the standard RC channel mapping.
+/// Each channel value should be between 0.0 (minimum) and 1.0 (maximum).
+///
+/// # Standard RC Channel Mapping
+///
+/// The 12 available channels typically map to the following controls:
+///
+/// * Channel 1 (Aileron): Controls roll movement
+///   - 0.0: Full left roll
+///   - 0.5: Neutral
+///   - 1.0: Full right roll
+///
+/// * Channel 2 (Elevator): Controls pitch movement
+///   - 0.0: Full down pitch (nose down)
+///   - 0.5: Neutral
+///   - 1.0: Full up pitch (nose up)
+///
+/// * Channel 3 (Throttle): Controls engine power
+///   - 0.0: Zero throttle (engine off/idle)
+///   - 1.0: Full throttle
+///
+/// * Channel 4 (Rudder): Controls yaw movement
+///   - 0.0: Full left yaw
+///   - 0.5: Neutral
+///   - 1.0: Full right yaw
+///
+/// * Channel 5: Commonly used for flight modes
+///   - Often used as a 3-position switch (0.0, 0.5, 1.0)
+///   - Typical modes: Manual, Stabilized, Auto
+///
+/// * Channel 6: Commonly used for collective pitch (helicopters)
+///   - 0.0: Full negative pitch
+///   - 0.5: Zero pitch
+///   - 1.0: Full positive pitch
+///
+/// * Channels 7-12: Auxiliary channels
+///   - Can be mapped to various functions like:
+///     - Flaps
+///     - Landing gear
+///     - Camera gimbal
+///     - Lights
+///     - Custom functions#[derive(Default, Debug)]
 #[derive(Default, Debug)]
 pub struct ControlInputs {
+    /// Array of 12 channel values, each between 0.0 and 1.0
     pub channels: [f32; 12],
 }
 
-/// State of the RealFlight simulator
+/// Represents the complete state of the simulated aircraft in RealFlight.
+/// All physical quantities use SI units through the `uom` crate.
 #[derive(Default, Debug)]
 pub struct SimulatorState {
+    /// Previous control inputs that led to this state
     pub previous_inputs: ControlInputs,
+    /// Velocity relative to the air mass
     pub airspeed: Velocity,
+    /// Altitude above sea level
     pub altitude_asl: Length,
+    /// Altitude above ground level
     pub altitude_agl: Length,
+    /// Velocity relative to the ground
     pub groundspeed: Velocity,
+    /// Pitch rate around body Y axis
     pub pitch_rate: AngularVelocity,
+    /// Roll rate around body X axis
     pub roll_rate: AngularVelocity,
+    /// Yaw rate around body Z axis
     pub yaw_rate: AngularVelocity,
+    /// Heading angle (true north reference)
     pub azimuth: Angle,
+    /// Pitch angle (nose up reference)
     pub inclination: Angle,
+    /// Roll angle (right wing down reference)
     pub roll: Angle,
+    /// Aircraft position along world X axis (North)
     pub aircraft_position_x: Length,
+    /// Aircraft position along world Y axis (East)
     pub aircraft_position_y: Length,
+    /// Velocity component along world X axis (North)
     pub velocity_world_u: Velocity,
+    /// Velocity component along world Y axis (East)
     pub velocity_world_v: Velocity,
+    /// Velocity component along world Z axis (Down)
     pub velocity_world_w: Velocity,
+    /// Forward velocity in body frame
     pub velocity_body_u: Velocity,
+    // Lateral velocity in body frame
     pub velocity_body_v: Velocity,
+    // Vertical velocity in body frame
     pub velocity_body_w: Velocity,
+    // Acceleration along world X axis (North)
     pub acceleration_world_ax: Acceleration,
+    // Acceleration along world Y axis (East)
     pub acceleration_world_ay: Acceleration,
+    // Acceleration along world Z axis (Down)
     pub acceleration_world_az: Acceleration,
+    // Acceleration along body X axis (Forward)
     pub acceleration_body_ax: Acceleration,
+    // Acceleration along body Y axis (Right)
     pub acceleration_body_ay: Acceleration,
+    /// Acceleration along body Z axis (Down)
     pub acceleration_body_az: Acceleration,
+    /// Wind velocity along world X axis
     pub wind_x: Velocity,
+    /// Wind velocity along world Y axis
     pub wind_y: Velocity,
+    /// Wind velocity along world Z axis
     pub wind_z: Velocity,
+    /// Propeller RPM for piston/electric aircraft
     pub prop_rpm: Frequency,
+    /// Main rotor RPM for helicopters
     pub heli_main_rotor_rpm: Frequency,
+    /// Battery voltage
     pub battery_voltage: ElectricPotential,
+    /// Current draw from battery
     pub battery_current_draw: ElectricCurrent,
+    /// Remaining battery capacity
     pub battery_remaining_capacity: ElectricCharge,
+    /// Remaining fuel volume
     pub fuel_remaining: Volume,
+    /// True if aircraft is in a frozen/paused state
     pub is_locked: bool,
+    /// True if aircraft has lost components due to damage
     pub has_lost_components: bool,
+    /// True if any engine is currently running
     pub an_engine_is_running: bool,
+    /// True if aircraft is in contact with ground
     pub is_touching_ground: bool,
+    /// Current status message from simulator
     pub current_aircraft_status: String,
+    /// Current simulation time
     pub current_physics_time: Time,
+    /// Current time acceleration factor
     pub current_physics_speed_multiplier: f64,
+    /// Quaternion X component (scalar)
     pub orientation_quaternion_x: f64,
+    /// Quaternion Y component (scalar)
     pub orientation_quaternion_y: f64,
+    /// Quaternion Z component (scalar)
     pub orientation_quaternion_z: f64,
+    /// Quaternion W component (scalar)
     pub orientation_quaternion_w: f64,
+    /// True if external flight controller is active
     pub flight_axis_controller_is_active: bool,
+    /// True if reset button was pressed
     pub reset_button_has_been_pressed: bool,
 }
 

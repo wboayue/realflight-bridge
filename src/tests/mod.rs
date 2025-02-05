@@ -3,20 +3,35 @@ use rand::Rng;
 use super::*;
 use soap_stub::Server;
 
+fn create_configuration(port: u16) -> Configuration {
+    Configuration {
+        simulator_url: format!("127.0.0.1:{}", port),
+        connect_timeout: Duration::from_millis(100),
+        buffer_size: 1,
+        ..Default::default()
+    }
+}
+
+fn create_bridge(port: u16) -> RealFlightBridge {
+    let configuration = create_configuration(port);
+    RealFlightBridge::new(configuration).unwrap()
+}
+
+/// Generate a random port number. Mitigates chances of port conflicts.
+fn random_port() -> u16 {
+    let mut rng = rand::thread_rng();
+    10_000 + rng.gen_range(1..1000)
+}
+
 #[test]
 pub fn test_reset_aircraft() {
-    let mut rng = rand::thread_rng();
-    let port: u16 = 10_000 + rng.gen_range(1..1000);
+    let port: u16 = random_port();
 
     let mut server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
 
     server.setup();
 
-    let configuration = Configuration {
-        simulator_url: format!("127.0.0.1:{}", port),
-        connect_timeout: Duration::from_millis(100),
-        ..Default::default()
-    };
+    let configuration = create_configuration(port);
     let bridge = RealFlightBridge::new(configuration).unwrap();
 
     let result = bridge.reset_aircraft();
@@ -46,8 +61,7 @@ pub fn test_reset_aircraft() {
 
 #[test]
 pub fn test_disable_rc() {
-    let mut rng = rand::thread_rng();
-    let port: u16 = 10_000 + rng.gen_range(1..1000);
+    let port: u16 = random_port();
 
     let mut server = Server::new(
         port,
@@ -59,11 +73,7 @@ pub fn test_disable_rc() {
 
     server.setup();
 
-    let configuration = Configuration {
-        simulator_url: format!("127.0.0.1:{}", port),
-        connect_timeout: Duration::from_millis(100),
-        ..Default::default()
-    };
+    let configuration = create_configuration(port);
     let bridge = RealFlightBridge::new(configuration).unwrap();
 
     let result = bridge.disable_rc();
@@ -95,8 +105,7 @@ pub fn test_disable_rc() {
 
 #[test]
 pub fn test_enable_rc() {
-    let mut rng = rand::thread_rng();
-    let port: u16 = 10_000 + rng.gen_range(1..1000);
+    let port: u16 = random_port();
 
     let mut server = Server::new(
         port,
@@ -108,11 +117,7 @@ pub fn test_enable_rc() {
 
     server.setup();
 
-    let configuration = Configuration {
-        simulator_url: format!("127.0.0.1:{}", port),
-        connect_timeout: Duration::from_millis(100),
-        ..Default::default()
-    };
+    let configuration = create_configuration(port);
     let bridge = RealFlightBridge::new(configuration).unwrap();
 
     let result = bridge.enable_rc();
@@ -144,8 +149,7 @@ pub fn test_enable_rc() {
 
 #[test]
 pub fn test_exchange_data() {
-    let mut rng = rand::thread_rng();
-    let port: u16 = 10_000 + rng.gen_range(1..1000);
+    let port: u16 = random_port();
 
     let mut server = Server::new(
         port,
@@ -154,11 +158,7 @@ pub fn test_exchange_data() {
 
     server.setup();
 
-    let configuration = Configuration {
-        simulator_url: format!("127.0.0.1:{}", port),
-        connect_timeout: Duration::from_millis(100),
-        ..Default::default()
-    };
+    let configuration = create_configuration(port);
     let bridge = RealFlightBridge::new(configuration).unwrap();
 
     let mut control = ControlInputs::default();
