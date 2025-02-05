@@ -25,12 +25,14 @@ jobs:
 
     - name: test
       run: |
-        mkdir test-results;
-        cargo install cargo2junit;
-        cargo +nightly test -- -Z unstable-options --format json | cargo2junit > test-results/tests.xml;
+        cargo test --verbose
 
-    - name: summarize
-      uses: test-summary/action@dist
-      with:
-        paths: test-results/**/*.xml
-      if: always()
+    # mkdir test-results;
+    # cargo install cargo2junit;
+    # cargo +nightly test -- -Z unstable-options --format json | cargo2junit > test-results/tests.xml;
+
+    # - name: summarize
+    #   uses: test-summary/action@dist
+    #   with:
+    #     paths: test-results/**/*.xml
+    #   if: always()
