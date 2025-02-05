@@ -1,10 +1,13 @@
 use std::{
-    f32::consts::E, io::{ErrorKind, Read, Write}, net::{TcpListener, TcpStream}, sync::{
+    io::{ErrorKind, Read, Write}, net::{TcpListener, TcpStream}, sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     }, thread
 };
 use std::path::PathBuf;
+use std::io::BufReader;
+use std::io::{BufRead};
+
 
 pub struct Server {
     port: u16,
@@ -17,10 +20,18 @@ pub struct Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
-        self.shutdown();
+
+        // eprintln!("sending shutdown command");
+        // let mut stream = TcpStream::connect(format!("127.0.0.1:{}", self.port)).unwrap();
+        // let buf = "SHUTDOWN\r\n".as_bytes();
+        // stream.write_all(buf).unwrap();
+        // stream.flush().unwrap();
+        // eprintln!("sent shutdown command");
 
         if let Some(handle) = self.handle.take() {
-            handle.join().unwrap();
+            if let Err(e) = handle.join() {
+                eprintln!("error shutting down server: {:?}", e);
+            }
         }
     }
 }
@@ -49,94 +60,55 @@ impl Server {
 
         let handle = thread::spawn(move || {
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-            // listener.set_nonblocking(true).unwrap();
+            listener.set_nonblocking(true).unwrap();
 
-            eprintln!("Server listening on port {}...", port);
+            eprintln!("server listening on port {}", port);
 
             let mut responses = responses.iter();
 
-            let mut connections = listener.incoming();
-            while let Some(mut result) = connections.next() {
-                loop {
-                    if let Err(ref e) = result {
-                        if e.kind() == ErrorKind::WouldBlock {
-                            eprintln!("would block: {}. retry", e);
-                            thread::sleep(std::time::Duration::from_millis(100));
-                            continue;
-                        } else {
-                            eprintln!("Error: {}", e);
-                            break;
-                        }
-                    }
-
-                    if let Ok(ref mut stream) = result {
-                        let mut buf = String::new();
-                        stream.read_to_string(&mut buf).unwrap();
-                        let mut requests = requests.lock().unwrap();
-                        eprintln!("Adding request: {}", buf);
-
-                        if buf == "SHUTDOWN" {
-                            break;
-                        }
-
-                        requests.push(buf);
-
-                        if let Some(response) = responses.next() {
-                            handle_client(&stream, response);
-                        } else {
-                            eprintln!("No more responses to send");
-                        }
-                    }
-                    panic!("Blah Bla");
-
+            for mut incoming in listener.incoming() {
+                eprintln!("incoming connection");
+                if !running.load(Ordering::Relaxed) {
                     break;
                 }
+
+                if let Err(ref e) = incoming {
+                    eprintln!("connection error: {}", e);
+                    thread::sleep(std::time::Duration::from_millis(100));
+                    continue;                    
+                } else if let Ok(ref mut stream) = incoming {
+                    let mut a = &mut stream.try_clone().unwrap();
+                    let mut streamb = BufReader::new(a);
+                    let mut line = String::new();
+                    if let Err(e) = streamb.read_line(&mut line) {
+                        eprintln!("error reading line: {}", e);
+                        continue;
+                    } else {
+                        eprintln!("status line: {}", line);
+                    }
+
+                    let request_body = read_request_body(&mut streamb);
+                    if request_body.is_empty() {
+                        eprintln!("empty request. try next.");
+                        thread::sleep(std::time::Duration::from_millis(100));
+                        continue;
+                    }
+
+                    // eprintln!("recording request:\n{}", request_body);
+                    record_request(&requests, &request_body);
+
+                    if let Some(response_key) = responses.next() {
+                        send_response(stream, response_key);
+                    } else {
+                        eprintln!("no more responses to send");
+                    }
+                }
             }
-
-            // for (i, stream) in listener.incoming().enumerate() {
-            //     eprintln!("Incoming connection {}...", i);
-
-            //     match stream {
-            //         Ok(mut stream) => {
-            //             let mut buf: String = String::new();
-            //             let a = stream.read_to_string(&mut buf).unwrap();
-            //             let mut requests = requests.lock().unwrap();
-            //             eprintln!("Adding request: {}", buf);
-
-            //             if buf == "SHUTDOWN" {
-            //                 break;
-            //             }
-
-            //             requests.push(buf);
-
-            //             if let Some(response) = responses.next() {
-            //                 handle_client(&stream, response);
-            //             } else {
-            //                 eprintln!("No more responses to send");
-            //             }
-            //         }
-            //         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-            //             eprintln!("would block: {} {}" , i, e);
-
-            //             if running.load(Ordering::Relaxed) {
-            //                 thread::sleep(std::time::Duration::from_millis(100));
-            //                 continue;
-            //             } else {
-            //                 break;
-            //             }
-            //         }
-            //         Err(e) => eprintln!("Connection failed: {} {}", i, e),
-            //     }
-            // }
+            
+            eprintln!("server shutting down");
         });
 
         self.handle = Some(handle);
-    }
-
-    pub fn shutdown(&mut self) {
-        // let mut stream = TcpStream::connect(format!("127.0.0.1:{}", self.port)).unwrap();
-        // let buf = "SHUTDOWN".as_bytes();
-        // stream.write_all(buf).unwrap();
     }
 
     pub fn requests(&self) -> Vec<String> {
@@ -145,7 +117,49 @@ impl Server {
     }
 }
 
-fn handle_client(mut stream: &TcpStream, response_key: &str) {
+fn read_request_body(stream: &mut BufReader<&mut TcpStream>) -> String {
+    let content_length = content_length(stream);
+
+    eprintln!("body content length: {}", content_length);
+    if content_length == 0 {
+        return String::new();
+    }
+
+    let mut request_body = vec![0; content_length];
+    stream.read_exact(&mut request_body).unwrap();
+    
+    String::from_utf8_lossy(&request_body).to_string()
+}
+
+fn content_length(stream: &mut BufReader<&mut TcpStream>) -> usize{
+    let mut content_length: Option<usize> = None;
+    loop {
+        let mut line = String::new();
+        if let Err(e) = stream.read_line(&mut line) {
+            return 0;
+        }
+        
+        // eprintln!("line: {}", line);
+
+        if line == "\r\n" {
+            break;
+        }
+
+        if line.to_lowercase().starts_with("content-length:") {
+            if let Some(length) = line.split_whitespace().nth(1) {
+                content_length = length.trim().parse().ok();
+            }
+        }
+    }
+    content_length.unwrap_or(0)    
+}
+
+fn record_request(requests: &Arc<Mutex<Vec<String>>>, request: &str) {
+    let mut requests = requests.lock().unwrap();
+    requests.push(request.to_string());
+}
+
+fn send_response(mut stream: &TcpStream, response_key: &str) {
     let response_path: PathBuf = [env!("CARGO_MANIFEST_DIR"), "testdata", "responses", &format!("{}.xml", response_key)].iter().collect();
     eprintln!("Response path: {:?}", response_path);
     let body = std::fs::read_to_string(response_path).unwrap();
@@ -155,11 +169,12 @@ fn handle_client(mut stream: &TcpStream, response_key: &str) {
     buffer.push_str("HTTP/1.1 200 OK\r\n");
     buffer.push_str("Server: gSOAP/2.7\r\n");
     buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
-    buffer.push_str(&format!("Content-Length: {}\r\n", body.len()));
+    buffer.push_str(&format!("Content-Length: {}\r\n", body.as_bytes().len()));
     buffer.push_str("Connection: close\r\n");
     buffer.push_str("\r\n");
     buffer.push_str(&body);
 
+//    eprintln!("sending response:\n{}", buffer);
     stream.write_all(buffer.as_bytes()).unwrap();
     stream.flush().unwrap();
 }

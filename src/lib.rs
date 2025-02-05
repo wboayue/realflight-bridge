@@ -132,7 +132,7 @@ impl RealFlightBridge {
         if status_line.is_empty() {
             return None;
         }
-        eprintln!("Status Line: '{}'", status_line.trim());
+        // eprintln!("Status Line: '{}'", status_line.trim());
         let status_code: u32 = status_line
             .split_whitespace()
             .nth(1)
@@ -162,10 +162,14 @@ impl RealFlightBridge {
 
         // Read the body based on Content-Length
         if let Some(length) = content_length {
+            // let mut body = String::with_capacity(length);
+            // stream.read_to_string(&mut body).unwrap();
+
             let mut body = vec![0; length];
             stream.read_exact(&mut body).unwrap();
             let body = String::from_utf8_lossy(&body).to_string();
             // println!("Body: {}", r);
+
             Some(SoapResponse { status_code, body })
         } else {
             None
@@ -239,7 +243,7 @@ fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Erro
 ///
 /// The default configuration is suitable for most local development:
 /// ```rust
-/// use realflight_link::Configuration;
+/// use realflight_bridge::Configuration;
 /// use std::time::Duration;
 ///
 /// let default_config = Configuration {
@@ -254,7 +258,7 @@ fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Erro
 ///
 /// Basic configuration for local development:
 /// ```rust
-/// use realflight_link::Configuration;
+/// use realflight_bridge::Configuration;
 /// use std::time::Duration;
 ///
 /// let config = Configuration::default();
@@ -262,7 +266,7 @@ fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Erro
 ///
 /// Configuration optimized for high-frequency control:
 /// ```rust
-/// use realflight_link::Configuration;
+/// use realflight_bridge::Configuration;
 /// use std::time::Duration;
 ///
 /// let config = Configuration {
@@ -275,7 +279,7 @@ fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Erro
 ///
 /// Configuration for a different network interface:
 /// ```rust
-/// use realflight_link::Configuration;
+/// use realflight_bridge::Configuration;
 /// use std::time::Duration;
 ///
 /// let config = Configuration {
@@ -565,5 +569,5 @@ impl Default for StatisticsEngine {
     }
 }
 
-#[cfg(test)]
-mod tests;
+//#[cfg(test)]
+pub mod tests;
