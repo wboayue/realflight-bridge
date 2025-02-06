@@ -61,8 +61,16 @@ impl RealFlightBridge {
     pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
         let response = self.send_action("ExchangeData", &body)?;
-        //        println!("Response: {}", response);
-        decode_simulator_state(&response.body)
+        match response.status_code {
+            200 => decode_simulator_state(&response.body),
+            _ => {
+                if let Some(message) = naive_extract_detail(&response.body) {
+                    Err(message.into())
+                } else {
+                    Err("Failed to extract error message".into())
+                }
+            }
+        }
     }
 
     ///  Set Spektrum as the RC input
@@ -563,6 +571,22 @@ impl Default for StatisticsEngine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn naive_extract_detail(xml: &str) -> Option<String> {
+    // Find <detail> start
+    let start_tag = "<detail>";
+    let end_tag = "</detail>";
+
+    let start_pos = xml.find(start_tag)?;
+    let end_pos = xml.find(end_tag)?;
+
+    let detail_start = start_pos + start_tag.len();
+    if detail_start >= end_pos {
+        return None;
+    }
+
+    Some(xml[detail_start..end_pos].to_string())
 }
 
 #[cfg(test)]

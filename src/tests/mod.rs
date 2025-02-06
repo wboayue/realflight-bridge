@@ -48,7 +48,7 @@ pub fn test_reset_aircraft() {
     let statistics = bridge.statistics();
 
     assert_eq!(statistics.request_count, 1);
-//    assert_eq!(statistics.error_count, 0);
+    //    assert_eq!(statistics.error_count, 0);
 }
 
 #[test]
@@ -124,13 +124,12 @@ pub fn test_enable_rc() {
 }
 
 #[test]
-pub fn test_exchange_data() {
+pub fn test_exchange_data_200() {
+    // Test the exchange_data method with a successful response from the simulator.
+
     let port: u16 = random_port();
 
-    let server = Server::new(
-        port,
-        vec!["return-data-200".to_string(), "return-data-500".to_string()],
-    );
+    let server = Server::new(port, vec!["return-data-200".into()]);
 
     let bridge = create_bridge(port);
 
@@ -144,42 +143,56 @@ pub fn test_exchange_data() {
 
     let requests = server.requests();
 
+    assert_eq!(server.request_count(), 1);
     let control_inputs = "\
     <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.083333336</item><item>0.16666667</item><item>0.25</item><item>0.33333334</item><item>0.41666666</item><item>0.5</item><item>0.5833333</item><item>0.6666667</item><item>0.75</item><item>0.8333333</item><item>0.9166667</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
     ";
+    assert_eq!(requests[0], control_inputs);
+
+    let statistics = bridge.statistics();
+
+    assert_eq!(statistics.request_count, 1);
+    assert_eq!(statistics.error_count, 0);
+}
+
+#[test]
+pub fn test_exchange_data_500() {
+    // Test the exchange_data method with a failed response from the simulator.
+
+    let port: u16 = random_port();
+
+    let server = Server::new(port, vec!["return-data-500".into()]);
+
+    let bridge = create_bridge(port);
+
+    let mut control = ControlInputs::default();
+    for i in 0..control.channels.len() {
+        control.channels[i] = i as f32 / 12.0;
+    }
+
+    let result = bridge.exchange_data(&control);
+    if let Err(ref e) = result {
+        assert_eq!(
+            format!("{}", e),
+            "RealFlight Link controller has not been instantiated"
+        );
+    } else {
+        panic!("expected error from bridge.exchange_data");
+    }
+
+    let requests = server.requests();
 
     assert_eq!(server.request_count(), 1);
+    let control_inputs = "\
+    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.083333336</item><item>0.16666667</item><item>0.25</item><item>0.33333334</item><item>0.41666666</item><item>0.5</item><item>0.5833333</item><item>0.6666667</item><item>0.75</item><item>0.8333333</item><item>0.9166667</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
+    ";
     assert_eq!(requests[0], control_inputs);
 
     let statistics = bridge.statistics();
 
     assert_eq!(statistics.request_count, 1);
     // assert_eq!(statistics.error_count, 0);
-
-    let _result2 = bridge.exchange_data(&control);
-    assert!(result.is_ok());
-
-    let statistics = bridge.statistics();
-
-    assert_eq!(statistics.request_count, 2);
-    //    assert_eq!(statistics.error_count, 0);
 }
 
-// #[test]
-// pub fn test_encode_control_inputs() {
-//     let soap_body = "<pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item><item>0</item></m-channelValues-0to1></pControlInputs>";
-//     let control = ControlInputs::default();
-//     assert_eq!(encode_control_inputs(&control), soap_body);
-// }
-
-// #[test]
-// pub fn test_encode_envelope() {
-//     let envelope = "<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><InjectUAVControllerInterface></InjectUAVControllerInterface></soap:Body></soap:Envelope>";
-//     assert_eq!(
-//         encode_envelope("InjectUAVControllerInterface", UNUSED),
-//         envelope
-//     );
-// }
-
-//#[cfg(test)]
+#[cfg(test)]
 pub mod soap_stub;

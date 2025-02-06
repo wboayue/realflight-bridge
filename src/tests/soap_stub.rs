@@ -177,7 +177,9 @@ fn send_response(mut stream: &TcpStream, response_key: &str) {
 
     let mut buffer = String::new();
 
-    buffer.push_str("HTTP/1.1 200 OK\r\n");
+    let code = response_key.split('-').last().unwrap();
+
+    buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
     buffer.push_str("Server: gSOAP/2.7\r\n");
     buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
     buffer.push_str(&format!("Content-Length: {}\r\n", body.as_bytes().len()));
