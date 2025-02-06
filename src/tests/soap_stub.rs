@@ -40,13 +40,15 @@ impl Drop for Server {
 
 impl Server {
     pub fn new(port: u16, responses: Vec<String>) -> Self {
-        Server {
+        let mut server = Server {
             port,
             responses,
             handle: None,
             running: Arc::new(AtomicBool::new(true)),
             requests: Arc::new(Mutex::new(Vec::new())),
-        }
+        };
+        server.start_worker();
+        server
     }
 
     pub fn request_count(&self) -> usize {
@@ -54,7 +56,12 @@ impl Server {
         request.len()
     }
 
-    pub fn setup(&mut self) {
+    pub fn requests(&self) -> Vec<String> {
+        let requests = self.requests.lock().unwrap();
+        requests.clone()
+    }
+
+    fn start_worker(&mut self) {
         let responses = self.responses.clone();
         let running = Arc::clone(&self.running);
         let requests = Arc::clone(&self.requests);
@@ -111,11 +118,6 @@ impl Server {
         });
 
         self.handle = Some(handle);
-    }
-
-    pub fn requests(&self) -> Vec<String> {
-        let requests = self.requests.lock().unwrap();
-        requests.clone()
     }
 }
 

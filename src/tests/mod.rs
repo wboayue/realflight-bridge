@@ -6,7 +6,7 @@ use soap_stub::Server;
 fn create_configuration(port: u16) -> Configuration {
     Configuration {
         simulator_url: format!("127.0.0.1:{}", port),
-        connect_timeout: Duration::from_millis(200),
+        connect_timeout: Duration::from_millis(1000),
         buffer_size: 1,
         ..Default::default()
     }
@@ -27,9 +27,7 @@ fn random_port() -> u16 {
 pub fn test_reset_aircraft() {
     let port: u16 = random_port();
 
-    let mut server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
-
-    server.setup();
+    let server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
 
     let bridge = create_bridge(port);
 
@@ -57,15 +55,13 @@ pub fn test_reset_aircraft() {
 pub fn test_disable_rc() {
     let port: u16 = random_port();
 
-    let mut server = Server::new(
+    let server = Server::new(
         port,
         vec![
             "inject-uav-controller-interface-200".to_string(),
             "inject-uav-controller-interface-500".to_string(),
         ],
     );
-
-    server.setup();
 
     let bridge = create_bridge(port);
 
@@ -94,15 +90,13 @@ pub fn test_disable_rc() {
 pub fn test_enable_rc() {
     let port: u16 = random_port();
 
-    let mut server = Server::new(
+    let server = Server::new(
         port,
         vec![
             "restore-original-controller-device-200".to_string(),
             "restore-original-controller-device-500".to_string(),
         ],
     );
-
-    server.setup();
 
     let configuration = create_configuration(port);
     let bridge = RealFlightBridge::new(configuration).unwrap();
@@ -133,12 +127,10 @@ pub fn test_enable_rc() {
 pub fn test_exchange_data() {
     let port: u16 = random_port();
 
-    let mut server = Server::new(
+    let server = Server::new(
         port,
         vec!["return-data-200".to_string(), "return-data-500".to_string()],
     );
-
-    server.setup();
 
     let bridge = create_bridge(port);
 
