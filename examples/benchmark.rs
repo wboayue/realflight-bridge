@@ -33,7 +33,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    bridge.activate()?;
+    bridge.reset_aircraft()?;
+    bridge.disable_rc()?;
 
     let control = ControlInputs::default();
 
@@ -41,6 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state = bridge.exchange_data(&control)?;
         debug!("state: {:?}", state);
     }
+
+    bridge.enable_rc()?;
 
     let statistics = bridge.statistics();
 

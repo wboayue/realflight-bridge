@@ -1,13 +1,15 @@
+use std::io::BufRead;
+use std::io::BufReader;
+use std::path::PathBuf;
 use std::{
-    io::{ErrorKind, Read, Write}, net::{TcpListener, TcpStream}, sync::{
+    io::{Read, Write},
+    net::{TcpListener, TcpStream},
+    sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
-    }, thread
+    },
+    thread,
 };
-use std::path::PathBuf;
-use std::io::BufReader;
-use std::io::{BufRead};
-
 
 pub struct Server {
     port: u16,
@@ -75,9 +77,9 @@ impl Server {
                 if let Err(ref e) = incoming {
                     eprintln!("connection error: {}", e);
                     thread::sleep(std::time::Duration::from_millis(100));
-                    continue;                    
+                    continue;
                 } else if let Ok(ref mut stream) = incoming {
-                    let mut a = &mut stream.try_clone().unwrap();
+                    let a = &mut stream.try_clone().unwrap();
                     let mut streamb = BufReader::new(a);
                     let mut line = String::new();
                     if let Err(e) = streamb.read_line(&mut line) {
@@ -104,7 +106,7 @@ impl Server {
                     }
                 }
             }
-            
+
             eprintln!("server shutting down");
         });
 
@@ -127,18 +129,18 @@ fn read_request_body(stream: &mut BufReader<&mut TcpStream>) -> String {
 
     let mut request_body = vec![0; content_length];
     stream.read_exact(&mut request_body).unwrap();
-    
+
     String::from_utf8_lossy(&request_body).to_string()
 }
 
-fn content_length(stream: &mut BufReader<&mut TcpStream>) -> usize{
+fn content_length(stream: &mut BufReader<&mut TcpStream>) -> usize {
     let mut content_length: Option<usize> = None;
     loop {
         let mut line = String::new();
-        if let Err(e) = stream.read_line(&mut line) {
+        if let Err(_) = stream.read_line(&mut line) {
             return 0;
         }
-        
+
         // eprintln!("line: {}", line);
 
         if line == "\r\n" {
@@ -151,7 +153,7 @@ fn content_length(stream: &mut BufReader<&mut TcpStream>) -> usize{
             }
         }
     }
-    content_length.unwrap_or(0)    
+    content_length.unwrap_or(0)
 }
 
 fn record_request(requests: &Arc<Mutex<Vec<String>>>, request: &str) {
@@ -160,7 +162,14 @@ fn record_request(requests: &Arc<Mutex<Vec<String>>>, request: &str) {
 }
 
 fn send_response(mut stream: &TcpStream, response_key: &str) {
-    let response_path: PathBuf = [env!("CARGO_MANIFEST_DIR"), "testdata", "responses", &format!("{}.xml", response_key)].iter().collect();
+    let response_path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "testdata",
+        "responses",
+        &format!("{}.xml", response_key),
+    ]
+    .iter()
+    .collect();
     eprintln!("Response path: {:?}", response_path);
     let body = std::fs::read_to_string(response_path).unwrap();
 
@@ -174,7 +183,7 @@ fn send_response(mut stream: &TcpStream, response_key: &str) {
     buffer.push_str("\r\n");
     buffer.push_str(&body);
 
-//    eprintln!("sending response:\n{}", buffer);
+    //    eprintln!("sending response:\n{}", buffer);
     stream.write_all(buffer.as_bytes()).unwrap();
     stream.flush().unwrap();
 }

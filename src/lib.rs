@@ -14,7 +14,6 @@
 //!
 //! See [README](https://github.com/wboayue/realflight-link) for examples and usage.
 
-use log::error;
 use std::error::Error;
 use std::io::BufReader;
 use std::io::Write;
@@ -58,41 +57,33 @@ impl RealFlightBridge {
         self.statistics.snapshot()
     }
 
-    /// Reset Real Flight simulator,
-    pub fn activate(&self) -> Result<(), Box<dyn Error>> {
-        self.reset_aircraft()?;
-        self.disable_rc()?;
-        Ok(())
-    }
-
     /// Exchange data with the RealFlight simulator
     pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
         let response = self.send_action("ExchangeData", &body)?;
         //        println!("Response: {}", response);
-        decode_simulator_state(&response)
+        decode_simulator_state(&response.body)
     }
 
     ///  Set Spektrum as the RC input
     pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("RestoreOriginalControllerDevice", UNUSED)?;
-        Ok(())
+        self.send_action("RestoreOriginalControllerDevice", UNUSED)?
+            .into()
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
     pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
-        let _ = self.send_action("InjectUAVControllerInterface", UNUSED)?;
-        Ok(())
+        self.send_action("InjectUAVControllerInterface", UNUSED)?
+            .into()
     }
 
     /// Reset Real Flight simulator,
     /// like pressing spacebar in the simulator
     pub fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
-        let _ = self.send_action("ResetAircraft", UNUSED)?;
-        Ok(())
+        self.send_action("ResetAircraft", UNUSED)?.into()
     }
 
-    fn send_action(&self, action: &str, body: &str) -> Result<String, Box<dyn Error>> {
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
         eprintln!("Sending action: {}", action);
 
         let envelope = encode_envelope(action, body);
@@ -101,10 +92,7 @@ impl RealFlightBridge {
         self.statistics.increment_request_count();
 
         match self.read_response(&mut BufReader::new(stream)) {
-            Some(response) => {
-                // println!("Response: {:?}", response);
-                Ok(response.body)
-            }
+            Some(response) => Ok(response),
             None => Err("Failed to read response".into()),
         }
     }
@@ -191,6 +179,15 @@ struct SoapResponse {
     body: String,
 }
 
+impl From<SoapResponse> for Result<(), Box<dyn Error>> {
+    fn from(val: SoapResponse) -> Self {
+        match val.status_code {
+            200 => Ok(()),
+            _ => Err(val.body.into()),
+        }
+    }
+}
+
 const CONTROL_INPUTS_CAPACITY: usize = 291;
 
 fn encode_envelope(action: &str, body: &str) -> String {
@@ -222,7 +219,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
     message
 }
 
-fn decode_simulator_state(response: &str) -> Result<SimulatorState, Box<dyn Error>> {
+fn decode_simulator_state(_response: &str) -> Result<SimulatorState, Box<dyn Error>> {
     //    println!("Response: {}", response);
     Ok(SimulatorState::default())
 }
@@ -326,7 +323,6 @@ pub struct Configuration {
     /// # Default
     /// 50 milliseconds
     pub retry_delay: Duration,
-
 
     /// Size of the connection pool.
     ///
@@ -569,5 +565,5 @@ impl Default for StatisticsEngine {
     }
 }
 
-//#[cfg(test)]
+#[cfg(test)]
 pub mod tests;

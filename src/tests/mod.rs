@@ -31,8 +31,7 @@ pub fn test_reset_aircraft() {
 
     server.setup();
 
-    let configuration = create_configuration(port);
-    let bridge = RealFlightBridge::new(configuration).unwrap();
+    let bridge = create_bridge(port);
 
     let result = bridge.reset_aircraft();
 
@@ -68,13 +67,12 @@ pub fn test_disable_rc() {
 
     server.setup();
 
-    let configuration = create_configuration(port);
-    let bridge = RealFlightBridge::new(configuration).unwrap();
+    let bridge = create_bridge(port);
 
     let result = bridge.disable_rc();
     assert!(result.is_ok());
 
-    let result2 = bridge.disable_rc();
+    let _result2 = bridge.disable_rc();
     assert!(result.is_ok());
 
     let requests = server.requests();
@@ -89,7 +87,7 @@ pub fn test_disable_rc() {
     let statistics = bridge.statistics();
 
     assert_eq!(statistics.request_count, 2);
-//    assert_eq!(statistics.error_count, 0);
+    //    assert_eq!(statistics.error_count, 0);
 }
 
 #[test]
@@ -112,7 +110,7 @@ pub fn test_enable_rc() {
     let result = bridge.enable_rc();
     assert!(result.is_ok());
 
-    let result2 = bridge.enable_rc();
+    let _result2 = bridge.enable_rc();
     assert!(result.is_ok());
 
     let requests = server.requests();
@@ -128,7 +126,7 @@ pub fn test_enable_rc() {
     let statistics = bridge.statistics();
 
     assert_eq!(statistics.request_count, 2);
-//    assert_eq!(statistics.error_count, 0);
+    //    assert_eq!(statistics.error_count, 0);
 }
 
 #[test]
@@ -142,8 +140,7 @@ pub fn test_exchange_data() {
 
     server.setup();
 
-    let configuration = create_configuration(port);
-    let bridge = RealFlightBridge::new(configuration).unwrap();
+    let bridge = create_bridge(port);
 
     let mut control = ControlInputs::default();
     for i in 0..control.channels.len() {
@@ -167,13 +164,13 @@ pub fn test_exchange_data() {
     assert_eq!(statistics.request_count, 1);
     // assert_eq!(statistics.error_count, 0);
 
-    let result2 = bridge.exchange_data(&control);
+    let _result2 = bridge.exchange_data(&control);
     assert!(result.is_ok());
 
     let statistics = bridge.statistics();
 
     assert_eq!(statistics.request_count, 2);
-//    assert_eq!(statistics.error_count, 0);
+    //    assert_eq!(statistics.error_count, 0);
 }
 
 // #[test]
