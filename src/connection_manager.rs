@@ -2,39 +2,28 @@ use std::{
     net::TcpStream,
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
 };
 
-use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use crossbeam_channel::{bounded, Receiver, Sender};
+use log::error;
 
-#[derive(Clone, Debug)]
-pub struct ConnectionConfig {
-    pub simulator_url: String,
-    pub connect_timeout: Duration,
-    pub retry_delay: Duration,
-    pub buffer_size: usize,
-}
+use crate::StatisticsEngine;
 
-impl Default for ConnectionConfig {
-    fn default() -> Self {
-        ConnectionConfig {
-            simulator_url: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(5),
-            retry_delay: Duration::from_millis(5),
-            buffer_size: 1,
-        }
-    }
-}
+use super::Configuration;
 
 pub(crate) struct ConnectionManager {
-    config: ConnectionConfig,
+    config: Configuration,
     next_socket: Receiver<TcpStream>,
     creator_thread: Option<thread::JoinHandle<()>>,
     running: Arc<Mutex<bool>>,
+    statistics: Arc<StatisticsEngine>,
 }
 
 impl ConnectionManager {
-    pub fn new(config: ConnectionConfig) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        config: Configuration,
+        statistics: Arc<StatisticsEngine>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let (sender, receiver) = bounded(config.buffer_size);
 
         let running = Arc::new(Mutex::new(true));
@@ -44,6 +33,7 @@ impl ConnectionManager {
             next_socket: receiver,
             creator_thread: None,
             running,
+            statistics,
         };
 
         manager.start_socket_creator(sender)?;
@@ -58,27 +48,24 @@ impl ConnectionManager {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
+        let statistics = Arc::clone(&self.statistics);
 
+        eprintln!("Creating {} connections...", config.buffer_size);
         for _ in 0..config.buffer_size {
-            let c = Self::create_connection(&config).unwrap();
-            sender.send(c).unwrap();
+            let stream = Self::create_connection(&config, &statistics)?;
+            sender.send(stream).unwrap();
         }
 
         let handle = thread::spawn(move || {
-            let mut connection = Some(Self::create_connection(&config).unwrap());
             while *running.lock().unwrap() {
-                match sender.try_send(connection.take().unwrap()) {
-                    Ok(_) => {
-                        connection = Some(Self::create_connection(&config).unwrap());
-                    }
-                    Err(TrySendError::Full(_connection)) => {
-                        connection = Some(_connection);
-                        thread::sleep(config.retry_delay);
-                    }
-                    Err(TrySendError::Disconnected(_connection)) => {
-                        break;
-                    }
+                if sender.is_full() && sender.capacity().unwrap() > 0 {
+                    thread::sleep(config.retry_delay);
+                    continue;
                 }
+
+                eprintln!("Creating new connection...");
+                let connection = Self::create_connection(&config, &statistics).unwrap();
+                sender.send(connection).unwrap();
             }
         });
 
@@ -88,13 +75,22 @@ impl ConnectionManager {
 
     // Create a new TCP connection with timeout
     fn create_connection(
-        config: &ConnectionConfig,
+        config: &Configuration,
+        statistics: &Arc<StatisticsEngine>,
     ) -> Result<TcpStream, Box<dyn std::error::Error>> {
         let addr = config.simulator_url.parse()?;
-        let stream = TcpStream::connect_timeout(&addr, config.connect_timeout)?;
-        // stream.set_nonblocking(true)?;
-        Ok(stream)
-        // Ok(TcpStream::connect(&config.simulator_url)?)
+        for _ in 0..10 {
+            match TcpStream::connect_timeout(&addr, config.connect_timeout) {
+                Ok(stream) => {
+                    return Ok(stream);
+                }
+                Err(e) => {
+                    statistics.increment_error_count();
+                    error!("Error creating connection: {}", e);
+                }
+            }
+        }
+        Err("Failed to create connection".into())
     }
 
     // Get a new connection, consuming it

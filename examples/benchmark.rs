@@ -1,9 +1,7 @@
-use std::time::Instant;
-
 use clap::{arg, Command};
-use log::debug;
+use log::{debug, info};
 
-use realflight_link::{ControlInputs, RealFlightLink};
+use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -20,9 +18,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get_matches();
 
     let simulator_url = matches.get_one::<String>("simulator_url").unwrap();
-    debug!("Connecting to RealFlight simulator at {}", simulator_url);
+    info!("Connecting to RealFlight simulator at {}", simulator_url);
 
-    let mut client = match RealFlightLink::connect(simulator_url) {
+    let configuration = Configuration {
+        simulator_url: simulator_url.clone(),
+        ..Default::default()
+    };
+
+    let bridge = match RealFlightBridge::new(configuration) {
         Ok(client) => client,
         Err(e) => {
             eprintln!("Error connecting to RealFlight simulator: {}", e);
@@ -30,25 +33,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    client.reset_sim()?;
-    //    client.disable_rc()?;
+    bridge.reset_aircraft()?;
+    bridge.disable_rc()?;
 
-    let start_time = Instant::now();
+    let control = ControlInputs::default();
 
-    let count = 400;
-    let mut control = ControlInputs::default();
-    for i in 0..12 {
-        control.channels[i] = 1.0;
-    }
-    for i in 0..count {
-        //        control.channels[i] = 1.0;
-        let state = client.exchange_data(&control)?;
-        //        println!("state: {:?}", state);
+    for _ in 0..10 {
+        let state = bridge.exchange_data(&control)?;
+        debug!("state: {:?}", state);
     }
 
-    let elapsed_time = start_time.elapsed();
-    println!("Time taken: {:?}", elapsed_time);
-    println!("RPS: {:?}", count as f64 / elapsed_time.as_secs_f64());
+    bridge.enable_rc()?;
+
+    let statistics = bridge.statistics();
+
+    println!("Runtime: {:?}", statistics.runtime);
+    println!("Frame Rate: {:?}", statistics.frame_rate);
+    println!("Error Count: {:?}", statistics.error_count);
+    println!("Request count: {:?}", statistics.request_count);
 
     Ok(())
 }
