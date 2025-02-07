@@ -25,11 +25,13 @@ use std::sync::Arc;
 use std::net::TcpStream;
 use std::time::Duration;
 use std::time::Instant;
+use decoders::decode_simulator_state;
 use uom::si::f64::*;
 
-mod connection_manager;
-
 use connection_manager::ConnectionManager;
+
+mod connection_manager;
+mod decoders;
 
 const UNUSED: &str = "";
 const HEADER_LEN: usize = 120;
@@ -212,11 +214,6 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
     message.push_str("</pControlInputs>");
 
     message
-}
-
-fn decode_simulator_state(_response: &str) -> Result<SimulatorState, Box<dyn Error>> {
-    //    println!("Response: {}", response);
-    Ok(SimulatorState::default())
 }
 
 /// Configuration settings for the RealFlight Link bridge.

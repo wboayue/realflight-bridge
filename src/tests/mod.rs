@@ -1,5 +1,12 @@
 use rand::Rng;
+
 use serial_test::serial;
+use uom::si::angular_velocity::degree_per_second;
+use uom::si::f64::*;
+use uom::si::length::kilometer;
+use uom::si::time::second;
+use uom::si::velocity::meter_per_second;
+use uom::si::angle::degree;
 
 use super::*;
 use soap_stub::Server;
@@ -167,6 +174,39 @@ pub fn test_exchange_data_200() {
     if let Err(ref e) = result {
         panic!("expected Ok from bridge.exchange_data: {:?}", e);
     }
+
+    let state = result.unwrap();
+
+    assert_eq!(state.current_physics_time, Time::new::<second>(72263.411813672516));
+    assert_eq!(state.current_physics_speed_multiplier, 1.0);
+    assert_eq!(state.airspeed, Velocity::new::<meter_per_second>(0.146543));
+    assert_eq!(state.altitude_asl, Length::new::<kilometer>(1.1273709716796875));
+    assert_eq!(state.altitude_agl, Length::new::<kilometer>(0.000266309916973114));
+    assert_eq!(state.groundspeed, Velocity::new::<meter_per_second>(0.0000046434447540377732));
+    assert_eq!(state.pitch_rate, AngularVelocity::new::<degree_per_second>(0.0013803535839542747));
+    assert_eq!(state.roll_rate, AngularVelocity::new::<degree_per_second>(-0.00003222789746359922));
+    assert_eq!(state.yaw_rate, AngularVelocity::new::<degree_per_second>(0.0014737510355189443));
+    assert_eq!(state.azimuth, Angle::new::<degree>(-89.6070556640625));
+    assert_eq!(state.inclination, Angle::new::<degree>(1.533278226852417));
+    assert_eq!(state.roll, Angle::new::<degree>(-0.74712425470352173));
+    assert_eq!(state.orientation_quaternion_x, 0.0048992796801030636);
+    assert_eq!(state.orientation_quaternion_y, -0.014053969644010067);
+    assert_eq!(state.orientation_quaternion_z, -0.7046617865562439);
+    assert_eq!(state.orientation_quaternion_w, 0.70938730239868164);
+    // <m-airspeed-MPS>0.040872246026992798</m-airspeed-MPS>
+    // <m-altitudeASL-MTR>1127.3709716796875</m-altitudeASL-MTR>
+    // <m-altitudeAGL-MTR>0.26630991697311401</m-altitudeAGL-MTR>
+    // <m-groundspeed-MPS>4.6434447540377732E-06</m-groundspeed-MPS>
+    // <m-pitchRate-DEGpSEC>0.0013803535839542747</m-pitchRate-DEGpSEC>
+    // <m-rollRate-DEGpSEC>-3.222789746359922E-05</m-rollRate-DEGpSEC>
+    // <m-yawRate-DEGpSEC>0.0014737510355189443</m-yawRate-DEGpSEC>
+    // <m-azimuth-DEG>-89.6070556640625</m-azimuth-DEG>
+    // <m-inclination-DEG>1.533278226852417</m-inclination-DEG>
+    // <m-roll-DEG>-0.74712425470352173</m-roll-DEG>
+    // <m-orientationQuaternion-X>0.0048992796801030636</m-orientationQuaternion-X>
+    // <m-orientationQuaternion-Y>-0.014053969644010067</m-orientationQuaternion-Y>
+    // <m-orientationQuaternion-Z>-0.7046617865562439</m-orientationQuaternion-Z>
+    // <m-orientationQuaternion-W>0.70938730239868164</m-orientationQuaternion-W>
 
     let requests = server.requests();
 
