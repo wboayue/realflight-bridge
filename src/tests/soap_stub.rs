@@ -1,6 +1,7 @@
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
@@ -48,6 +49,8 @@ impl Server {
             requests: Arc::new(Mutex::new(Vec::new())),
         };
         server.start_worker();
+        // allow server time to start
+        thread::sleep(Duration::from_millis(100));
         server
     }
 

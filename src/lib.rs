@@ -63,13 +63,7 @@ impl RealFlightBridge {
         let response = self.send_action("ExchangeData", &body)?;
         match response.status_code {
             200 => decode_simulator_state(&response.body),
-            _ => {
-                if let Some(message) = naive_extract_detail(&response.body) {
-                    Err(message.into())
-                } else {
-                    Err("Failed to extract error message".into())
-                }
-            }
+            _ => Err(decode_fault(&response).into()),
         }
     }
 
@@ -119,12 +113,13 @@ impl RealFlightBridge {
     }
 
     fn read_response(&self, stream: &mut BufReader<TcpStream>) -> Option<SoapResponse> {
-        // let mut buf = String::new();
-        // stream.read_to_string(&mut buf).unwrap();
-        // println!("Reading response:\n{}", buf);
-        // Read the status line
         let mut status_line = String::new();
-        stream.read_line(&mut status_line).unwrap();
+
+        if let Err(e) = stream.read_line(&mut status_line) {
+            eprintln!("Error reading status line: {}", e);
+            return None;
+        }
+
         if status_line.is_empty() {
             return None;
         }
@@ -173,14 +168,6 @@ impl RealFlightBridge {
     }
 }
 
-// impl Drop for RealFlightBridge {
-//     fn drop(&mut self) {
-//         if let Err(e) = self.enable_rc() {
-//             error!("Error enabling RC: {}", e);
-//         }
-//     }
-// }
-
 #[derive(Debug)]
 struct SoapResponse {
     status_code: u32,
@@ -191,7 +178,7 @@ impl From<SoapResponse> for Result<(), Box<dyn Error>> {
     fn from(val: SoapResponse) -> Self {
         match val.status_code {
             200 => Ok(()),
-            _ => Err(val.body.into()),
+            _ => Err(decode_fault(&val).into()),
         }
     }
 }
@@ -573,10 +560,16 @@ impl Default for StatisticsEngine {
     }
 }
 
-fn naive_extract_detail(xml: &str) -> Option<String> {
-    // Find <detail> start
-    let start_tag = "<detail>";
-    let end_tag = "</detail>";
+fn decode_fault(response: &SoapResponse) -> String {
+    match extract_element("detail", &response.body) {
+        Some(message) => message.into(),
+        None => "Failed to extract error message".into(),
+    }
+}
+
+pub fn extract_element(name: &str, xml: &str) -> Option<String> {
+    let start_tag = &format!("<{}>", name);
+    let end_tag = &format!("</{}>", name);
 
     let start_pos = xml.find(start_tag)?;
     let end_pos = xml.find(end_tag)?;
