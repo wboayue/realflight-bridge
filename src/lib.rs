@@ -22,10 +22,10 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use decoders::decode_simulator_state;
 use std::net::TcpStream;
 use std::time::Duration;
 use std::time::Instant;
-use decoders::decode_simulator_state;
 use uom::si::f64::*;
 
 use connection_manager::ConnectionManager;
@@ -457,9 +457,9 @@ pub struct SimulatorState {
     /// Wind velocity along world Z axis
     pub wind_z: Velocity,
     /// Propeller RPM for piston/electric aircraft
-    pub prop_rpm: Frequency,
+    pub prop_rpm: f64,
     /// Main rotor RPM for helicopters
-    pub heli_main_rotor_rpm: Frequency,
+    pub heli_main_rotor_rpm: f64,
     /// Battery voltage
     pub battery_voltage: ElectricPotential,
     /// Current draw from battery
