@@ -1,12 +1,12 @@
 use core::error;
 use std::{collections::BTreeMap, error::Error};
 
-use uom::si::{angle::degree, length::meter};
 use uom::si::angular_velocity::degree_per_second;
 use uom::si::f64::*;
 use uom::si::length::kilometer;
 use uom::si::time::second;
 use uom::si::velocity::meter_per_second;
+use uom::si::{angle::degree, length::meter};
 
 use super::{extract_element, SimulatorState};
 
@@ -63,13 +63,13 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
 
     let raw = extract_elements(xml);
 
-    state.current_physics_time = extract_time(&raw, "m-currentPhysicsTime-SEC")?;
-    state.current_physics_speed_multiplier = extract_double(&raw, "m-currentPhysicsSpeedMultiplier")?;
-    state.airspeed = extract_velocity(&raw, "m-airspeed-MPS")?;
-    state.altitude_asl = extract_length(&raw, "m-altitudeASL-MTR")?;
-    state.altitude_agl = extract_length(&raw, "m-altitudeAGL-MTR")?;
-    state.groundspeed = extract_velocity(&raw, "m-groundspeed-MPS")?;
-    
+    state.current_physics_time = as_time(&raw, "m-currentPhysicsTime-SEC")?;
+    state.current_physics_speed_multiplier = as_double(&raw, "m-currentPhysicsSpeedMultiplier")?;
+    state.airspeed = as_velocity(&raw, "m-airspeed-MPS")?;
+    state.altitude_asl = as_length(&raw, "m-altitudeASL-MTR")?;
+    state.altitude_agl = as_length(&raw, "m-altitudeAGL-MTR")?;
+    state.groundspeed = as_velocity(&raw, "m-groundspeed-MPS")?;
+
     Ok(state)
 }
 
@@ -83,25 +83,25 @@ fn extract_elements(xml: &str) -> BTreeMap<String, String> {
     elements
 }
 
-fn extract_time(state: &BTreeMap<String, String>, field: &str) -> Result<Time, Box<dyn Error>> {
+fn as_time(state: &BTreeMap<String, String>, field: &str) -> Result<Time, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(Time::new::<second>(value))
 }
 
-fn extract_double(state: &BTreeMap<String, String>, field: &str) -> Result<f64, Box<dyn Error>> {
+fn as_double(state: &BTreeMap<String, String>, field: &str) -> Result<f64, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(value)
 }
 
-fn extract_velocity(state: &BTreeMap<String, String>, field: &str) -> Result<Velocity, Box<dyn Error>> {
+fn as_velocity(state: &BTreeMap<String, String>, field: &str) -> Result<Velocity, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(Velocity::new::<meter_per_second>(value))
 }
 
-fn extract_length(state: &BTreeMap<String, String>, field: &str) -> Result<Length, Box<dyn Error>> {
+fn as_length(state: &BTreeMap<String, String>, field: &str) -> Result<Length, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(Length::new::<meter>(value))

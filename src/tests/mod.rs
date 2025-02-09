@@ -188,11 +188,11 @@ pub fn test_exchange_data_200() {
         Time::new::<second>(72263.411813672516)
     );
     assert_eq!(state.current_physics_speed_multiplier, 1.0);
-    assert_eq!(state.airspeed, Velocity::new::<meter_per_second>(0.040872246026992798));
     assert_eq!(
-        state.altitude_asl,
-        Length::new::<meter>(1127.3709716796875)
+        state.airspeed,
+        Velocity::new::<meter_per_second>(0.040872246026992798)
     );
+    assert_eq!(state.altitude_asl, Length::new::<meter>(1127.3709716796875));
     assert_eq!(
         state.altitude_agl,
         Length::new::<meter>(0.26630991697311401)
