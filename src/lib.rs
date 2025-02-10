@@ -38,8 +38,8 @@ const HEADER_LEN: usize = 120;
 
 /// RealFlightLink client
 pub struct RealFlightBridge {
-    connection_manager: ConnectionManager,
     statistics: Arc<StatisticsEngine>,
+    soap_client: Box<dyn SoapClient>,
 }
 
 impl RealFlightBridge {
@@ -49,8 +49,26 @@ impl RealFlightBridge {
         let statistics = Arc::new(StatisticsEngine::new());
 
         Ok(RealFlightBridge {
-            connection_manager: ConnectionManager::new(configuration, statistics.clone())?,
+            statistics: statistics.clone(),
+            soap_client: Box::new(TcpSoapClient {
+                statistics: statistics.clone(),
+                connection_manager: ConnectionManager::new(configuration, statistics.clone())?,
+            }),
+        })
+    }
+
+    /// Creates a new RealFlightLink client
+    /// simulator_url: the url to the RealFlight simulator
+    #[cfg(test)]
+    fn stub(
+        configuration: Configuration,
+        soap_client: StubSoapClient,
+    ) -> Result<RealFlightBridge, Box<dyn Error>> {
+        let statistics = Arc::new(StatisticsEngine::new());
+
+        Ok(RealFlightBridge {
             statistics,
+            soap_client: Box::new(soap_client),
         })
     }
 
@@ -62,7 +80,7 @@ impl RealFlightBridge {
     /// Exchange data with the RealFlight simulator
     pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
-        let response = self.send_action("ExchangeData", &body)?;
+        let response = self.soap_client.send_action("ExchangeData", &body)?;
         match response.status_code {
             200 => decode_simulator_state(&response.body),
             _ => Err(decode_fault(&response).into()),
@@ -71,22 +89,37 @@ impl RealFlightBridge {
 
     ///  Set Spektrum as the RC input
     pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("RestoreOriginalControllerDevice", UNUSED)?
+        self.soap_client
+            .send_action("RestoreOriginalControllerDevice", UNUSED)?
             .into()
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
     pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("InjectUAVControllerInterface", UNUSED)?
+        self.soap_client
+            .send_action("InjectUAVControllerInterface", UNUSED)?
             .into()
     }
 
     /// Reset Real Flight simulator,
     /// like pressing spacebar in the simulator
     pub fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("ResetAircraft", UNUSED)?.into()
+        self.soap_client
+            .send_action("ResetAircraft", UNUSED)?
+            .into()
     }
+}
 
+pub(crate) trait SoapClient {
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>>;
+}
+
+pub(crate) struct TcpSoapClient {
+    statistics: Arc<StatisticsEngine>,
+    connection_manager: ConnectionManager,
+}
+
+impl SoapClient for TcpSoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
         eprintln!("Sending action: {}", action);
 
@@ -100,7 +133,9 @@ impl RealFlightBridge {
             None => Err("Failed to read response".into()),
         }
     }
+}
 
+impl TcpSoapClient {
     fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
@@ -167,6 +202,14 @@ impl RealFlightBridge {
         } else {
             None
         }
+    }
+}
+
+pub(crate) struct StubSoapClient {}
+
+impl SoapClient for StubSoapClient {
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
+        panic!("StubSoapClient should not be used in production code");
     }
 }
 
