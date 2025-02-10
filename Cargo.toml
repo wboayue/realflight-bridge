@@ -17,8 +17,8 @@ uom = "0.36.0"
 env_logger = "0.11.6"
 log = "0.4.25"
 crossbeam-channel = "0.5"
-rand = "0.8"
+rand = "0.9"
 
 [dev-dependencies]
 clap = "4.5.28"
-rand = "0.8"
+rand = "0.9"
