@@ -18,9 +18,11 @@ use std::error::Error;
 use std::io::BufReader;
 use std::io::Write;
 use std::io::{BufRead, Read};
+use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use decoders::decode_simulator_state;
 use std::net::TcpStream;
@@ -60,16 +62,20 @@ impl RealFlightBridge {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
     #[cfg(test)]
-    fn stub(
-        configuration: Configuration,
-        soap_client: StubSoapClient,
-    ) -> Result<RealFlightBridge, Box<dyn Error>> {
+    fn stub(mut soap_client: StubSoapClient) -> Result<RealFlightBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
+
+        soap_client.statistics = Some(statistics.clone());
 
         Ok(RealFlightBridge {
             statistics,
             soap_client: Box::new(soap_client),
         })
+    }
+
+    #[cfg(test)]
+    fn requests(&self) -> Vec<String> {
+        self.soap_client.requests().clone()
     }
 
     /// Get statistics for the RealFlightBridge
@@ -112,6 +118,9 @@ impl RealFlightBridge {
 
 pub(crate) trait SoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>>;
+    fn requests(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 pub(crate) struct TcpSoapClient {
@@ -205,12 +214,89 @@ impl TcpSoapClient {
     }
 }
 
-pub(crate) struct StubSoapClient {}
+pub(crate) struct StubSoapClient {
+    responses: Vec<String>,
+    statistics: Option<Arc<StatisticsEngine>>,
+    requests: Mutex<Vec<String>>,
+}
+
+impl StubSoapClient {
+    pub fn new(responses: Vec<String>) -> Self {
+        StubSoapClient {
+            responses,
+            statistics: None,
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn request_count(&self) -> u32 {
+        match &self.statistics {
+            Some(stats) => stats.request_count(),
+            None => 0,
+        }
+    }
+
+    fn add_request(&self, request: &str) {
+        let mut requests = self.requests.lock().unwrap();
+        requests.push(request.to_string());
+    }
+
+    fn next_response(&self) -> String {
+        self.responses.first().unwrap().clone()
+    }
+}
 
 impl SoapClient for StubSoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
-        panic!("StubSoapClient should not be used in production code");
+        eprintln!("Sending action: {}", action);
+
+        let envelope = encode_envelope(action, body);
+
+        if let Some(statistics) = &self.statistics {
+            statistics.increment_request_count();
+        }
+        self.add_request(&envelope);
+
+        let response_key = self.next_response();
+        let code = response_key.split('-').last().unwrap();
+
+        Ok(SoapResponse {
+            status_code: code.parse().unwrap(),
+            body: load_response(&response_key),
+        })
     }
+
+    fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
+}
+
+// #[cfg(test)]
+fn load_response(response_key: &str) -> String {
+    let response_path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "testdata",
+        "responses",
+        &format!("{}.xml", response_key),
+    ]
+    .iter()
+    .collect();
+    eprintln!("Response path: {:?}", response_path);
+    let body = std::fs::read_to_string(response_path).unwrap();
+
+    let mut buffer = String::new();
+
+    let code = response_key.split('-').last().unwrap();
+
+    buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
+    buffer.push_str("Server: gSOAP/2.7\r\n");
+    buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
+    buffer.push_str(&format!("Content-Length: {}\r\n", body.as_bytes().len()));
+    buffer.push_str("Connection: close\r\n");
+    buffer.push_str("\r\n");
+    buffer.push_str(&body);
+
+    buffer
 }
 
 #[derive(Debug)]
