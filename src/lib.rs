@@ -15,29 +15,28 @@
 //! See [README](https://github.com/wboayue/realflight-link) for examples and usage.
 
 use std::error::Error;
-use std::io::BufReader;
-use std::io::Write;
-use std::io::{BufRead, Read};
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use std::net::TcpStream;
+use decoders::decode_simulator_state;
+use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
 use uom::si::f64::*;
 
-mod connection_manager;
+#[cfg(test)]
+use soap_client::stub::StubSoapClient;
 
-use connection_manager::ConnectionManager;
+mod decoders;
+mod soap_client;
 
 const UNUSED: &str = "";
-const HEADER_LEN: usize = 120;
 
 /// RealFlightLink client
 pub struct RealFlightBridge {
-    connection_manager: ConnectionManager,
     statistics: Arc<StatisticsEngine>,
+    soap_client: Box<dyn SoapClient>,
 }
 
 impl RealFlightBridge {
@@ -47,9 +46,28 @@ impl RealFlightBridge {
         let statistics = Arc::new(StatisticsEngine::new());
 
         Ok(RealFlightBridge {
-            connection_manager: ConnectionManager::new(configuration, statistics.clone())?,
-            statistics,
+            statistics: statistics.clone(),
+            soap_client: Box::new(TcpSoapClient::new(configuration, statistics.clone())?),
         })
+    }
+
+    /// Creates a new RealFlightLink client
+    /// simulator_url: the url to the RealFlight simulator
+    #[cfg(test)]
+    fn stub(mut soap_client: StubSoapClient) -> Result<RealFlightBridge, Box<dyn Error>> {
+        let statistics = Arc::new(StatisticsEngine::new());
+
+        soap_client.statistics = Some(statistics.clone());
+
+        Ok(RealFlightBridge {
+            statistics,
+            soap_client: Box::new(soap_client),
+        })
+    }
+
+    #[cfg(test)]
+    fn requests(&self) -> Vec<String> {
+        self.soap_client.requests().clone()
     }
 
     /// Get statistics for the RealFlightBridge
@@ -60,118 +78,43 @@ impl RealFlightBridge {
     /// Exchange data with the RealFlight simulator
     pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let body = encode_control_inputs(control);
-        let response = self.send_action("ExchangeData", &body)?;
-        //        println!("Response: {}", response);
-        decode_simulator_state(&response.body)
+        let response = self.soap_client.send_action("ExchangeData", &body)?;
+        match response.status_code {
+            200 => decode_simulator_state(&response.body),
+            _ => Err(decode_fault(&response).into()),
+        }
     }
 
     ///  Set Spektrum as the RC input
     pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("RestoreOriginalControllerDevice", UNUSED)?
+        self.soap_client
+            .send_action("RestoreOriginalControllerDevice", UNUSED)?
             .into()
     }
 
     /// Disable Spektrum as the RC input, and use FlightAxis instead
     pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("InjectUAVControllerInterface", UNUSED)?
+        self.soap_client
+            .send_action("InjectUAVControllerInterface", UNUSED)?
             .into()
     }
 
     /// Reset Real Flight simulator,
     /// like pressing spacebar in the simulator
     pub fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
-        self.send_action("ResetAircraft", UNUSED)?.into()
-    }
-
-    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
-        eprintln!("Sending action: {}", action);
-
-        let envelope = encode_envelope(action, body);
-        let mut stream = self.connection_manager.get_connection()?;
-        self.send_request(&mut stream, action, &envelope);
-        self.statistics.increment_request_count();
-
-        match self.read_response(&mut BufReader::new(stream)) {
-            Some(response) => Ok(response),
-            None => Err("Failed to read response".into()),
-        }
-    }
-
-    fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
-        let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
-
-        request.push_str("POST / HTTP/1.1\r\n");
-        request.push_str(&format!("Soapaction: '{}'\r\n", action));
-        request.push_str(&format!("Content-Length: {}\r\n", envelope.len()));
-        request.push_str("Content-Type: text/xml;charset=utf-8\r\n");
-        request.push_str("\r\n");
-        request.push_str(envelope);
-
-        stream.write_all(request.as_bytes()).unwrap();
-    }
-
-    fn read_response(&self, stream: &mut BufReader<TcpStream>) -> Option<SoapResponse> {
-        // let mut buf = String::new();
-        // stream.read_to_string(&mut buf).unwrap();
-        // println!("Reading response:\n{}", buf);
-        // Read the status line
-        let mut status_line = String::new();
-        stream.read_line(&mut status_line).unwrap();
-        if status_line.is_empty() {
-            return None;
-        }
-        // eprintln!("Status Line: '{}'", status_line.trim());
-        let status_code: u32 = status_line
-            .split_whitespace()
-            .nth(1)
-            .unwrap()
-            .parse()
-            .unwrap();
-
-        // Read headers
-        let mut headers = String::new();
-        let mut content_length: Option<usize> = None;
-        loop {
-            let mut line = String::new();
-            stream.read_line(&mut line).unwrap();
-            if line == "\r\n" {
-                break; // End of headers
-            }
-            if line.to_lowercase().starts_with("content-length:") {
-                if let Some(length) = line.split_whitespace().nth(1) {
-                    content_length = length.trim().parse().ok();
-                }
-            }
-            headers.push_str(&line);
-        }
-
-        // println!("Headers:\n{}", headers);
-        // println!("content length:\n{}", content_length.unwrap());
-
-        // Read the body based on Content-Length
-        if let Some(length) = content_length {
-            // let mut body = String::with_capacity(length);
-            // stream.read_to_string(&mut body).unwrap();
-
-            let mut body = vec![0; length];
-            stream.read_exact(&mut body).unwrap();
-            let body = String::from_utf8_lossy(&body).to_string();
-            // println!("Body: {}", r);
-
-            Some(SoapResponse { status_code, body })
-        } else {
-            None
-        }
+        self.soap_client
+            .send_action("ResetAircraft", UNUSED)?
+            .into()
     }
 }
 
-// impl Drop for RealFlightBridge {
-//     fn drop(&mut self) {
-//         if let Err(e) = self.enable_rc() {
-//             error!("Error enabling RC: {}", e);
-//         }
-//     }
-// }
+pub(crate) trait SoapClient {
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>>;
+    #[cfg(test)]
+    fn requests(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
 
 #[derive(Debug)]
 struct SoapResponse {
@@ -183,7 +126,7 @@ impl From<SoapResponse> for Result<(), Box<dyn Error>> {
     fn from(val: SoapResponse) -> Self {
         match val.status_code {
             200 => Ok(()),
-            _ => Err(val.body.into()),
+            _ => Err(decode_fault(&val).into()),
         }
     }
 }
@@ -217,11 +160,6 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
     message.push_str("</pControlInputs>");
 
     message
-}
-
-fn decode_simulator_state(_response: &str) -> Result<SimulatorState, Box<dyn Error>> {
-    //    println!("Response: {}", response);
-    Ok(SimulatorState::default())
 }
 
 /// Configuration settings for the RealFlight Link bridge.
@@ -465,9 +403,9 @@ pub struct SimulatorState {
     /// Wind velocity along world Z axis
     pub wind_z: Velocity,
     /// Propeller RPM for piston/electric aircraft
-    pub prop_rpm: Frequency,
+    pub prop_rpm: f64,
     /// Main rotor RPM for helicopters
-    pub heli_main_rotor_rpm: Frequency,
+    pub heli_main_rotor_rpm: f64,
     /// Battery voltage
     pub battery_voltage: ElectricPotential,
     /// Current draw from battery
@@ -563,6 +501,28 @@ impl Default for StatisticsEngine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn decode_fault(response: &SoapResponse) -> String {
+    match extract_element("detail", &response.body) {
+        Some(message) => message,
+        None => "Failed to extract error message".into(),
+    }
+}
+
+pub fn extract_element(name: &str, xml: &str) -> Option<String> {
+    let start_tag = &format!("<{}>", name);
+    let end_tag = &format!("</{}>", name);
+
+    let start_pos = xml.find(start_tag)?;
+    let end_pos = xml.find(end_tag)?;
+
+    let detail_start = start_pos + start_tag.len();
+    if detail_start >= end_pos {
+        return None;
+    }
+
+    Some(xml[detail_start..end_pos].to_string())
 }
 
 #[cfg(test)]

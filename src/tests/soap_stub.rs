@@ -1,6 +1,7 @@
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
@@ -23,13 +24,6 @@ impl Drop for Server {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
 
-        // eprintln!("sending shutdown command");
-        // let mut stream = TcpStream::connect(format!("127.0.0.1:{}", self.port)).unwrap();
-        // let buf = "SHUTDOWN\r\n".as_bytes();
-        // stream.write_all(buf).unwrap();
-        // stream.flush().unwrap();
-        // eprintln!("sent shutdown command");
-
         if let Some(handle) = self.handle.take() {
             if let Err(e) = handle.join() {
                 eprintln!("error shutting down server: {:?}", e);
@@ -48,6 +42,8 @@ impl Server {
             requests: Arc::new(Mutex::new(Vec::new())),
         };
         server.start_worker();
+        // allow server time to start
+        thread::sleep(Duration::from_millis(100));
         server
     }
 
@@ -62,36 +58,33 @@ impl Server {
     }
 
     fn start_worker(&mut self) {
-        let responses = self.responses.clone();
-        let running = Arc::clone(&self.running);
+        let mut responses = self.responses.clone();
         let requests = Arc::clone(&self.requests);
         let port = self.port;
 
         let handle = thread::spawn(move || {
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-            listener.set_nonblocking(true).unwrap();
 
             eprintln!("server listening on port {}", port);
 
-            let mut responses = responses.iter();
-
             for mut incoming in listener.incoming() {
                 eprintln!("incoming connection");
-                if !running.load(Ordering::Relaxed) {
+                if responses.is_empty() {
                     break;
                 }
 
                 if let Err(ref e) = incoming {
                     eprintln!("connection error: {}", e);
-                    thread::sleep(std::time::Duration::from_millis(100));
-                    continue;
-                } else if let Ok(ref mut stream) = incoming {
+                    break;
+                }
+
+                if let Ok(ref mut stream) = incoming {
                     let a = &mut stream.try_clone().unwrap();
                     let mut streamb = BufReader::new(a);
                     let mut line = String::new();
                     if let Err(e) = streamb.read_line(&mut line) {
                         eprintln!("error reading line: {}", e);
-                        continue;
+                        break;
                     } else {
                         eprintln!("status line: {}", line);
                     }
@@ -100,14 +93,13 @@ impl Server {
                     if request_body.is_empty() {
                         eprintln!("empty request. try next.");
                         thread::sleep(std::time::Duration::from_millis(100));
-                        continue;
+                        break;
                     }
 
-                    // eprintln!("recording request:\n{}", request_body);
                     record_request(&requests, &request_body);
 
-                    if let Some(response_key) = responses.next() {
-                        send_response(stream, response_key);
+                    if let Some(response_key) = responses.pop() {
+                        send_response(stream, &response_key);
                     } else {
                         eprintln!("no more responses to send");
                     }
@@ -177,7 +169,9 @@ fn send_response(mut stream: &TcpStream, response_key: &str) {
 
     let mut buffer = String::new();
 
-    buffer.push_str("HTTP/1.1 200 OK\r\n");
+    let code = response_key.split('-').last().unwrap();
+
+    buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
     buffer.push_str("Server: gSOAP/2.7\r\n");
     buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
     buffer.push_str(&format!("Content-Length: {}\r\n", body.as_bytes().len()));
