@@ -15,28 +15,25 @@
 //! See [README](https://github.com/wboayue/realflight-link) for examples and usage.
 
 use std::error::Error;
-use std::io::BufReader;
-use std::io::Write;
-use std::io::{BufRead, Read};
-use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use decoders::decode_simulator_state;
-use std::net::TcpStream;
+use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
 use uom::si::f64::*;
 
 use connection_manager::ConnectionManager;
+#[cfg(test)]
+use soap_client::stub::StubSoapClient;
 
 mod connection_manager;
 mod decoders;
+mod soap_client;
 
 const UNUSED: &str = "";
-const HEADER_LEN: usize = 120;
 
 /// RealFlightLink client
 pub struct RealFlightBridge {
@@ -118,185 +115,10 @@ impl RealFlightBridge {
 
 pub(crate) trait SoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>>;
+    #[cfg(test)]
     fn requests(&self) -> Vec<String> {
         Vec::new()
     }
-}
-
-pub(crate) struct TcpSoapClient {
-    statistics: Arc<StatisticsEngine>,
-    connection_manager: ConnectionManager,
-}
-
-impl SoapClient for TcpSoapClient {
-    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
-        eprintln!("Sending action: {}", action);
-
-        let envelope = encode_envelope(action, body);
-        let mut stream = self.connection_manager.get_connection()?;
-        self.send_request(&mut stream, action, &envelope);
-        self.statistics.increment_request_count();
-
-        match self.read_response(&mut BufReader::new(stream)) {
-            Some(response) => Ok(response),
-            None => Err("Failed to read response".into()),
-        }
-    }
-}
-
-impl TcpSoapClient {
-    fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
-        let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
-
-        request.push_str("POST / HTTP/1.1\r\n");
-        request.push_str(&format!("Soapaction: '{}'\r\n", action));
-        request.push_str(&format!("Content-Length: {}\r\n", envelope.len()));
-        request.push_str("Content-Type: text/xml;charset=utf-8\r\n");
-        request.push_str("\r\n");
-        request.push_str(envelope);
-
-        stream.write_all(request.as_bytes()).unwrap();
-    }
-
-    fn read_response(&self, stream: &mut BufReader<TcpStream>) -> Option<SoapResponse> {
-        let mut status_line = String::new();
-
-        if let Err(e) = stream.read_line(&mut status_line) {
-            eprintln!("Error reading status line: {}", e);
-            return None;
-        }
-
-        if status_line.is_empty() {
-            return None;
-        }
-        // eprintln!("Status Line: '{}'", status_line.trim());
-        let status_code: u32 = status_line
-            .split_whitespace()
-            .nth(1)
-            .unwrap()
-            .parse()
-            .unwrap();
-
-        // Read headers
-        let mut headers = String::new();
-        let mut content_length: Option<usize> = None;
-        loop {
-            let mut line = String::new();
-            stream.read_line(&mut line).unwrap();
-            if line == "\r\n" {
-                break; // End of headers
-            }
-            if line.to_lowercase().starts_with("content-length:") {
-                if let Some(length) = line.split_whitespace().nth(1) {
-                    content_length = length.trim().parse().ok();
-                }
-            }
-            headers.push_str(&line);
-        }
-
-        // println!("Headers:\n{}", headers);
-        // println!("content length:\n{}", content_length.unwrap());
-
-        // Read the body based on Content-Length
-        if let Some(length) = content_length {
-            // let mut body = String::with_capacity(length);
-            // stream.read_to_string(&mut body).unwrap();
-
-            let mut body = vec![0; length];
-            stream.read_exact(&mut body).unwrap();
-            let body = String::from_utf8_lossy(&body).to_string();
-            // println!("Body: {}", r);
-
-            Some(SoapResponse { status_code, body })
-        } else {
-            None
-        }
-    }
-}
-
-pub(crate) struct StubSoapClient {
-    responses: Vec<String>,
-    statistics: Option<Arc<StatisticsEngine>>,
-    requests: Mutex<Vec<String>>,
-}
-
-impl StubSoapClient {
-    pub fn new(responses: Vec<String>) -> Self {
-        StubSoapClient {
-            responses,
-            statistics: None,
-            requests: Mutex::new(Vec::new()),
-        }
-    }
-
-    pub fn request_count(&self) -> u32 {
-        match &self.statistics {
-            Some(stats) => stats.request_count(),
-            None => 0,
-        }
-    }
-
-    fn add_request(&self, request: &str) {
-        let mut requests = self.requests.lock().unwrap();
-        requests.push(request.to_string());
-    }
-
-    fn next_response(&self) -> String {
-        self.responses.first().unwrap().clone()
-    }
-}
-
-impl SoapClient for StubSoapClient {
-    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
-        eprintln!("Sending action: {}", action);
-
-        let envelope = encode_envelope(action, body);
-
-        if let Some(statistics) = &self.statistics {
-            statistics.increment_request_count();
-        }
-        self.add_request(&envelope);
-
-        let response_key = self.next_response();
-        let code = response_key.split('-').last().unwrap();
-
-        Ok(SoapResponse {
-            status_code: code.parse().unwrap(),
-            body: load_response(&response_key),
-        })
-    }
-
-    fn requests(&self) -> Vec<String> {
-        self.requests.lock().unwrap().clone()
-    }
-}
-
-// #[cfg(test)]
-fn load_response(response_key: &str) -> String {
-    let response_path: PathBuf = [
-        env!("CARGO_MANIFEST_DIR"),
-        "testdata",
-        "responses",
-        &format!("{}.xml", response_key),
-    ]
-    .iter()
-    .collect();
-    eprintln!("Response path: {:?}", response_path);
-    let body = std::fs::read_to_string(response_path).unwrap();
-
-    let mut buffer = String::new();
-
-    let code = response_key.split('-').last().unwrap();
-
-    buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
-    buffer.push_str("Server: gSOAP/2.7\r\n");
-    buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
-    buffer.push_str(&format!("Content-Length: {}\r\n", body.as_bytes().len()));
-    buffer.push_str("Connection: close\r\n");
-    buffer.push_str("\r\n");
-    buffer.push_str(&body);
-
-    buffer
 }
 
 #[derive(Debug)]
@@ -688,7 +510,7 @@ impl Default for StatisticsEngine {
 
 fn decode_fault(response: &SoapResponse) -> String {
     match extract_element("detail", &response.body) {
-        Some(message) => message.into(),
+        Some(message) => message,
         None => "Failed to extract error message".into(),
     }
 }

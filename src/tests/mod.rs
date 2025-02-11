@@ -7,10 +7,10 @@ use uom::si::electric_charge::milliampere_hour;
 use uom::si::electric_current::ampere;
 use uom::si::electric_potential::volt;
 use uom::si::f64::*;
-use uom::si::length::{meter};
+use uom::si::length::meter;
 use uom::si::time::second;
 use uom::si::velocity::meter_per_second;
-use uom::si::volume::{liter};
+use uom::si::volume::liter;
 
 use super::*;
 use soap_stub::Server;
@@ -157,7 +157,7 @@ pub fn test_exchange_data_200() {
     // Assemble
     let soap_client = StubSoapClient::new(vec!["return-data-200".to_string()]);
     let bridge = RealFlightBridge::stub(soap_client).unwrap();
-    
+
     // Act
     let mut control = ControlInputs::default();
     for i in 0..control.channels.len() {

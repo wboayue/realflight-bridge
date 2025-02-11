@@ -1,12 +1,9 @@
-use core::error;
 use std::{collections::BTreeMap, error::Error};
 
-use uom::si::angular_velocity::degree_per_second;
 use uom::si::f64::*;
-use uom::si::length::kilometer;
+use uom::si::length::meter;
 use uom::si::time::second;
 use uom::si::velocity::meter_per_second;
-use uom::si::{angle::degree, length::meter};
 
 use super::{extract_element, SimulatorState};
 
