@@ -85,8 +85,5 @@ fn bench_quick_xml(c: &mut Criterion) {
     });
 }
 
-///
-/// Criterion group and main
-///
 criterion_group!(benches, bench_naive, bench_quick_xml);
 criterion_main!(benches);
