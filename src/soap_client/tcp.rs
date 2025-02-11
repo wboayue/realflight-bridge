@@ -4,7 +4,8 @@ use std::{
     error::Error,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    sync::{Arc, Mutex}, thread,
+    sync::{Arc, Mutex},
+    thread,
 };
 
 use crossbeam_channel::{bounded, Receiver, Sender};
@@ -36,9 +37,15 @@ impl SoapClient for TcpSoapClient {
 }
 
 impl TcpSoapClient {
-    pub fn new(configuration: Configuration, statistics: Arc<StatisticsEngine>) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        configuration: Configuration,
+        statistics: Arc<StatisticsEngine>,
+    ) -> Result<Self, Box<dyn Error>> {
         let connection_manager = ConnectionPool::new(configuration, statistics.clone())?;
-        Ok(TcpSoapClient { statistics, connection_manager })
+        Ok(TcpSoapClient {
+            statistics,
+            connection_manager,
+        })
     }
 
     fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {

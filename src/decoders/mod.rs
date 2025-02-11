@@ -5,11 +5,11 @@ use uom::si::angle::degree;
 use uom::si::electric_charge::milliampere_hour;
 use uom::si::electric_current::ampere;
 use uom::si::electric_potential::volt;
-use uom::si::volume::liter;
-use uom::si::{angular_velocity::degree_per_second, f64::*};
 use uom::si::length::meter;
 use uom::si::time::second;
 use uom::si::velocity::meter_per_second;
+use uom::si::volume::liter;
+use uom::si::{angular_velocity::degree_per_second, f64::*};
 
 use super::{extract_element, SimulatorState};
 
@@ -103,7 +103,8 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
     state.heli_main_rotor_rpm = as_double(&raw, "m-heliMainRotorRPM")?;
     state.battery_voltage = as_electrical_potential(&raw, "m-batteryVoltage-VOLTS")?;
     state.battery_current_draw = as_electrical_current(&raw, "m-batteryCurrentDraw-AMPS")?;
-    state.battery_remaining_capacity = as_electrical_charge(&raw, "m-batteryRemainingCapacity-MAH")?;
+    state.battery_remaining_capacity =
+        as_electrical_charge(&raw, "m-batteryRemainingCapacity-MAH")?;
     state.fuel_remaining = as_volume(&raw, "m-fuelRemaining-OZ")?;
     state.is_locked = as_bool(&raw, "m-isLocked")?;
     state.has_lost_components = as_bool(&raw, "m-hasLostComponents")?;
@@ -143,7 +144,10 @@ fn as_velocity(state: &BTreeMap<String, String>, field: &str) -> Result<Velocity
     Ok(Velocity::new::<meter_per_second>(value))
 }
 
-fn as_angular_velocity(state: &BTreeMap<String, String>, field: &str) -> Result<AngularVelocity, Box<dyn Error>> {
+fn as_angular_velocity(
+    state: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<AngularVelocity, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(AngularVelocity::new::<degree_per_second>(value))
@@ -161,25 +165,37 @@ fn as_angle(state: &BTreeMap<String, String>, field: &str) -> Result<Angle, Box<
     Ok(Angle::new::<degree>(value))
 }
 
-fn as_acceleration(state: &BTreeMap<String, String>, field: &str) -> Result<Acceleration, Box<dyn Error>> {
+fn as_acceleration(
+    state: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<Acceleration, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(Acceleration::new::<meter_per_second_squared>(value))
 }
 
-fn as_electrical_potential(state: &BTreeMap<String, String>, field: &str) -> Result<ElectricPotential, Box<dyn Error>> {
+fn as_electrical_potential(
+    state: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<ElectricPotential, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(ElectricPotential::new::<volt>(value))
 }
 
-fn as_electrical_current(state: &BTreeMap<String, String>, field: &str) -> Result<ElectricCurrent, Box<dyn Error>> {
+fn as_electrical_current(
+    state: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<ElectricCurrent, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(ElectricCurrent::new::<ampere>(value))
 }
 
-fn as_electrical_charge(state: &BTreeMap<String, String>, field: &str) -> Result<ElectricCharge, Box<dyn Error>> {
+fn as_electrical_charge(
+    state: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<ElectricCharge, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     Ok(ElectricCharge::new::<milliampere_hour>(value))
