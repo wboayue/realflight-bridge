@@ -25,11 +25,9 @@ use std::time::Duration;
 use std::time::Instant;
 use uom::si::f64::*;
 
-use connection_manager::ConnectionManager;
 #[cfg(test)]
 use soap_client::stub::StubSoapClient;
 
-mod connection_manager;
 mod decoders;
 mod soap_client;
 
@@ -49,10 +47,7 @@ impl RealFlightBridge {
 
         Ok(RealFlightBridge {
             statistics: statistics.clone(),
-            soap_client: Box::new(TcpSoapClient {
-                statistics: statistics.clone(),
-                connection_manager: ConnectionManager::new(configuration, statistics.clone())?,
-            }),
+            soap_client: Box::new(TcpSoapClient::new(configuration, statistics.clone())?),
         })
     }
 

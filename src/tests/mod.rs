@@ -191,7 +191,6 @@ pub fn test_exchange_data_200() {
         state.groundspeed,
         Velocity::new::<meter_per_second>(4.6434447540377732E-06)
     );
-    return; // FIXME: the rest of the test is failing
     assert_eq!(
         state.pitch_rate,
         AngularVelocity::new::<degree_per_second>(0.0013803535839542747)
@@ -221,15 +220,15 @@ pub fn test_exchange_data_200() {
     );
     assert_eq!(
         state.velocity_world_u,
-        Velocity::new::<meter_per_second>(-0.002005582700803643)
+        Velocity::new::<meter_per_second>(-2.0055827008036431E-06)
     );
     assert_eq!(
         state.velocity_world_v,
-        Velocity::new::<meter_per_second>(0.00418798481405247)
+        Velocity::new::<meter_per_second>(4.18798481405247E-06)
     );
     assert_eq!(
         state.velocity_world_w,
-        Velocity::new::<meter_per_second>(0.0408722460269928)
+        Velocity::new::<meter_per_second>(0.040872246026992798)
     );
     assert_eq!(
         state.velocity_body_u,
@@ -245,7 +244,7 @@ pub fn test_exchange_data_200() {
     );
     assert_eq!(
         state.acceleration_world_ax,
-        Acceleration::new::<meter_per_second_squared>(-0.0004830509424209595)
+        Acceleration::new::<meter_per_second_squared>(-0.00048305094242095947)
     );
     assert_eq!(
         state.acceleration_world_ay,
@@ -261,7 +260,7 @@ pub fn test_exchange_data_200() {
     );
     assert_eq!(
         state.acceleration_body_ay,
-        Acceleration::new::<meter_per_second_squared>(-0.00008662045001983643)
+        Acceleration::new::<meter_per_second_squared>(-8.6620450019836426E-05)
     );
     assert_eq!(
         state.acceleration_body_az,

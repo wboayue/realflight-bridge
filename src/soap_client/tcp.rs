@@ -4,16 +4,19 @@ use std::{
     error::Error,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    sync::Arc,
+    sync::{Arc, Mutex}, thread,
 };
 
-use crate::{encode_envelope, ConnectionManager, SoapClient, SoapResponse, StatisticsEngine};
+use crossbeam_channel::{bounded, Receiver, Sender};
+use log::error;
+
+use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, StatisticsEngine};
 
 const HEADER_LEN: usize = 120;
 
 pub(crate) struct TcpSoapClient {
     pub(crate) statistics: Arc<StatisticsEngine>,
-    pub(crate) connection_manager: ConnectionManager,
+    pub(crate) connection_manager: ConnectionPool,
 }
 
 impl SoapClient for TcpSoapClient {
@@ -33,6 +36,11 @@ impl SoapClient for TcpSoapClient {
 }
 
 impl TcpSoapClient {
+    pub fn new(configuration: Configuration, statistics: Arc<StatisticsEngine>) -> Result<Self, Box<dyn Error>> {
+        let connection_manager = ConnectionPool::new(configuration, statistics.clone())?;
+        Ok(TcpSoapClient { statistics, connection_manager })
+    }
+
     fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
@@ -98,6 +106,108 @@ impl TcpSoapClient {
             Some(SoapResponse { status_code, body })
         } else {
             None
+        }
+    }
+}
+
+pub(crate) struct ConnectionPool {
+    config: Configuration,
+    next_socket: Receiver<TcpStream>,
+    creator_thread: Option<thread::JoinHandle<()>>,
+    running: Arc<Mutex<bool>>,
+    statistics: Arc<StatisticsEngine>,
+}
+
+impl ConnectionPool {
+    pub fn new(
+        config: Configuration,
+        statistics: Arc<StatisticsEngine>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let (sender, receiver) = bounded(config.buffer_size);
+
+        let running = Arc::new(Mutex::new(true));
+
+        let mut manager = ConnectionPool {
+            config,
+            next_socket: receiver,
+            creator_thread: None,
+            running,
+            statistics,
+        };
+
+        manager.start_socket_creator(sender)?;
+
+        Ok(manager)
+    }
+
+    // Start the background thread that creates new connections
+    fn start_socket_creator(
+        &mut self,
+        sender: Sender<TcpStream>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let config = self.config.clone();
+        let running = Arc::clone(&self.running);
+        let statistics = Arc::clone(&self.statistics);
+
+        eprintln!("Creating {} connections...", config.buffer_size);
+        for _ in 0..config.buffer_size {
+            let stream = Self::create_connection(&config, &statistics)?;
+            sender.send(stream).unwrap();
+        }
+
+        let handle = thread::spawn(move || {
+            while *running.lock().unwrap() {
+                if sender.is_full() && sender.capacity().unwrap() > 0 {
+                    thread::sleep(config.retry_delay);
+                    continue;
+                }
+
+                eprintln!("Creating new connection...");
+                let connection = Self::create_connection(&config, &statistics).unwrap();
+                sender.send(connection).unwrap();
+            }
+        });
+
+        self.creator_thread = Some(handle);
+        Ok(())
+    }
+
+    // Create a new TCP connection with timeout
+    fn create_connection(
+        config: &Configuration,
+        statistics: &Arc<StatisticsEngine>,
+    ) -> Result<TcpStream, Box<dyn std::error::Error>> {
+        let addr = config.simulator_url.parse()?;
+        for _ in 0..10 {
+            match TcpStream::connect_timeout(&addr, config.connect_timeout) {
+                Ok(stream) => {
+                    return Ok(stream);
+                }
+                Err(e) => {
+                    statistics.increment_error_count();
+                    error!("Error creating connection: {}", e);
+                }
+            }
+        }
+        Err("Failed to create connection".into())
+    }
+
+    // Get a new connection, consuming it
+    pub fn get_connection(&self) -> Result<TcpStream, Box<dyn std::error::Error>> {
+        Ok(self.next_socket.recv()?)
+    }
+}
+
+impl Drop for ConnectionPool {
+    fn drop(&mut self) {
+        // Signal the creator thread to stop
+        if let Ok(mut running) = self.running.lock() {
+            *running = false;
+        }
+
+        // Wait for the creator thread to finish
+        if let Some(handle) = self.creator_thread.take() {
+            let _ = handle.join();
         }
     }
 }
