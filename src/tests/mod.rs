@@ -13,7 +13,9 @@ use uom::si::velocity::meter_per_second;
 use uom::si::volume::liter;
 
 use super::*;
+use crate::decoders::OUNCES_PER_LITER;
 use soap_stub::Server;
+
 
 fn create_configuration(port: u16) -> Configuration {
     Configuration {
@@ -285,8 +287,8 @@ pub fn test_exchange_data_200() {
     );
     assert_eq!(
         state.fuel_remaining,
-        Volume::new::<liter>(-1.0 / 35.195079727854)
-    ); // FIXME: uom::si::volume::cubic_meter::cubic_meter
+        Volume::new::<liter>(-1.0 / OUNCES_PER_LITER)
+    );
     assert_eq!(state.is_locked, false);
     assert_eq!(state.has_lost_components, false);
     assert_eq!(state.an_engine_is_running, true);
