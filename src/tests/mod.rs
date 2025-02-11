@@ -16,7 +16,6 @@ use super::*;
 use crate::decoders::OUNCES_PER_LITER;
 use soap_stub::Server;
 
-
 fn create_configuration(port: u16) -> Configuration {
     Configuration {
         simulator_url: format!("127.0.0.1:{}", port),
@@ -51,7 +50,6 @@ pub fn test_tcp_soap_client() {
         Err(e) => {
             panic!("expected Ok from bridge.reset_aircraft: {:?}", e);
         }
-        
     }
 
     // Assert

@@ -59,13 +59,11 @@ impl Server {
 
     fn start_worker(&mut self) {
         let mut responses = self.responses.clone();
-        let running = Arc::clone(&self.running);
         let requests = Arc::clone(&self.requests);
         let port = self.port;
 
         let handle = thread::spawn(move || {
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-//            listener.set_nonblocking(true).unwrap();
 
             eprintln!("server listening on port {}", port);
 
@@ -78,8 +76,8 @@ impl Server {
                 if let Err(ref e) = incoming {
                     eprintln!("connection error: {}", e);
                     break;
-                } 
-                
+                }
+
                 if let Ok(ref mut stream) = incoming {
                     let a = &mut stream.try_clone().unwrap();
                     let mut streamb = BufReader::new(a);
@@ -98,7 +96,6 @@ impl Server {
                         break;
                     }
 
-                    // eprintln!("recording request:\n{}", request_body);
                     record_request(&requests, &request_body);
 
                     if let Some(response_key) = responses.pop() {

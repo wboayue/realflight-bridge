@@ -107,7 +107,7 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
     state.battery_current_draw = as_electrical_current(&raw, "m-batteryCurrentDraw-AMPS")?;
     state.battery_remaining_capacity =
         as_electrical_charge(&raw, "m-batteryRemainingCapacity-MAH")?;
-    state.fuel_remaining = as_volume(&raw, "m-fuelRemaining-OZ", Some(1.0/OUNCES_PER_LITER))?;
+    state.fuel_remaining = as_volume(&raw, "m-fuelRemaining-OZ", Some(1.0 / OUNCES_PER_LITER))?;
     state.is_locked = as_bool(&raw, "m-isLocked")?;
     state.has_lost_components = as_bool(&raw, "m-hasLostComponents")?;
     state.an_engine_is_running = as_bool(&raw, "m-anEngineIsRunning")?;
@@ -203,7 +203,11 @@ fn as_electrical_charge(
     Ok(ElectricCharge::new::<milliampere_hour>(value))
 }
 
-fn as_volume(state: &BTreeMap<String, String>, field: &str, scale: Option<f64>) -> Result<Volume, Box<dyn Error>> {
+fn as_volume(
+    state: &BTreeMap<String, String>,
+    field: &str,
+    scale: Option<f64>,
+) -> Result<Volume, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;
     let value: f64 = value.parse()?;
     let value = match scale {
