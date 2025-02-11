@@ -18,19 +18,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@nightly
+    - uses: dtolnay/rust-toolchain@stable
 
     - name: build
       run: cargo build --verbose
 
     - name: test
       run: |
-        mkdir test-results;
-        cargo install cargo2junit;
-        cargo +nightly test -- -Z unstable-options --format json | cargo2junit > test-results/tests.xml;
-
-    - name: summarize
-      uses: test-summary/action@dist
-      with:
-        paths: test-results/**/*.xml
-      if: always()
+        cargo test
