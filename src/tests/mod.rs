@@ -26,15 +26,36 @@ fn create_configuration(port: u16) -> Configuration {
     }
 }
 
-fn create_bridge(port: u16) -> RealFlightBridge {
+fn create_bridge(port: u16) -> Result<RealFlightBridge, Box<dyn std::error::Error>> {
     let configuration = create_configuration(port);
-    RealFlightBridge::new(configuration).unwrap()
+    RealFlightBridge::new(configuration)
 }
 
 /// Generate a random port number. Mitigates chances of port conflicts.
 fn random_port() -> u16 {
     let mut rng = rand::thread_rng();
     10_000 + rng.gen_range(1..1000)
+}
+
+#[test]
+pub fn test_new_tcp_bridge() {
+    let port = random_port();
+    let server = Server::new(port, vec![]);
+
+    let bridge = create_bridge(port);
+
+    let bridge = match bridge {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("error creating bridge: {:?}", e);
+            panic!("error creating bridge: {:?}", e);
+        }
+    };
+
+    assert_eq!(bridge.statistics.request_count(), 0);
+    assert_eq!(bridge.statistics.error_count(), 0);
+
+    drop(server);
 }
 
 #[test]
