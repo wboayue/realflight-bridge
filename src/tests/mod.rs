@@ -38,22 +38,26 @@ fn random_port() -> u16 {
 }
 
 #[test]
-pub fn test_new_tcp_bridge() {
+pub fn test_tcp_soap_client() {
+    // Assemble
     let port = random_port();
-    let server = Server::new(port, vec![]);
+    let server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
+    let bridge = create_bridge(port).unwrap();
 
-    let bridge = create_bridge(port);
-
-    let bridge = match bridge {
-        Ok(b) => b,
+    // Act
+    let result = bridge.reset_aircraft();
+    match result {
+        Ok(_) => {}
         Err(e) => {
-            eprintln!("error creating bridge: {:?}", e);
-            panic!("error creating bridge: {:?}", e);
+            panic!("expected Ok from bridge.reset_aircraft: {:?}", e);
         }
-    };
+        
+    }
 
-    assert_eq!(bridge.statistics.request_count(), 0);
-    assert_eq!(bridge.statistics.error_count(), 0);
+    // Assert
+    let statistics = bridge.statistics();
+    assert_eq!(statistics.request_count, 1);
+    assert_eq!(statistics.error_count, 0);
 
     drop(server);
 }
