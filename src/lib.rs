@@ -19,7 +19,7 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use decoders::decode_simulator_state;
+// use decoders::decode_simulator_state;
 use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
@@ -27,6 +27,12 @@ use uom::si::f64::*;
 
 #[cfg(test)]
 use soap_client::stub::StubSoapClient;
+
+#[cfg(not(any(test, feature = "bench-internals")))]
+use decoders::extract_element;
+
+#[cfg(any(test, feature = "bench-internals"))]
+pub use decoders::{decode_simulator_state, extract_element, extract_elements};
 
 mod decoders;
 mod soap_client;
@@ -80,7 +86,7 @@ impl RealFlightBridge {
         let body = encode_control_inputs(control);
         let response = self.soap_client.send_action("ExchangeData", &body)?;
         match response.status_code {
-            200 => decode_simulator_state(&response.body),
+            200 => self::decoders::decode_simulator_state(&response.body),
             _ => Err(decode_fault(&response).into()),
         }
     }
@@ -185,7 +191,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 ///     simulator_url: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(50),
 ///     retry_delay: Duration::from_millis(50),
-///     buffer_size: 1,
+///     pool_size: 1,
 /// };
 /// ```
 ///
@@ -208,7 +214,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 ///     simulator_url: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(25),  // Faster timeout
 ///     retry_delay: Duration::from_millis(10),      // Quick retry
-///     buffer_size: 5,                              // Larger connection pool
+///     pool_size: 5,                                // Larger connection pool
 /// };
 /// ```
 ///
@@ -221,7 +227,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 ///     simulator_url: "192.168.1.100:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(100), // Longer timeout for network
 ///     retry_delay: Duration::from_millis(100),     // Longer retry for network
-///     buffer_size: 2,
+///     pool_size: 2,
 /// };
 /// ```
 #[derive(Clone, Debug)]
@@ -280,7 +286,7 @@ pub struct Configuration {
     ///
     /// # Default
     /// 1 connection
-    pub buffer_size: usize,
+    pub pool_size: usize,
 }
 
 impl Default for Configuration {
@@ -289,7 +295,7 @@ impl Default for Configuration {
             simulator_url: "127.0.0.1:18083".to_string(),
             connect_timeout: Duration::from_millis(50),
             retry_delay: Duration::from_millis(50),
-            buffer_size: 1,
+            pool_size: 1,
         }
     }
 }
@@ -508,21 +514,6 @@ fn decode_fault(response: &SoapResponse) -> String {
         Some(message) => message,
         None => "Failed to extract error message".into(),
     }
-}
-
-pub fn extract_element(name: &str, xml: &str) -> Option<String> {
-    let start_tag = &format!("<{}>", name);
-    let end_tag = &format!("</{}>", name);
-
-    let start_pos = xml.find(start_tag)?;
-    let end_pos = xml.find(end_tag)?;
-
-    let detail_start = start_pos + start_tag.len();
-    if detail_start >= end_pos {
-        return None;
-    }
-
-    Some(xml[detail_start..end_pos].to_string())
 }
 
 #[cfg(test)]

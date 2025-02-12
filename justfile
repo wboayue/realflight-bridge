@@ -6,6 +6,10 @@ build:
 test:
     cargo test
 
+# Runs benchmarks
+bench:
+    cargo bench --features bench-internals
+
 # Generate and save coverage report using tarpaulin
 cover:
     cargo tarpaulin -o html

@@ -20,7 +20,7 @@ fn create_configuration(port: u16) -> Configuration {
     Configuration {
         simulator_url: format!("127.0.0.1:{}", port),
         connect_timeout: Duration::from_millis(1000),
-        buffer_size: 1,
+        pool_size: 1,
         ..Default::default()
     }
 }
@@ -32,8 +32,8 @@ fn create_bridge(port: u16) -> Result<RealFlightBridge, Box<dyn std::error::Erro
 
 /// Generate a random port number. Mitigates chances of port conflicts.
 fn random_port() -> u16 {
-    let mut rng = rand::thread_rng();
-    10_000 + rng.gen_range(1..1000)
+    let mut rng = rand::rng();
+    10_000 + rng.random_range(1..1000)
 }
 
 #[test]
