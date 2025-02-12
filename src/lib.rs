@@ -19,7 +19,7 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use decoders::decode_simulator_state;
+// use decoders::decode_simulator_state;
 use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
@@ -27,6 +27,12 @@ use uom::si::f64::*;
 
 #[cfg(test)]
 use soap_client::stub::StubSoapClient;
+
+#[cfg(not(any(test, feature = "bench-internals")))]
+use decoders::{decode_simulator_state, extract_element};
+
+#[cfg(any(test, feature = "bench-internals"))]
+pub use decoders::{decode_simulator_state, extract_element, extract_elements};
 
 mod decoders;
 mod soap_client;
@@ -80,7 +86,7 @@ impl RealFlightBridge {
         let body = encode_control_inputs(control);
         let response = self.soap_client.send_action("ExchangeData", &body)?;
         match response.status_code {
-            200 => decode_simulator_state(&response.body),
+            200 => self::decoders::decode_simulator_state(&response.body),
             _ => Err(decode_fault(&response).into()),
         }
     }
@@ -508,21 +514,6 @@ fn decode_fault(response: &SoapResponse) -> String {
         Some(message) => message,
         None => "Failed to extract error message".into(),
     }
-}
-
-pub fn extract_element(name: &str, xml: &str) -> Option<String> {
-    let start_tag = &format!("<{}>", name);
-    let end_tag = &format!("</{}>", name);
-
-    let start_pos = xml.find(start_tag)?;
-    let end_pos = xml.find(end_tag)?;
-
-    let detail_start = start_pos + start_tag.len();
-    if detail_start >= end_pos {
-        return None;
-    }
-
-    Some(xml[detail_start..end_pos].to_string())
 }
 
 #[cfg(test)]

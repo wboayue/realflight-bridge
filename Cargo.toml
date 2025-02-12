@@ -12,6 +12,10 @@ exclude = [
     "justfile",
 ]
 
+[features]
+# Feature flag for benchmarking
+bench-internals = []
+
 [dependencies]
 uom = "0.36.0"
 env_logger = "0.11.6"
@@ -27,5 +31,5 @@ criterion = { version = "0.5", features = ["html_reports"] }
 serial_test = "3.2.0"
 
 [[bench]]
-name = "parse_fault_bench"
+name = "decode_state_bench"
 harness = false

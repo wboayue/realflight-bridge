@@ -11,7 +11,7 @@ use uom::si::velocity::meter_per_second;
 use uom::si::volume::liter;
 use uom::si::{angular_velocity::degree_per_second, f64::*};
 
-use super::{extract_element, SimulatorState};
+use super::SimulatorState;
 
 const STATE_FIELDS: [&str; 45] = [
     "m-currentPhysicsTime-SEC",
@@ -118,7 +118,7 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
     Ok(state)
 }
 
-fn extract_elements(xml: &str) -> BTreeMap<String, String> {
+pub fn extract_elements(xml: &str) -> BTreeMap<String, String> {
     let mut elements = BTreeMap::new();
     for field in STATE_FIELDS.iter() {
         if let Some(value) = extract_element(field, xml) {
@@ -126,6 +126,21 @@ fn extract_elements(xml: &str) -> BTreeMap<String, String> {
         }
     }
     elements
+}
+
+pub fn extract_element(name: &str, xml: &str) -> Option<String> {
+    let start_tag = &format!("<{}>", name);
+    let end_tag = &format!("</{}>", name);
+
+    let start_pos = xml.find(start_tag)?;
+    let end_pos = xml.find(end_tag)?;
+
+    let detail_start = start_pos + start_tag.len();
+    if detail_start >= end_pos {
+        return None;
+    }
+
+    Some(xml[detail_start..end_pos].to_string())
 }
 
 fn as_time(state: &BTreeMap<String, String>, field: &str) -> Result<Time, Box<dyn Error>> {
