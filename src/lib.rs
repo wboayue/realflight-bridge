@@ -191,7 +191,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 ///     simulator_url: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(50),
 ///     retry_delay: Duration::from_millis(50),
-///     buffer_size: 1,
+///     pool_size: 1,
 /// };
 /// ```
 ///
@@ -214,7 +214,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 ///     simulator_url: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(25),  // Faster timeout
 ///     retry_delay: Duration::from_millis(10),      // Quick retry
-///     buffer_size: 5,                              // Larger connection pool
+///     pool_size: 5,                                // Larger connection pool
 /// };
 /// ```
 ///
@@ -227,7 +227,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 ///     simulator_url: "192.168.1.100:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(100), // Longer timeout for network
 ///     retry_delay: Duration::from_millis(100),     // Longer retry for network
-///     buffer_size: 2,
+///     pool_size: 2,
 /// };
 /// ```
 #[derive(Clone, Debug)]

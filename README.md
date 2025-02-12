@@ -123,4 +123,4 @@ The following sources were useful in understanding the RealFlight Link SOAP API:
 
 # License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/wboayue/realflight-bridge/blob/pre-release/LICENSE) file for details.
