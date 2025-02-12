@@ -29,7 +29,7 @@ use uom::si::f64::*;
 use soap_client::stub::StubSoapClient;
 
 #[cfg(not(any(test, feature = "bench-internals")))]
-use decoders::{decode_simulator_state, extract_element};
+use decoders::extract_element;
 
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::{decode_simulator_state, extract_element, extract_elements};
