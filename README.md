@@ -31,6 +31,7 @@ To add `realflight_bridge` to your Rust project, include the following in your `
 ```toml
 [dependencies]
 realflight_bridge = "1.0.0"
+scopeguard = "1.2"       # For safe cleanup in examples
 ```
 
 # Example Usage
@@ -41,14 +42,24 @@ The following example demonstrates how to connect to RealFlight Link, set up the
 use std::error::Error;
 
 use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge};
-
+use scopeguard;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Creates bridge with default configuration (connects to 127.0.0.1:18083)
-    let bridge = RealFlightBridge::new(Configuration::default());
+    let bridge = RealFlightBridge::new(Configuration::default())?;
 
-    // Activate the bridge by resetting the simulation and enabling external control input.
-    bridge.activate()?;
+    // Reset the simulation to start from a known state
+    bridge.reset_aircraft()?;
+
+    // Disable RC input and enable external control
+    bridge.disable_rc()?;
+
+    // Ensure RC control is restored even if we panic
+    let _cleanup = scopeguard::guard((), |_| {
+        if let Err(e) = bridge.enable_rc() {
+            eprintln!("Error restoring RC control: {}", e);
+        }
+    });
 
     // Initialize control inputs (12 channels available)
     let mut controls: ControlInputs = ControlInputs::default();
@@ -74,13 +85,27 @@ The ControlInputs struct provides 12 channels for aircraft control. Each channel
 
 The SimulatorState struct provides comprehensive flight data including:
 
-* Aircraft position and orientation (quaternion)
-* Linear and angular velocities (body and world frame)
-* Accelerations (body and world frame)
-* Environmental data (wind, altitude)
-* System status (battery, fuel, engine state)
+* Position and Orientation
+  - Aircraft position (X, Y coordinates)
+  - Orientation quaternion (X, Y, Z, W)
+  - Heading, pitch, and roll angles
 
-See the API documentation for a complete list of available state variables.
+* Velocities and Accelerations
+  - Airspeed and groundspeed
+  - Body and world frame velocities
+  - Linear and angular accelerations
+
+* Environment
+  - Altitude (ASL and AGL)
+  - Wind conditions (X, Y, Z components)
+
+* System Status
+  - Battery voltage and current
+  - Fuel remaining
+  - Engine state
+  - Aircraft status messages
+
+All physical quantities use SI units through the `uom` crate.
 
 # Architecture Notes
 

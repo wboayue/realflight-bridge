@@ -130,7 +130,7 @@ impl ConnectionPool {
         config: Configuration,
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (sender, receiver) = bounded(config.buffer_size);
+        let (sender, receiver) = bounded(config.pool_size);
 
         let running = Arc::new(Mutex::new(true));
 
@@ -156,8 +156,8 @@ impl ConnectionPool {
         let running = Arc::clone(&self.running);
         let statistics = Arc::clone(&self.statistics);
 
-        eprintln!("Creating {} connections...", config.buffer_size);
-        for _ in 0..config.buffer_size {
+        eprintln!("Creating {} connections...", config.pool_size);
+        for _ in 0..config.pool_size {
             let stream = Self::create_connection(&config, &statistics)?;
             sender.send(stream).unwrap();
         }

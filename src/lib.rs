@@ -286,7 +286,7 @@ pub struct Configuration {
     ///
     /// # Default
     /// 1 connection
-    pub buffer_size: usize,
+    pub pool_size: usize,
 }
 
 impl Default for Configuration {
@@ -295,7 +295,7 @@ impl Default for Configuration {
             simulator_url: "127.0.0.1:18083".to_string(),
             connect_timeout: Duration::from_millis(50),
             retry_delay: Duration::from_millis(50),
-            buffer_size: 1,
+            pool_size: 1,
         }
     }
 }

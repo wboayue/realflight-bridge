@@ -20,7 +20,7 @@ fn create_configuration(port: u16) -> Configuration {
     Configuration {
         simulator_url: format!("127.0.0.1:{}", port),
         connect_timeout: Duration::from_millis(1000),
-        buffer_size: 1,
+        pool_size: 1,
         ..Default::default()
     }
 }
