@@ -9,7 +9,7 @@ use std::{
 };
 
 use crossbeam_channel::{bounded, Receiver, Sender};
-use log::error;
+use log::{debug, error};
 
 use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, StatisticsEngine};
 
@@ -22,8 +22,6 @@ pub(crate) struct TcpSoapClient {
 
 impl SoapClient for TcpSoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
-        eprintln!("Sending action: {}", action);
-
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_manager.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
@@ -59,6 +57,7 @@ impl TcpSoapClient {
         request.push_str(envelope);
 
         stream.write_all(request.as_bytes()).unwrap();
+        stream.flush().unwrap();
     }
 
     fn read_response(&self, stream: &mut BufReader<TcpStream>) -> Option<SoapResponse> {
@@ -156,7 +155,7 @@ impl ConnectionPool {
         let running = Arc::clone(&self.running);
         let statistics = Arc::clone(&self.statistics);
 
-        eprintln!("Creating {} connections...", config.pool_size);
+        debug!("Creating {} connection in pool.", config.pool_size);
         for _ in 0..config.pool_size {
             let stream = Self::create_connection(&config, &statistics)?;
             sender.send(stream).unwrap();
@@ -169,7 +168,6 @@ impl ConnectionPool {
                     continue;
                 }
 
-                eprintln!("Creating new connection...");
                 let connection = Self::create_connection(&config, &statistics).unwrap();
                 sender.send(connection).unwrap();
             }

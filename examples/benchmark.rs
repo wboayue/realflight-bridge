@@ -34,11 +34,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     bridge.reset_aircraft()?;
-    bridge.disable_rc()?;
+    if let Err(e) = bridge.disable_rc() {
+        eprintln!("Error disabling RC: {}", e);
+    }
 
     let control = ControlInputs::default();
 
-    for _ in 0..10 {
+    for _ in 0..200 {
         let state = bridge.exchange_data(&control)?;
         debug!("state: {:?}", state);
     }

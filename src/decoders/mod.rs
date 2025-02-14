@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::{collections::BTreeMap, error::Error};
 
 use uom::si::acceleration::meter_per_second_squared;
@@ -142,6 +143,78 @@ pub fn extract_element(name: &str, xml: &str) -> Option<String> {
 
     Some(xml[detail_start..end_pos].to_string())
 }
+
+enum State {
+    Search,
+    Tag,
+    Content,
+    OpenTag,
+    CloseTag,
+}
+pub fn extract_elements_v2(xml: &str) -> Result<SimulatorState, Box<dyn Error>> {
+    let mut keys = HashSet::new();
+    for field in STATE_FIELDS.iter() {
+        keys.insert(field.to_string());
+    }
+
+    let mut state = State::Search;
+    let mut key = String::new();
+    let mut open_tag = String::new();
+    let mut content = String::new();
+
+    for ch in xml.chars() {
+        match state {
+            State::Search if ch == '<' => {
+                key.clear();
+                state = State::Tag;
+            },
+            State::Search => continue,
+            State::Tag => {
+                if ch == '?' {
+                    state = State::Search;
+                } else if ch == '/' {
+                    key.clear();
+                    state = State::CloseTag;
+                } else {
+                    key.clear();
+                    key.push(ch);
+                    state = State::OpenTag;
+                }
+            }
+            State::OpenTag => {
+                if ch == '>' {
+                    open_tag = key.clone();
+                    content.clear();
+                    state = State::Content;
+                } else {
+                    key.push(ch);
+                }
+            }
+            State::Content => {
+                if ch == '<' {
+                    state = State::Tag;
+                } else {
+                    content.push(ch);
+                }
+            }
+            State::CloseTag => {
+                if ch == '>' {
+                    if open_tag == key {
+                        // println!("{}: {}", key, content);
+                    }
+                    state = State::Search;
+                    key.clear();
+                    content.clear();
+                } else {
+                    key.push(ch);
+                }
+            }
+        }
+    }
+
+    Ok(SimulatorState::default())
+}
+
 
 fn as_time(state: &BTreeMap<String, String>, field: &str) -> Result<Time, Box<dyn Error>> {
     let value = state.get(field).ok_or(format!("{} not found", field))?;

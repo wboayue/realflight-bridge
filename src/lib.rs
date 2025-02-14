@@ -32,7 +32,7 @@ use soap_client::stub::StubSoapClient;
 use decoders::extract_element;
 
 #[cfg(any(test, feature = "bench-internals"))]
-pub use decoders::{decode_simulator_state, extract_element, extract_elements};
+pub use decoders::{decode_simulator_state, extract_element, extract_elements, extract_elements_v2};
 
 mod decoders;
 mod soap_client;
@@ -293,8 +293,8 @@ impl Default for Configuration {
     fn default() -> Self {
         Configuration {
             simulator_url: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(50),
-            retry_delay: Duration::from_millis(50),
+            connect_timeout: Duration::from_millis(100),
+            retry_delay: Duration::from_millis(1),
             pool_size: 1,
         }
     }
