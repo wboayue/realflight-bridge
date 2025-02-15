@@ -32,7 +32,7 @@ use soap_client::stub::StubSoapClient;
 use decoders::extract_element;
 
 #[cfg(any(test, feature = "bench-internals"))]
-pub use decoders::{decode_simulator_state, extract_element, extract_elements, extract_elements_v2};
+pub use decoders::{decode_simulator_state, extract_element, extract_elements};
 
 mod decoders;
 mod soap_client;
@@ -345,7 +345,7 @@ impl Default for Configuration {
 #[derive(Default, Debug)]
 pub struct ControlInputs {
     /// Array of 12 channel values, each between 0.0 and 1.0
-    pub channels: [f32; 12],
+    pub channels: [f64; 12],
 }
 
 /// Represents the complete state of the simulated aircraft in RealFlight.
