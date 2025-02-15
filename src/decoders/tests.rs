@@ -7,7 +7,8 @@ pub fn test_decode_simulator_state() {
     // Tests the decoding of simulator state.
 
     // Act
-    let state = decode_simulator_state(SIM_STATE_RESPONSE).expect("Failed to decode simulator state");
+    let state =
+        decode_simulator_state(SIM_STATE_RESPONSE).expect("Failed to decode simulator state");
 
     // Assert
     assert_eq!(
