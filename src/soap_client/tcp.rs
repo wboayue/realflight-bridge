@@ -2,14 +2,15 @@
 
 use std::{
     error::Error,
+    f32::consts::E,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     sync::{Arc, Mutex},
     thread,
 };
 
-use crossbeam_channel::{bounded, Receiver, Sender};
-use log::{debug, error};
+use crossbeam_channel::{bounded, Receiver, SendTimeoutError, Sender};
+use log::{debug, error, info};
 
 use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, StatisticsEngine};
 
@@ -163,13 +164,13 @@ impl ConnectionPool {
 
         let handle = thread::spawn(move || {
             while *running.lock().unwrap() {
-                if sender.is_full() && sender.capacity().unwrap() > 0 {
-                    thread::sleep(config.retry_delay);
-                    continue;
-                }
-
                 let connection = Self::create_connection(&config, &statistics).unwrap();
-                sender.send(connection).unwrap();
+                match sender.send_timeout(connection, config.connect_timeout) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        info!("Error sending connection to pool: {}", e);
+                    }
+                }
             }
         });
 

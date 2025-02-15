@@ -18,7 +18,7 @@ Custom aircraft models can also be created to closely match real-world designs, 
 
 # Prerequisites
 
-- RealFlight simulator (tested with RealFlight Evolution)
+- [RealFlight simulator](https://www.realflight.com/) (tested with RealFlight Evolution)
 - RealFlight Link enabled in simulator settings
   1. Open RealFlight
   2. Go to Settings > Physics -> Quality -> RealFlight Link Enabled
