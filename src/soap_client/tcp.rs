@@ -2,26 +2,34 @@
 
 use std::{
     error::Error,
-    f32::consts::E,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     sync::{Arc, Mutex},
     thread,
 };
 
-use crossbeam_channel::{bounded, Receiver, SendTimeoutError, Sender};
+use crossbeam_channel::{bounded, Receiver, Sender};
 use log::{debug, error, info};
 
 use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, StatisticsEngine};
 
+/// Size of header for request body
 const HEADER_LEN: usize = 120;
 
+/// Implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct TcpSoapClient {
+    /// Statistics engine for tracking performance
     pub(crate) statistics: Arc<StatisticsEngine>,
+    /// Connection pool for managing TCP connections
     pub(crate) connection_manager: ConnectionPool,
 }
 
 impl SoapClient for TcpSoapClient {
+    /// Sends a SOAP action to the simulator and returns the response.
+    ///
+    /// # Arguments
+    /// * `action` - The SOAP action to send.
+    /// * `body`   - The body of the SOAP request.
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_manager.get_connection()?;
@@ -36,6 +44,7 @@ impl SoapClient for TcpSoapClient {
 }
 
 impl TcpSoapClient {
+    /// Creates a new TCP SOAP client.
     pub fn new(
         configuration: Configuration,
         statistics: Arc<StatisticsEngine>,
@@ -47,6 +56,7 @@ impl TcpSoapClient {
         })
     }
 
+    /// Sends a request to the simulator.
     fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
@@ -57,10 +67,13 @@ impl TcpSoapClient {
         request.push_str("\r\n");
         request.push_str(envelope);
 
-        stream.write_all(request.as_bytes()).unwrap();
-        stream.flush().unwrap();
+        stream
+            .write_all(request.as_bytes())
+            .expect("Failed to write request");
+        stream.flush().expect("Failed to flush request");
     }
 
+    /// Reads the raw response from the simulator.
     fn read_response(&self, stream: &mut BufReader<TcpStream>) -> Option<SoapResponse> {
         let mut status_line = String::new();
 
@@ -72,7 +85,7 @@ impl TcpSoapClient {
         if status_line.is_empty() {
             return None;
         }
-        // eprintln!("Status Line: '{}'", status_line.trim());
+
         let status_code: u32 = status_line
             .split_whitespace()
             .nth(1)
@@ -97,18 +110,11 @@ impl TcpSoapClient {
             headers.push_str(&line);
         }
 
-        // println!("Headers:\n{}", headers);
-        // println!("content length:\n{}", content_length.unwrap());
-
         // Read the body based on Content-Length
         if let Some(length) = content_length {
-            // let mut body = String::with_capacity(length);
-            // stream.read_to_string(&mut body).unwrap();
-
             let mut body = vec![0; length];
             stream.read_exact(&mut body).unwrap();
             let body = String::from_utf8_lossy(&body).to_string();
-            // println!("Body: {}", r);
 
             Some(SoapResponse { status_code, body })
         } else {
@@ -117,6 +123,9 @@ impl TcpSoapClient {
     }
 }
 
+/// The RealFlight SoapServer requires a new connection for each request.
+/// The idea for the pool is to create the next connection
+/// in the background while the current request is being processed.
 pub(crate) struct ConnectionPool {
     config: Configuration,
     next_socket: Receiver<TcpStream>,

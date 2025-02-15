@@ -10,10 +10,6 @@ test:
 bench:
     cargo bench --features bench-internals
 
-# Runs benchmarks
-bench2:
-    cargo run --example parse --features bench-internals
-
 # Generate and save coverage report using tarpaulin
 cover:
     cargo tarpaulin -o html

@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let control = ControlInputs::default();
 
-    for _ in 0..200 {
+    for _ in 0..500 {
         let state = bridge.exchange_data(&control)?;
         debug!("state: {:?}", state);
     }
