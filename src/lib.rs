@@ -188,7 +188,6 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 /// let default_config = Configuration {
 ///     simulator_url: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(50),
-///     retry_delay: Duration::from_millis(50),
 ///     pool_size: 1,
 /// };
 /// ```
@@ -211,7 +210,6 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 /// let config = Configuration {
 ///     simulator_url: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(25),  // Faster timeout
-///     retry_delay: Duration::from_millis(10),      // Quick retry
 ///     pool_size: 5,                                // Larger connection pool
 /// };
 /// ```
@@ -224,7 +222,6 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 /// let config = Configuration {
 ///     simulator_url: "192.168.1.100:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(100), // Longer timeout for network
-///     retry_delay: Duration::from_millis(100),     // Longer retry for network
 ///     pool_size: 2,
 /// };
 /// ```
@@ -252,20 +249,6 @@ pub struct Configuration {
     /// 50 milliseconds
     pub connect_timeout: Duration,
 
-    /// Time to wait between connection retry attempts.
-    ///
-    /// This delay helps prevent overwhelming the system when the simulator
-    /// is not responding or during connection pool maintenance.
-    ///
-    /// # Performance Impact
-    /// * Lower values allow faster recovery from connection failures
-    /// * Too low values may impact system performance
-    /// * Recommended range: 10-100ms
-    ///
-    /// # Default
-    /// 50 milliseconds
-    pub retry_delay: Duration,
-
     /// Size of the connection pool.
     ///
     /// The connection pool maintains a set of pre-established TCP connections
@@ -292,7 +275,6 @@ impl Default for Configuration {
         Configuration {
             simulator_url: "127.0.0.1:18083".to_string(),
             connect_timeout: Duration::from_millis(100),
-            retry_delay: Duration::from_millis(1),
             pool_size: 1,
         }
     }
