@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use realflight_bridge::{decode_simulator_state, extract_element, extract_elements};
+use realflight_bridge::{decode_simulator_state, extract_element};
 
 static SIM_STATE_RESPONSE: &str = include_str!("../testdata/responses/return-data-200.xml");
 
