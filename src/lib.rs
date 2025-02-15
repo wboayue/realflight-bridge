@@ -19,6 +19,7 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use decoders::extract_element;
 // use decoders::decode_simulator_state;
 use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
@@ -28,11 +29,8 @@ use uom::si::f64::*;
 #[cfg(test)]
 use soap_client::stub::StubSoapClient;
 
-#[cfg(not(any(test, feature = "bench-internals")))]
-use decoders::extract_element;
-
 #[cfg(any(test, feature = "bench-internals"))]
-pub use decoders::{decode_simulator_state, extract_element, extract_elements, extract_elements_v2};
+pub use decoders::decode_simulator_state;
 
 mod decoders;
 mod soap_client;
@@ -345,7 +343,7 @@ impl Default for Configuration {
 #[derive(Default, Debug)]
 pub struct ControlInputs {
     /// Array of 12 channel values, each between 0.0 and 1.0
-    pub channels: [f32; 12],
+    pub channels: [f64; 12],
 }
 
 /// Represents the complete state of the simulated aircraft in RealFlight.
@@ -458,7 +456,7 @@ pub struct Statistics {
 }
 
 /// Statistics for the RealFlightBridge
-pub struct StatisticsEngine {
+pub(crate) struct StatisticsEngine {
     start_time: Instant,
     error_count: AtomicU32,
     request_count: AtomicU32,

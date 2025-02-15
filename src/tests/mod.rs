@@ -186,7 +186,7 @@ pub fn test_exchange_data_200() {
     // Act
     let mut control = ControlInputs::default();
     for i in 0..control.channels.len() {
-        control.channels[i] = i as f32 / 12.0;
+        control.channels[i] = i as f64 / 12.0;
     }
 
     let result = bridge.exchange_data(&control);
@@ -323,7 +323,7 @@ pub fn test_exchange_data_200() {
 
     assert_eq!(requests.len(), 1);
     let control_inputs = "\
-    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.083333336</item><item>0.16666667</item><item>0.25</item><item>0.33333334</item><item>0.41666666</item><item>0.5</item><item>0.5833333</item><item>0.6666667</item><item>0.75</item><item>0.8333333</item><item>0.9166667</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
+    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.08333333333333333</item><item>0.16666666666666666</item><item>0.25</item><item>0.3333333333333333</item><item>0.4166666666666667</item><item>0.5</item><item>0.5833333333333334</item><item>0.6666666666666666</item><item>0.75</item><item>0.8333333333333334</item><item>0.9166666666666666</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
     ";
     assert_eq!(requests[0], control_inputs);
 
@@ -344,7 +344,7 @@ pub fn test_exchange_data_500() {
     // Act
     let mut control = ControlInputs::default();
     for i in 0..control.channels.len() {
-        control.channels[i] = i as f32 / 12.0;
+        control.channels[i] = i as f64 / 12.0;
     }
 
     let result = bridge.exchange_data(&control);
@@ -363,7 +363,7 @@ pub fn test_exchange_data_500() {
 
     assert_eq!(requests.len(), 1);
     let control_inputs = "\
-    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.083333336</item><item>0.16666667</item><item>0.25</item><item>0.33333334</item><item>0.41666666</item><item>0.5</item><item>0.5833333</item><item>0.6666667</item><item>0.75</item><item>0.8333333</item><item>0.9166667</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
+    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.08333333333333333</item><item>0.16666666666666666</item><item>0.25</item><item>0.3333333333333333</item><item>0.4166666666666667</item><item>0.5</item><item>0.5833333333333334</item><item>0.6666666666666666</item><item>0.75</item><item>0.8333333333333334</item><item>0.9166666666666666</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
     ";
     assert_eq!(requests[0], control_inputs);
 
