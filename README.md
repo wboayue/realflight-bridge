@@ -21,8 +21,8 @@ Custom aircraft models can also be created to closely match real-world designs, 
 - RealFlight simulator (tested with RealFlight Evolution)
 - RealFlight Link enabled in simulator settings
   1. Open RealFlight
-  2. Go to Settings > Link
-  3. Enable external control
+  2. Go to Settings > Physics -> Quality -> RealFlight Link Enabled
+  3. Enable RealFlight Link
 
 # Install
 
@@ -30,7 +30,7 @@ To add `realflight_bridge` to your Rust project, include the following in your `
 
 ```toml
 [dependencies]
-realflight_bridge = "1.0.0"
+realflight_bridge = "0.1.0"
 scopeguard = "1.2"       # For safe cleanup in examples
 ```
 
@@ -119,7 +119,7 @@ The following sources were useful in understanding the RealFlight Link SOAP API:
 
 * RealFlight [developer forums](https://forums.realflight.com/index.php?threads/flightaxis-link-q-a.32854/)
 * ArduPilot RealFlight SITL: [SIM_FlightAxis.h](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SITL/SIM_FlightAxis.h), [SIM_FlightAxis.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SITL/SIM_FlightAxis.cpp)
-* Flight Axis [python implementation](https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py) by Michal Podhradsky
+* Flight Axis [python implementation](https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py)
 
 # License
 
