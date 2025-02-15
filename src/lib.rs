@@ -38,30 +38,30 @@ mod soap_client;
 const UNUSED: &str = "";
 
 /// A high-level client for interacting with RealFlight simulators via RealFlight Link.
-/// 
+///
 /// # Overview
-/// 
+///
 /// [RealFlightBridge] is your main entry point to controlling and querying the
 /// RealFlight simulator. It exposes methods to:
-/// 
+///
 /// - Send flight control inputs (e.g., RC channel data).
 /// - Retrieve real-time flight state from the simulator.
 /// - Toggle between internal and external RC control devices.
 /// - Reset aircraft position and orientation.
 ///  
 /// # Examples
-/// 
+///
 /// ```no_run
 /// use realflight_bridge::{RealFlightBridge, Configuration, ControlInputs};
 /// use std::error::Error;
-/// 
+///
 /// fn main() -> Result<(), Box<dyn Error>> {
 ///     // Configure connection to the RealFlight simulator
 ///     let config = Configuration::default();
-/// 
+///
 ///     // Build a RealFlightBridge client
 ///     let bridge = RealFlightBridge::new(config)?;
-/// 
+///
 ///     // Create sample control inputs
 ///     let mut inputs = ControlInputs::default();
 ///     inputs.channels[0] = 0.5; // Neutral aileron
@@ -70,32 +70,32 @@ const UNUSED: &str = "";
 ///     
 ///     // Enable external control
 ///     bridge.disable_rc()?;
-/// 
+///
 ///     // Exchange data with the simulator
 ///     let sim_state = bridge.exchange_data(&inputs)?;
 ///     println!("Current airspeed: {:?}", sim_state.airspeed);
-/// 
+///
 ///     // Return to internal control
 ///     bridge.enable_rc()?;
-/// 
+///
 ///     Ok(())
 /// }
 /// ```
-/// 
+///
 /// # Error Handling
-/// 
+///
 /// Methods that exchange data or mutate simulator state return `Result<T, Box<dyn Error>>`.
 /// Common errors include:
-/// 
+///
 /// - Connection timeouts
 /// - SOAP faults (e.g., simulator not ready or invalid commands)
 /// - Parsing issues for responses
-/// 
+///
 /// Any non-2xx HTTP status code will typically return an error containing the simulator’s
 /// fault message, if available.
-/// 
+///
 /// # Statistics
-/// 
+///
 /// Use [`statistics()`](#method.statistics) to retrieve current performance metrics
 /// such as request count, errors, and average frame rate. This is useful for profiling
 /// real-time loops or detecting dropped messages.
@@ -226,7 +226,6 @@ impl RealFlightBridge {
             _ => Err(decode_fault(&response).into()),
         }
     }
-
 
     /// Reverts the RealFlight simulator to use its original Spektrum (or built-in) RC input.
     ///
@@ -668,7 +667,7 @@ pub struct SimulatorState {
 /// ```no_run
 /// use realflight_bridge::{RealFlightBridge, Configuration};
 /// use std::error::Error;
-/// 
+///
 /// fn main() -> Result<(), Box<dyn Error>> {
 ///     let config = Configuration::default();
 ///     let bridge = RealFlightBridge::new(config)?;
