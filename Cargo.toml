@@ -1,12 +1,12 @@
 [package]
 name = "realflight-bridge"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 readme = "README.md"
 description = "RealFlightBridge is a Rust library that interfaces with RealFlight Link, enabling external flight controllers to interact with the simulator."
 homepage = "https://github.com/wboayue/realflight-bridge/"
 repository = "https://github.com/wboayue/realflight-bridge/"
-documentation = "https://docs.rs/realflight-bridge/latest/realflight-bridge/"
+documentation = "https://docs.rs/realflight-bridge/latest/realflight_bridge/index.html"
 license = "MIT"
 exclude = [
     "justfile",
