@@ -30,7 +30,7 @@ To add `realflight_bridge` to your Rust project, include the following in your `
 
 ```toml
 [dependencies]
-realflight_bridge = "0.1.0"
+realflight-bridge = "0.1.3"
 scopeguard = "1.2"       # For safe cleanup in examples
 ```
 
