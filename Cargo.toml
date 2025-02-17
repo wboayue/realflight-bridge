@@ -1,6 +1,6 @@
 [package]
 name = "realflight-bridge"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2021"
 readme = "README.md"
 description = "RealFlightBridge is a Rust library that interfaces with RealFlight Link, enabling external flight controllers to interact with the simulator."
