@@ -19,18 +19,22 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use decoders::extract_element;
-// use decoders::decode_simulator_state;
 use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
-use uom::si::f64::*;
+use uom::si::f32::*;
 
 #[cfg(test)]
 use soap_client::stub::StubSoapClient;
 
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::decode_simulator_state;
+
+#[cfg(not(any(test, feature = "bench-internals")))]
+use decoders::extract_element;
+
+#[cfg(any(test, feature = "bench-internals"))]
+pub use decoders::extract_element;
 
 mod decoders;
 mod soap_client;
@@ -60,7 +64,7 @@ const UNUSED: &str = "";
 ///     let config = Configuration::default();
 ///
 ///     // Build a RealFlightBridge client
-///     let bridge = RealFlightBridge::new(config)?;
+///     let bridge = RealFlightBridge::new(&config)?;
 ///
 ///     // Create sample control inputs
 ///     let mut inputs = ControlInputs::default();
@@ -130,7 +134,7 @@ impl RealFlightBridge {
     ///     let config = Configuration::default();
     ///
     ///     // Build a bridge to the RealFlight simulator.
-    ///     let bridge = RealFlightBridge::new(config)?;
+    ///     let bridge = RealFlightBridge::new(&config)?;
     ///
     ///     // Now you can interact with RealFlight:
     ///     // - Send/receive flight control data
@@ -147,12 +151,15 @@ impl RealFlightBridge {
     ///
     /// - If the simulator address specified in `configuration` is invalid.
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
-    pub fn new(configuration: Configuration) -> Result<RealFlightBridge, Box<dyn Error>> {
+    pub fn new(configuration: &Configuration) -> Result<RealFlightBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
 
         Ok(RealFlightBridge {
             statistics: statistics.clone(),
-            soap_client: Box::new(TcpSoapClient::new(configuration, statistics.clone())?),
+            soap_client: Box::new(TcpSoapClient::new(
+                configuration.clone(),
+                statistics.clone(),
+            )?),
         })
     }
 
@@ -203,7 +210,7 @@ impl RealFlightBridge {
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
     ///     let config = Configuration::default();
-    ///     let bridge = RealFlightBridge::new(config)?;
+    ///     let bridge = RealFlightBridge::new(&config)?;
     ///
     ///     // Create sample control inputs
     ///     let mut inputs = ControlInputs::default();
@@ -246,7 +253,7 @@ impl RealFlightBridge {
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
     ///     let config = Configuration::default();
-    ///     let bridge = RealFlightBridge::new(config)?;
+    ///     let bridge = RealFlightBridge::new(&config)?;
     ///
     ///     // Switch back to native Spektrum controller
     ///     bridge.enable_rc()?;
@@ -282,7 +289,7 @@ impl RealFlightBridge {
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
     ///     let config = Configuration::default();
-    ///     let bridge = RealFlightBridge::new(config)?;
+    ///     let bridge = RealFlightBridge::new(&config)?;
     ///
     ///     // Switch to the external RealFlight Link input
     ///     bridge.disable_rc()?;
@@ -318,7 +325,7 @@ impl RealFlightBridge {
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
     ///     let config = Configuration::default();
-    ///     let bridge = RealFlightBridge::new(config)?;
+    ///     let bridge = RealFlightBridge::new(&config)?;
     ///
     ///     // Perform a flight test...
     ///     // ...
@@ -409,7 +416,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 /// use std::time::Duration;
 ///
 /// let default_config = Configuration {
-///     simulator_url: "127.0.0.1:18083".to_string(),
+///     simulator_host: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(50),
 ///     pool_size: 1,
 /// };
@@ -431,7 +438,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 /// use std::time::Duration;
 ///
 /// let config = Configuration {
-///     simulator_url: "127.0.0.1:18083".to_string(),
+///     simulator_host: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(25),  // Faster timeout
 ///     pool_size: 5,                                // Larger connection pool
 /// };
@@ -443,23 +450,23 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
 /// use std::time::Duration;
 ///
 /// let config = Configuration {
-///     simulator_url: "192.168.1.100:18083".to_string(),
+///     simulator_host: "192.168.1.100:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(100), // Longer timeout for network
 ///     pool_size: 2,
 /// };
 /// ```
 #[derive(Clone, Debug)]
 pub struct Configuration {
-    /// The URL where the RealFlight simulator is listening for connections.
+    /// The host where the RealFlight simulator is listening for connections.
     ///
     /// # Format
-    /// The URL should be in the format "host:port". For local development,
+    /// The value should be in the format "host:port". For local development,
     /// this is typically "127.0.0.1:18083".
     ///
     /// # Important Notes
     /// * The bridge should run on the same machine as RealFlight for best performance
     /// * Remote connections may experience significant latency due to SOAP overhead
-    pub simulator_url: String,
+    pub simulator_host: String,
 
     /// Maximum time to wait when establishing a new TCP connection.
     ///
@@ -496,8 +503,8 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Configuration {
-            simulator_url: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(100),
+            simulator_host: "127.0.0.1:18083".to_string(),
+            connect_timeout: Duration::from_millis(50),
             pool_size: 1,
         }
     }
@@ -548,7 +555,7 @@ impl Default for Configuration {
 #[derive(Default, Debug)]
 pub struct ControlInputs {
     /// Array of 12 channel values, each between 0.0 and 1.0
-    pub channels: [f64; 12],
+    pub channels: [f32; 12],
 }
 
 /// Represents the complete state of the simulated aircraft in RealFlight.
@@ -612,9 +619,9 @@ pub struct SimulatorState {
     /// Wind velocity along world Z axis
     pub wind_z: Velocity,
     /// Propeller RPM for piston/electric aircraft
-    pub prop_rpm: f64,
+    pub prop_rpm: f32,
     /// Main rotor RPM for helicopters
-    pub heli_main_rotor_rpm: f64,
+    pub heli_main_rotor_rpm: f32,
     /// Battery voltage
     pub battery_voltage: ElectricPotential,
     /// Current draw from battery
@@ -636,15 +643,15 @@ pub struct SimulatorState {
     /// Current simulation time
     pub current_physics_time: Time,
     /// Current time acceleration factor
-    pub current_physics_speed_multiplier: f64,
+    pub current_physics_speed_multiplier: f32,
     /// Quaternion X component (scalar)
-    pub orientation_quaternion_x: f64,
+    pub orientation_quaternion_x: f32,
     /// Quaternion Y component (scalar)
-    pub orientation_quaternion_y: f64,
+    pub orientation_quaternion_y: f32,
     /// Quaternion Z component (scalar)
-    pub orientation_quaternion_z: f64,
+    pub orientation_quaternion_z: f32,
     /// Quaternion W component (scalar)
-    pub orientation_quaternion_w: f64,
+    pub orientation_quaternion_w: f32,
     /// True if external flight controller is active
     pub flight_axis_controller_is_active: bool,
     /// True if reset button was pressed
@@ -670,14 +677,14 @@ pub struct SimulatorState {
 ///
 /// fn main() -> Result<(), Box<dyn Error>> {
 ///     let config = Configuration::default();
-///     let bridge = RealFlightBridge::new(config)?;
+///     let bridge = RealFlightBridge::new(&config)?;
 ///
 ///     // Send some commands...
 ///
 ///     // Now retrieve statistics to assess performance
 ///     let stats = bridge.statistics();
 ///     println!("Runtime: {:?}", stats.runtime);
-///     println!("Frame rate: {:.2} req/s", stats.frame_rate);
+///     println!("Frequency: {:.2} Hz", stats.frequency);
 ///     println!("Errors so far: {}", stats.error_count);
 ///
 ///     Ok(())
@@ -690,7 +697,7 @@ pub struct SimulatorState {
 pub struct Statistics {
     pub runtime: Duration,
     pub error_count: u32,
-    pub frame_rate: f64,
+    pub frequency: f32,
     pub request_count: u32,
 }
 
@@ -714,7 +721,7 @@ impl StatisticsEngine {
         Statistics {
             runtime: self.start_time.elapsed(),
             error_count: self.error_count(),
-            frame_rate: self.frame_rate(),
+            frequency: self.frame_rate(),
             request_count: self.request_count(),
         }
     }
@@ -735,8 +742,8 @@ impl StatisticsEngine {
         self.error_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn frame_rate(&self) -> f64 {
-        self.request_count() as f64 / self.start_time.elapsed().as_secs_f64()
+    fn frame_rate(&self) -> f32 {
+        self.request_count() as f32 / self.start_time.elapsed().as_secs_f32()
     }
 }
 

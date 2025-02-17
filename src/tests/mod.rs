@@ -6,7 +6,7 @@ use uom::si::angular_velocity::degree_per_second;
 use uom::si::electric_charge::milliampere_hour;
 use uom::si::electric_current::ampere;
 use uom::si::electric_potential::volt;
-use uom::si::f64::*;
+use uom::si::f32::*;
 use uom::si::length::meter;
 use uom::si::time::second;
 use uom::si::velocity::meter_per_second;
@@ -18,7 +18,7 @@ use soap_stub::Server;
 
 fn create_configuration(port: u16) -> Configuration {
     Configuration {
-        simulator_url: format!("127.0.0.1:{}", port),
+        simulator_host: format!("127.0.0.1:{}", port),
         connect_timeout: Duration::from_millis(1000),
         pool_size: 1,
         ..Default::default()
@@ -27,7 +27,7 @@ fn create_configuration(port: u16) -> Configuration {
 
 fn create_bridge(port: u16) -> Result<RealFlightBridge, Box<dyn std::error::Error>> {
     let configuration = create_configuration(port);
-    RealFlightBridge::new(configuration)
+    RealFlightBridge::new(&configuration)
 }
 
 /// Generate a random port number. Mitigates chances of port conflicts.
@@ -186,7 +186,7 @@ pub fn test_exchange_data_200() {
     // Act
     let mut control = ControlInputs::default();
     for i in 0..control.channels.len() {
-        control.channels[i] = i as f64 / 12.0;
+        control.channels[i] = i as f32 / 12.0;
     }
 
     let result = bridge.exchange_data(&control);
@@ -323,7 +323,7 @@ pub fn test_exchange_data_200() {
 
     assert_eq!(requests.len(), 1);
     let control_inputs = "\
-    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.08333333333333333</item><item>0.16666666666666666</item><item>0.25</item><item>0.3333333333333333</item><item>0.4166666666666667</item><item>0.5</item><item>0.5833333333333334</item><item>0.6666666666666666</item><item>0.75</item><item>0.8333333333333334</item><item>0.9166666666666666</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
+    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.083333336</item><item>0.16666667</item><item>0.25</item><item>0.33333334</item><item>0.41666666</item><item>0.5</item><item>0.5833333</item><item>0.6666667</item><item>0.75</item><item>0.8333333</item><item>0.9166667</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
     ";
     assert_eq!(requests[0], control_inputs);
 
@@ -344,7 +344,7 @@ pub fn test_exchange_data_500() {
     // Act
     let mut control = ControlInputs::default();
     for i in 0..control.channels.len() {
-        control.channels[i] = i as f64 / 12.0;
+        control.channels[i] = i as f32 / 12.0;
     }
 
     let result = bridge.exchange_data(&control);
@@ -363,7 +363,7 @@ pub fn test_exchange_data_500() {
 
     assert_eq!(requests.len(), 1);
     let control_inputs = "\
-    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.08333333333333333</item><item>0.16666666666666666</item><item>0.25</item><item>0.3333333333333333</item><item>0.4166666666666667</item><item>0.5</item><item>0.5833333333333334</item><item>0.6666666666666666</item><item>0.75</item><item>0.8333333333333334</item><item>0.9166666666666666</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
+    <?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><soap:Body><ExchangeData><pControlInputs><m-selectedChannels>4095</m-selectedChannels><m-channelValues-0to1><item>0</item><item>0.083333336</item><item>0.16666667</item><item>0.25</item><item>0.33333334</item><item>0.41666666</item><item>0.5</item><item>0.5833333</item><item>0.6666667</item><item>0.75</item><item>0.8333333</item><item>0.9166667</item></m-channelValues-0to1></pControlInputs></ExchangeData></soap:Body></soap:Envelope>\
     ";
     assert_eq!(requests[0], control_inputs);
 

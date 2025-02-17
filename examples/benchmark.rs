@@ -11,21 +11,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .author("Wil Boayue <wil@wsbsolutions.com")
         .about("save simulator data to a file")
         .arg(
-            arg!(--simulator_url <VALUE>)
+            arg!(--simulator_host <VALUE>)
                 .help("url to RealFlight simulator")
                 .default_value("127.0.0.1:18083"),
         )
         .get_matches();
 
-    let simulator_url = matches.get_one::<String>("simulator_url").unwrap();
-    info!("Connecting to RealFlight simulator at {}", simulator_url);
+    let simulator_host = matches.get_one::<String>("simulator_url").unwrap();
+    info!("Connecting to RealFlight simulator at {}", simulator_host);
 
     let configuration = Configuration {
-        simulator_url: simulator_url.clone(),
+        simulator_host: simulator_host.clone(),
         ..Default::default()
     };
 
-    let bridge = match RealFlightBridge::new(configuration) {
+    let bridge = match RealFlightBridge::new(&configuration) {
         Ok(client) => client,
         Err(e) => {
             eprintln!("Error connecting to RealFlight simulator: {}", e);
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let statistics = bridge.statistics();
 
     println!("Runtime: {:?}", statistics.runtime);
-    println!("Frame Rate: {:?}", statistics.frame_rate);
+    println!("Frame Rate: {:?}", statistics.frequency);
     println!("Error Count: {:?}", statistics.error_count);
     println!("Request count: {:?}", statistics.request_count);
 
