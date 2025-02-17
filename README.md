@@ -46,7 +46,7 @@ use scopeguard;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Creates bridge with default configuration (connects to 127.0.0.1:18083)
-    let bridge = RealFlightBridge::new(Configuration::default())?;
+    let bridge = RealFlightBridge::new(&Configuration::default())?;
 
     // Reset the simulation to start from a known state
     bridge.reset_aircraft()?;

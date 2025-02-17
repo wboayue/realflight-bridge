@@ -192,7 +192,7 @@ impl ConnectionPool {
         config: &Configuration,
         statistics: &Arc<StatisticsEngine>,
     ) -> Result<TcpStream, Box<dyn std::error::Error>> {
-        let addr = config.simulator_url.parse()?;
+        let addr = config.simulator_host.parse()?;
         for _ in 0..10 {
             match TcpStream::connect_timeout(&addr, config.connect_timeout) {
                 Ok(stream) => {

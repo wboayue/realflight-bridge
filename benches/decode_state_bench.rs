@@ -28,19 +28,9 @@ fn bench_extract_element(c: &mut Criterion) {
     });
 }
 
-fn bench_extract_elements(c: &mut Criterion) {
-    c.bench_function("bench_extract_elements", |b| {
-        b.iter(|| {
-            let extracted = extract_elements(black_box(SIM_STATE_RESPONSE));
-            black_box(extracted)
-        })
-    });
-}
-
 criterion_group!(
     benches,
     bench_decode_state,
     bench_extract_element,
-    bench_extract_elements,
 );
 criterion_main!(benches);

@@ -10,11 +10,11 @@ use uom::si::length::meter;
 use uom::si::time::second;
 use uom::si::velocity::meter_per_second;
 use uom::si::volume::liter;
-use uom::si::{angular_velocity::degree_per_second, f64::*};
+use uom::si::{angular_velocity::degree_per_second, f32::*};
 
 use super::SimulatorState;
 
-pub const OUNCES_PER_LITER: f64 = 33.814;
+pub const OUNCES_PER_LITER: f32 = 33.814;
 
 pub fn extract_element(name: &str, xml: &str) -> Option<String> {
     let start_tag = &format!("<{}>", name);
@@ -84,7 +84,7 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
             ParseState::CloseTag if ch == '>' => {
                 if open_tag == key {
                     if open_tag == "item" {
-                        let value = content.parse::<f64>().map_err(|e| {
+                        let value = content.parse::<f32>().map_err(|e| {
                             format!(
                                 "Failed to parse channel {}: {}. {}",
                                 channel_ndx, content, e
@@ -119,7 +119,7 @@ fn decode_state_field(
             state.current_physics_time = as_time(name, value)?;
         }
         "m-currentPhysicsSpeedMultiplier" => {
-            state.current_physics_speed_multiplier = as_double(name, value)?;
+            state.current_physics_speed_multiplier = as_f32(name, value)?;
         }
         "m-airspeed-MPS" => {
             state.airspeed = as_velocity(name, value)?;
@@ -152,16 +152,16 @@ fn decode_state_field(
             state.roll = as_angle(name, value)?;
         }
         "m-orientationQuaternion-X" => {
-            state.orientation_quaternion_x = as_double(name, value)?;
+            state.orientation_quaternion_x = as_f32(name, value)?;
         }
         "m-orientationQuaternion-Y" => {
-            state.orientation_quaternion_y = as_double(name, value)?;
+            state.orientation_quaternion_y = as_f32(name, value)?;
         }
         "m-orientationQuaternion-Z" => {
-            state.orientation_quaternion_z = as_double(name, value)?;
+            state.orientation_quaternion_z = as_f32(name, value)?;
         }
         "m-orientationQuaternion-W" => {
-            state.orientation_quaternion_w = as_double(name, value)?;
+            state.orientation_quaternion_w = as_f32(name, value)?;
         }
         "m-aircraftPositionX-MTR" => {
             state.aircraft_position_x = as_length(name, value)?;
@@ -215,10 +215,10 @@ fn decode_state_field(
             state.wind_z = as_velocity(name, value)?;
         }
         "m-propRPM" => {
-            state.prop_rpm = as_double(name, value)?;
+            state.prop_rpm = as_f32(name, value)?;
         }
         "m-heliMainRotorRPM" => {
-            state.heli_main_rotor_rpm = as_double(name, value)?;
+            state.heli_main_rotor_rpm = as_f32(name, value)?;
         }
         "m-batteryVoltage-VOLTS" => {
             state.battery_voltage = as_electrical_potential(name, value)?;
@@ -268,11 +268,11 @@ fn as_time(name: &str, value: &str) -> Result<Time, Box<dyn Error>> {
     }
 }
 
-fn as_double(name: &str, value: &str) -> Result<f64, Box<dyn Error>> {
+fn as_f32(name: &str, value: &str) -> Result<f32, Box<dyn Error>> {
     let result = value.parse();
     match result {
         Ok(value) => Ok(value),
-        Err(e) => Err(format!("Failed to parse f64 {}: {}. {}", name, value, e).into()),
+        Err(e) => Err(format!("Failed to parse f32 {}: {}. {}", name, value, e).into()),
     }
 }
 
@@ -344,7 +344,7 @@ fn as_electrical_charge(name: &str, value: &str) -> Result<ElectricCharge, Box<d
     }
 }
 
-fn as_volume(name: &str, value: &str, factor: Option<f64>) -> Result<Volume, Box<dyn Error>> {
+fn as_volume(name: &str, value: &str, factor: Option<f32>) -> Result<Volume, Box<dyn Error>> {
     let result = value.parse();
     match result {
         Ok(value) => match factor {
