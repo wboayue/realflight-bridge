@@ -9,7 +9,7 @@ homepage = "https://github.com/wboayue/realflight-bridge/"
 repository = "https://github.com/wboayue/realflight-bridge/"
 documentation = "https://docs.rs/realflight-bridge/latest/realflight_bridge/index.html"
 license = "MIT"
-keywords = ["realflight", "flight-simulator", "drone", "robotics", "simulation", "control-systems"]
+keywords = ["realflight", "flight-simulator", "robotics", "control-systems"]
 categories = ["simulation", "aerospace", "game-development"]
 exclude = [
     "justfile",
