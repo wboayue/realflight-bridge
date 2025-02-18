@@ -1,13 +1,16 @@
 [package]
 name = "realflight-bridge"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
+authors = ["Wil Boayue <wil@wsbsolutions.com>"]
 readme = "README.md"
 description = "RealFlightBridge is a Rust library that interfaces with RealFlight Link, enabling external flight controllers to interact with the simulator."
 homepage = "https://github.com/wboayue/realflight-bridge/"
 repository = "https://github.com/wboayue/realflight-bridge/"
 documentation = "https://docs.rs/realflight-bridge/latest/realflight_bridge/index.html"
 license = "MIT"
+keywords = ["realflight", "flight-simulator", "drone", "robotics", "simulation", "control-systems"]
+categories = ["simulation", "aerospace", "game-development"]
 exclude = [
     "justfile",
 ]
@@ -22,7 +25,6 @@ env_logger = "0.11.6"
 log = "0.4.25"
 crossbeam-channel = "0.5"
 rand = "0.9"
-quick-xml = "0.32"
 
 [dev-dependencies]
 clap = "4.5.28"
