@@ -28,9 +28,5 @@ fn bench_extract_element(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_decode_state,
-    bench_extract_element,
-);
+criterion_group!(benches, bench_decode_state, bench_extract_element,);
 criterion_main!(benches);
