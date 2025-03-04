@@ -3,6 +3,7 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
 };
+use std::io::{BufReader, BufWriter};
 
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +41,8 @@ pub enum ResponseStatus {
 // Client struct to handle the connection and communications
 pub struct RealFlightRemoteBridge {
     stream: TcpStream,
+    reader: BufReader<TcpStream>,
+    writer: BufWriter<TcpStream>,
     request_counter: u32,
 }
 
@@ -47,6 +50,8 @@ impl RealFlightRemoteBridge {
     pub fn new(address: &str) -> std::io::Result<Self> {
         let stream = TcpStream::connect(address)?;
         Ok(RealFlightRemoteBridge {
+            reader: BufReader::new(stream.try_clone()?),
+            writer: BufWriter::new(stream.try_clone()?),
             stream,
             request_counter: 0,
         })
@@ -72,20 +77,20 @@ impl RealFlightRemoteBridge {
 
         // Send the length of the request first
         let length_bytes = (request_bytes.len() as u32).to_be_bytes();
-        self.stream.write_all(&length_bytes)?;
+        self.writer.write_all(&length_bytes)?;
 
         // Send the actual request
-        self.stream.write_all(&request_bytes)?;
-        self.stream.flush()?;
+        self.writer.write_all(&request_bytes)?;
+        self.writer.flush()?;
 
         // Read the response length
         let mut length_buffer = [0u8; 4];
-        self.stream.read_exact(&mut length_buffer)?;
+        self.reader.read_exact(&mut length_buffer)?;
         let response_length = u32::from_be_bytes(length_buffer) as usize;
 
         // Read the response
         let mut response_buffer = vec![0u8; response_length];
-        self.stream.read_exact(&mut response_buffer)?;
+        self.reader.read_exact(&mut response_buffer)?;
 
         // Deserialize the response
         let response: Response = rmp_serde::from_slice(&response_buffer)
@@ -155,17 +160,20 @@ impl ProxyServer {
 fn handle_client(mut stream: TcpStream) {
     println!("New client connected: {}", stream.peer_addr().unwrap());
 
+    let mut reader = BufReader::new(&stream);
+    let mut writer = BufWriter::new(&stream);
+
     // Buffer to hold the length of the incoming message
     let mut length_buffer = [0u8; 4];
 
     // Keep handling requests until the client disconnects
-    while stream.read_exact(&mut length_buffer).is_ok() {
+    while reader.read_exact(&mut length_buffer).is_ok() {
         // Convert the bytes to a u32 length
         let msg_length = u32::from_be_bytes(length_buffer) as usize;
 
         // Read the actual message
         let mut buffer = vec![0u8; msg_length];
-        if stream.read_exact(&mut buffer).is_err() {
+        if reader.read_exact(&mut buffer).is_err() {
             break;
         }
 
@@ -194,17 +202,17 @@ fn handle_client(mut stream: TcpStream) {
 
         // Send the length of the response first
         let length_bytes = (response_bytes.len() as u32).to_be_bytes();
-        if stream.write_all(&length_bytes).is_err() {
+        if writer.write_all(&length_bytes).is_err() {
             break;
         }
 
         // Send the actual response
-        if stream.write_all(&response_bytes).is_err() {
+        if writer.write_all(&response_bytes).is_err() {
             break;
         }
 
         // Flush to ensure the response is sent
-        if stream.flush().is_err() {
+        if writer.flush().is_err() {
             break;
         }
     }

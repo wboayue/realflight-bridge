@@ -5,8 +5,10 @@ use realflight_bridge::{ControlInputs, RealFlightRemoteBridge};
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Connect to the server
-    let mut bridge = RealFlightRemoteBridge::new("127.0.0.1:8080")?;
-    println!("Connected to server at 127.0.0.1:8080");
+//    let host = "127.0.0.1:8080";
+    let host = "192.168.4.117:8080";
+    let mut bridge = RealFlightRemoteBridge::new(host)?;
+    println!("Connected to server at {}", host);
 
     // target frequency
 
@@ -26,7 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let tick_duration = Duration::from_secs(1) / 300;
 
     let start = Instant::now();
-    let loop_duration = Duration::from_secs(10);
+    let loop_duration = Duration::from_secs(20);
 
     println!("Starting simulation loop for {:?}", loop_duration);
 
@@ -35,7 +37,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let tick_start = Instant::now();
 
         // Send control inputs and receive simulator state
-        let _ = bridge.exchange_data(&controls)?;
+        // let _ = bridge.exchange_data(&controls)?;
+        let _ = bridge.reset_aircraft()?;
 
         let output = ((i as f32 / 1000.0).sin() + 1.0) / 2.0;
 
@@ -46,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         controls.channels[3] = 0.5; // Example: set first channel to 50%
 
         i += 1;
-        thread::sleep(tick_duration - tick_start.elapsed());
+//        thread::sleep(tick_duration - tick_start.elapsed());
     }
 
     println!("Simulation complete: {} cycles in {:?}", i, start.elapsed());
