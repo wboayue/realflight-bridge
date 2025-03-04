@@ -38,6 +38,9 @@ pub use decoders::extract_element;
 
 mod decoders;
 mod soap_client;
+pub mod bridge;
+
+pub use bridge::remote::RealFlightRemoteBridge;
 
 const UNUSED: &str = "";
 
@@ -52,7 +55,7 @@ const UNUSED: &str = "";
 /// - Retrieve real-time flight state from the simulator.
 /// - Toggle between internal and external RC control devices.
 /// - Reset aircraft position and orientation.
-///  
+///
 /// # Examples
 ///
 /// ```no_run
@@ -71,7 +74,7 @@ const UNUSED: &str = "";
 ///     inputs.channels[0] = 0.5; // Neutral aileron
 ///     inputs.channels[1] = 0.5; // Neutral elevator
 ///     inputs.channels[2] = 1.0; // Full throttle
-///     
+///
 ///     // Enable external control
 ///     bridge.disable_rc()?;
 ///
