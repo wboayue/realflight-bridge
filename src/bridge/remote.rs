@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpStream}, time::Duration,
 };
 use std::io::{BufReader, BufWriter};
 
@@ -123,6 +123,7 @@ impl RealFlightRemoteBridge {
         if let Some(state) = response.payload {
             Ok(state)
         } else {
+            println!("No payload in response: {:?}", response.status);
             Err("No payload in response".into())
         }
     }
@@ -134,8 +135,12 @@ pub struct ProxyServer {
 
 impl ProxyServer {
     pub fn new(port: u8) -> Self {
-        let config = &Configuration::default();
-        let bridge = RealFlightBridge::new(config).unwrap();
+        let config = Configuration{
+            simulator_host: "127.0.0.1:18083".to_string(),
+            connect_timeout: Duration::from_millis(100),
+            ..Default::default()
+        };
+        let bridge = RealFlightBridge::new(&config).unwrap();
         ProxyServer { bridge }
     }
 
