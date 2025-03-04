@@ -6,6 +6,7 @@ use std::{
 use std::io::{BufReader, BufWriter};
 
 use serde::{Deserialize, Serialize};
+use postcard::{from_bytes, to_stdvec};
 
 use crate::{Configuration, ControlInputs, RealFlightBridge, SimulatorState};
 
@@ -72,7 +73,7 @@ impl RealFlightRemoteBridge {
         };
 
         // Serialize the request
-        let request_bytes = rmp_serde::to_vec(&request)
+        let request_bytes = to_stdvec(&request)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
         // Send the length of the request first
@@ -93,7 +94,7 @@ impl RealFlightRemoteBridge {
         self.reader.read_exact(&mut response_buffer)?;
 
         // Deserialize the response
-        let response: Response = rmp_serde::from_slice(&response_buffer)
+        let response: Response = from_bytes(&response_buffer)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
         Ok(response)
@@ -181,7 +182,7 @@ fn handle_client(mut stream: TcpStream) {
         }
 
         // Deserialize the request
-        let request: Request = match rmp_serde::from_slice(&buffer) {
+        let request: Request = match from_bytes(&buffer) {
             Ok(req) => req,
             Err(e) => {
                 eprintln!("Failed to deserialize request: {}", e);
@@ -195,7 +196,7 @@ fn handle_client(mut stream: TcpStream) {
         let response = process_request(request);
 
         // Serialize the response
-        let response_bytes = match rmp_serde::to_vec(&response) {
+        let response_bytes = match to_stdvec(&response) {
             Ok(bytes) => bytes,
             Err(e) => {
                 eprintln!("Failed to serialize response: {}", e);
