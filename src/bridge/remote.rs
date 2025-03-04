@@ -147,7 +147,7 @@ impl ProxyServer {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    handle_client(stream);
+                    handle_client(stream, &self.bridge);
                 }
                 Err(e) => {
                     eprintln!("Failed to accept connection: {}", e);
@@ -159,7 +159,7 @@ impl ProxyServer {
     }
 }
 
-fn handle_client(mut stream: TcpStream) {
+fn handle_client(mut stream: TcpStream, bridge: &RealFlightBridge) {
     println!("New client connected: {}", stream.peer_addr().unwrap());
 
     stream.set_nodelay(true).unwrap();
@@ -193,7 +193,7 @@ fn handle_client(mut stream: TcpStream) {
         // println!("Received request: {:?}", request);
 
         // Process the request and create a response
-        let response = process_request(request);
+        let response = process_request(request, bridge);
 
         // Serialize the response
         let response_bytes = match to_stdvec(&response) {
@@ -224,30 +224,74 @@ fn handle_client(mut stream: TcpStream) {
     println!("Client disconnected: {}", stream.peer_addr().unwrap());
 }
 
-fn process_request(request: Request) -> Response {
+fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
     // Simple mock implementation
     match request.request_type {
-        RequestType::EnableRC => Response {
-            request_id: request.request_id,
-            status: ResponseStatus::Success,
-            payload: None,
+        RequestType::EnableRC => {
+            if let Err(e) = bridge.enable_rc() {
+                Response {
+                    request_id: request.request_id,
+                    status: ResponseStatus::Error,
+                    payload: None,
+                }
+            } else {
+                Response {
+                    request_id: request.request_id,
+                    status: ResponseStatus::Success,
+                    payload: None,
+                }
+            }
         },
-        RequestType::DisableRC => Response {
-            request_id: request.request_id,
-            status: ResponseStatus::Success,
-            payload: None,
+        RequestType::DisableRC => {
+            if let Err(e) = bridge.disable_rc() {
+                Response {
+                    request_id: request.request_id,
+                    status: ResponseStatus::Error,
+                    payload: None,
+                }
+            } else {
+                Response {
+                    request_id: request.request_id,
+                    status: ResponseStatus::Success,
+                    payload: None,
+                }
+            }
         },
-        RequestType::ResetAircraft => Response {
-            request_id: request.request_id,
-            status: ResponseStatus::Success,
-            payload: None,
+        RequestType::ResetAircraft => {
+            if let Err(e) = bridge.reset_aircraft() {
+                Response {
+                    request_id: request.request_id,
+                    status: ResponseStatus::Error,
+                    payload: None,
+                }
+            } else {
+                Response {
+                    request_id: request.request_id,
+                    status: ResponseStatus::Success,
+                    payload: None,
+                }
+            }
         },
         RequestType::ExchangeData => {
-            // Mock response with some state
-            Response {
-                request_id: request.request_id,
-                status: ResponseStatus::Success,
-                payload: Some(Default::default()),
+            if let Some(payload) = request.payload {
+                match bridge.exchange_data(&payload) {
+                    Ok(state) => Response {
+                        request_id: request.request_id,
+                        status: ResponseStatus::Success,
+                        payload: Some(state),
+                    },
+                    Err(e) => Response {
+                        request_id: request.request_id,
+                        status: ResponseStatus::Error,
+                        payload: None,
+                    },
+                }
+            } else {
+                Response {
+                    request_id: request.request_id,
+                    status: ResponseStatus::Error,
+                    payload: None,
+                }
             }
         }
     }
