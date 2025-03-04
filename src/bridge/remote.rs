@@ -40,7 +40,6 @@ pub enum ResponseStatus {
 
 // Client struct to handle the connection and communications
 pub struct RealFlightRemoteBridge {
-    stream: TcpStream,
     reader: BufReader<TcpStream>,
     writer: BufWriter<TcpStream>,
     request_counter: u32,
@@ -49,10 +48,11 @@ pub struct RealFlightRemoteBridge {
 impl RealFlightRemoteBridge {
     pub fn new(address: &str) -> std::io::Result<Self> {
         let stream = TcpStream::connect(address)?;
+        stream.set_nodelay(true).unwrap();
+
         Ok(RealFlightRemoteBridge {
             reader: BufReader::new(stream.try_clone()?),
             writer: BufWriter::new(stream.try_clone()?),
-            stream,
             request_counter: 0,
         })
     }
@@ -139,8 +139,9 @@ impl ProxyServer {
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
-        let listener = TcpListener::bind("127.0.0.1:8080")?;
-        println!("Server listening on 127.0.0.1:8080");
+        let host = "0.0.0.0:8080";
+        let listener = TcpListener::bind(host)?;
+        println!("Server listening on {}", host);
 
         for stream in listener.incoming() {
             match stream {
@@ -159,6 +160,8 @@ impl ProxyServer {
 
 fn handle_client(mut stream: TcpStream) {
     println!("New client connected: {}", stream.peer_addr().unwrap());
+
+    stream.set_nodelay(true).unwrap();
 
     let mut reader = BufReader::new(&stream);
     let mut writer = BufWriter::new(&stream);

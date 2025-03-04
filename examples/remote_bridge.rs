@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let tick_duration = Duration::from_secs(1) / 300;
 
     let start = Instant::now();
-    let loop_duration = Duration::from_secs(20);
+    let loop_duration = Duration::from_secs(10);
 
     println!("Starting simulation loop for {:?}", loop_duration);
 
@@ -37,8 +37,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let tick_start = Instant::now();
 
         // Send control inputs and receive simulator state
-        // let _ = bridge.exchange_data(&controls)?;
-        let _ = bridge.reset_aircraft()?;
+//        let _ = bridge.exchange_data(&controls)?;
+       let _ = bridge.reset_aircraft()?;
 
         let output = ((i as f32 / 1000.0).sin() + 1.0) / 2.0;
 
