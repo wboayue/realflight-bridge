@@ -169,7 +169,8 @@ impl ConnectionPool {
             sender.send(stream).unwrap();
         }
 
-        let handle = thread::spawn(move || {
+        let worker = thread::Builder::new().name("connection-pool".to_string());
+        let handle = worker.spawn(move || {
             while *running.lock().unwrap() {
                 let connection = Self::create_connection(&config, &statistics).unwrap();
                 match sender.send_timeout(connection, config.connect_timeout) {
@@ -181,7 +182,7 @@ impl ConnectionPool {
             }
         });
 
-        self.creator_thread = Some(handle);
+        self.creator_thread = Some(handle?);
         Ok(())
     }
 
@@ -198,7 +199,7 @@ impl ConnectionPool {
                 }
                 Err(e) => {
                     statistics.increment_error_count();
-                    error!("Error creating connection: {}", e);
+                    eprintln!("Error creating connection: {}", e);
                 }
             }
         }
