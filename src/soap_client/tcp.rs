@@ -4,7 +4,10 @@ use std::{
     error::Error,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
 };
 
@@ -22,7 +25,7 @@ pub(crate) struct TcpSoapClient {
     /// Statistics engine for tracking performance
     pub(crate) statistics: Arc<StatisticsEngine>,
     /// Connection pool for managing TCP connections
-    pub(crate) connection_manager: ConnectionPool,
+    pub(crate) connection_pool: ConnectionPool,
 }
 
 impl SoapClient for TcpSoapClient {
@@ -33,7 +36,7 @@ impl SoapClient for TcpSoapClient {
     /// * `body`   - The body of the SOAP request.
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
-        let mut stream = self.connection_manager.get_connection()?;
+        let mut stream = self.connection_pool.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
         self.statistics.increment_request_count();
 
@@ -50,15 +53,15 @@ impl TcpSoapClient {
         configuration: Configuration,
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, Box<dyn Error>> {
-        let connection_manager = ConnectionPool::new(configuration, statistics.clone())?;
+        let connection_pool = ConnectionPool::new(configuration, statistics.clone())?;
         Ok(TcpSoapClient {
             statistics,
-            connection_manager,
+            connection_pool,
         })
     }
 
     pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
-        self.connection_manager.ensure_pool_initialized()?;
+        self.connection_pool.ensure_pool_initialized()?;
         Ok(())
     }
 
