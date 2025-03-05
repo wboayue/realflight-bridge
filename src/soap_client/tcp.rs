@@ -8,6 +8,7 @@ use std::{
     thread,
 };
 
+use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use log::{debug, error, info};
 
@@ -157,10 +158,7 @@ impl ConnectionPool {
     }
 
     // Start the background thread that creates new connections
-    fn start_socket_creator(
-        &mut self,
-        sender: Sender<TcpStream>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn start_socket_creator(&mut self, sender: Sender<TcpStream>) -> Result<()> {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
         let statistics = Arc::clone(&self.statistics);
@@ -191,7 +189,7 @@ impl ConnectionPool {
     fn create_connection(
         config: &Configuration,
         statistics: &Arc<StatisticsEngine>,
-    ) -> Result<TcpStream, Box<dyn std::error::Error>> {
+    ) -> Result<TcpStream> {
         let addr = config.simulator_host.parse()?;
         for _ in 0..10 {
             match TcpStream::connect_timeout(&addr, config.connect_timeout) {
@@ -204,7 +202,7 @@ impl ConnectionPool {
                 }
             }
         }
-        Err("Failed to create connection".into())
+        Err(anyhow!("Failed to create connection"))
     }
 
     // Get a new connection, consuming it

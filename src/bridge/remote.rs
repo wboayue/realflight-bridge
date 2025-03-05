@@ -1,12 +1,13 @@
+use std::io::{BufReader, BufWriter};
 use std::{
     error::Error,
     io::{Read, Write},
-    net::{TcpListener, TcpStream}, time::Duration,
+    net::{TcpListener, TcpStream},
+    time::Duration,
 };
-use std::io::{BufReader, BufWriter};
 
-use serde::{Deserialize, Serialize};
 use postcard::{from_bytes, to_stdvec};
+use serde::{Deserialize, Serialize};
 
 use crate::{Configuration, ControlInputs, RealFlightBridge, SimulatorState};
 
@@ -134,17 +135,17 @@ pub struct ProxyServer {
 }
 
 impl ProxyServer {
-    pub fn new(port: u8) -> Self {
-        let config = Configuration{
+    pub fn new(port: u8) -> Result<Self, Box<dyn Error>> {
+        let config = Configuration {
             simulator_host: "127.0.0.1:18083".to_string(),
             connect_timeout: Duration::from_millis(100),
             ..Default::default()
         };
-        let bridge = RealFlightBridge::new(&config).unwrap();
-        ProxyServer { bridge }
+        let bridge = RealFlightBridge::new(&config)?;
+        Ok(ProxyServer { bridge })
     }
 
-    pub fn run(&mut self) -> std::io::Result<()> {
+    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let host = "0.0.0.0:8080";
         let listener = TcpListener::bind(host)?;
         println!("Server listening on {}", host);
@@ -234,6 +235,7 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
     match request.request_type {
         RequestType::EnableRC => {
             if let Err(e) = bridge.enable_rc() {
+                println!("Error disabling RC: {}", e);
                 Response {
                     request_id: request.request_id,
                     status: ResponseStatus::Error,
@@ -246,9 +248,10 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
                     payload: None,
                 }
             }
-        },
+        }
         RequestType::DisableRC => {
             if let Err(e) = bridge.disable_rc() {
+                println!("Error disabling RC: {}", e);
                 Response {
                     request_id: request.request_id,
                     status: ResponseStatus::Error,
@@ -261,9 +264,10 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
                     payload: None,
                 }
             }
-        },
+        }
         RequestType::ResetAircraft => {
             if let Err(e) = bridge.reset_aircraft() {
+                println!("Error resetting aircraft: {}", e);
                 Response {
                     request_id: request.request_id,
                     status: ResponseStatus::Error,
@@ -276,7 +280,7 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
                     payload: None,
                 }
             }
-        },
+        }
         RequestType::ExchangeData => {
             if let Some(payload) = request.payload {
                 match bridge.exchange_data(&payload) {
@@ -285,11 +289,14 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
                         status: ResponseStatus::Success,
                         payload: Some(state),
                     },
-                    Err(e) => Response {
-                        request_id: request.request_id,
-                        status: ResponseStatus::Error,
-                        payload: None,
-                    },
+                    Err(e) => {
+                        println!("Error exchanging data: {}", e);
+                        Response {
+                            request_id: request.request_id,
+                            status: ResponseStatus::Error,
+                            payload: None,
+                        }
+                    }
                 }
             } else {
                 Response {
