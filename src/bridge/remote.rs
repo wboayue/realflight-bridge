@@ -143,7 +143,6 @@ impl ProxyServer {
             ..Default::default()
         };
         let bridge = RealFlightBridge::new(&config)?;
-        bridge.reset_aircraft()?;
         Ok(ProxyServer { bridge })
     }
 

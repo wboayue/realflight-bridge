@@ -6,19 +6,21 @@ use std::{
     net::TcpStream,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     thread,
+    time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
-use log::{debug, error, info};
+use log::{debug, info};
 
 use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, StatisticsEngine};
 
 /// Size of header for request body
 const HEADER_LEN: usize = 120;
+const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct TcpSoapClient {
@@ -166,12 +168,17 @@ impl ConnectionPool {
     }
 
     pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
-        if !self.initialized.load(std::sync::atomic::Ordering::Relaxed) {
-            error!("Connection pool not initialized");
-            Err(anyhow!("Connection pool not initialized"))
-        } else {
-            Ok(())
+        let now = Instant::now();
+        while !self.initialized.load(Ordering::Relaxed) {
+            if now.elapsed() > INITIALIZATION_TIMEOUT {
+                return Err(anyhow!(
+                    "Connection pool did not initialize. Waited for {:?}.",
+                    INITIALIZATION_TIMEOUT
+                ));
+            }
+            thread::sleep(Duration::from_millis(100));
         }
+        Ok(())
     }
 
     // Start the background thread that creates new connections
