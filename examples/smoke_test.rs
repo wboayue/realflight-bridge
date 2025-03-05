@@ -8,8 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let matches = Command::new("record")
         .version("1.0")
-        .author("Wil Boayue <wil@wsbsolutions.com")
-        .about("save simulator data to a file")
+        .about("verify connection to RealFlight simulator")
         .arg(
             arg!(--simulator_host <VALUE>)
                 .help("url to RealFlight simulator")

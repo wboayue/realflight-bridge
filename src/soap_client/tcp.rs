@@ -200,6 +200,7 @@ impl ConnectionPool {
                 Err(e) => {
                     statistics.increment_error_count();
                     eprintln!("Error creating connection: {}", e);
+                    thread::sleep(config.connect_timeout);
                 }
             }
         }
