@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    let simulator_host = matches.get_one::<String>("simulator_url").unwrap();
+    let simulator_host = matches.get_one::<String>("simulator_host").unwrap();
     info!("Connecting to RealFlight simulator at {}", simulator_host);
 
     let configuration = Configuration {
