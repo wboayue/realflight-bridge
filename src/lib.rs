@@ -158,13 +158,12 @@ impl RealFlightBridge {
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
     pub fn new(configuration: &Configuration) -> Result<RealFlightBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
+        let soap_client = TcpSoapClient::new(configuration.clone(), statistics.clone())?;
+        soap_client.ensure_pool_initialized()?;
 
         Ok(RealFlightBridge {
             statistics: statistics.clone(),
-            soap_client: Box::new(TcpSoapClient::new(
-                configuration.clone(),
-                statistics.clone(),
-            )?),
+            soap_client: Box::new(soap_client),
         })
     }
 

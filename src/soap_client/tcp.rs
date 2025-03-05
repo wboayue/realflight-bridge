@@ -4,7 +4,7 @@ use std::{
     error::Error,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    sync::{Arc, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
     thread,
 };
 
@@ -55,6 +55,11 @@ impl TcpSoapClient {
             statistics,
             connection_manager,
         })
+    }
+
+    pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
+        self.connection_manager.ensure_pool_initialized()?;
+        Ok(())
     }
 
     /// Sends a request to the simulator.
@@ -131,7 +136,8 @@ pub(crate) struct ConnectionPool {
     config: Configuration,
     next_socket: Receiver<TcpStream>,
     creator_thread: Option<thread::JoinHandle<()>>,
-    running: Arc<Mutex<bool>>,
+    running: Arc<AtomicBool>,
+    initialized: Arc<AtomicBool>,
     statistics: Arc<StatisticsEngine>,
 }
 
@@ -142,13 +148,12 @@ impl ConnectionPool {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (sender, receiver) = bounded(config.pool_size);
 
-        let running = Arc::new(Mutex::new(true));
-
         let mut manager = ConnectionPool {
             config,
             next_socket: receiver,
             creator_thread: None,
-            running,
+            running: Arc::new(AtomicBool::new(true)),
+            initialized: Arc::new(AtomicBool::new(false)),
             statistics,
         };
 
@@ -157,21 +162,32 @@ impl ConnectionPool {
         Ok(manager)
     }
 
+    pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
+        if !self.initialized.load(std::sync::atomic::Ordering::Relaxed) {
+            error!("Connection pool not initialized");
+            Err(anyhow!("Connection pool not initialized"))
+        } else {
+            Ok(())
+        }
+    }
+
     // Start the background thread that creates new connections
     fn start_socket_creator(&mut self, sender: Sender<TcpStream>) -> Result<()> {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
+        let initialized = Arc::clone(&self.initialized);
         let statistics = Arc::clone(&self.statistics);
 
         debug!("Creating {} connection in pool.", config.pool_size);
         for _ in 0..config.pool_size {
             let stream = Self::create_connection(&config, &statistics)?;
             sender.send(stream).unwrap();
+            initialized.store(true, Ordering::Relaxed);
         }
 
         let worker = thread::Builder::new().name("connection-pool".to_string());
         let handle = worker.spawn(move || {
-            while *running.lock().unwrap() {
+            while running.load(Ordering::Relaxed) {
                 let connection = Self::create_connection(&config, &statistics).unwrap();
                 match sender.send_timeout(connection, config.connect_timeout) {
                     Ok(_) => {}
@@ -216,9 +232,7 @@ impl ConnectionPool {
 impl Drop for ConnectionPool {
     fn drop(&mut self) {
         // Signal the creator thread to stop
-        if let Ok(mut running) = self.running.lock() {
-            *running = false;
-        }
+        self.running.store(false, Ordering::Relaxed);
 
         // Wait for the creator thread to finish
         if let Some(handle) = self.creator_thread.take() {
