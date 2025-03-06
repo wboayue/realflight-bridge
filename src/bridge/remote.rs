@@ -1,4 +1,5 @@
-use std::io::{BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, ErrorKind};
+use std::net::UdpSocket;
 use std::{
     error::Error,
     io::{Read, Write},
@@ -42,19 +43,19 @@ pub enum ResponseStatus {
 
 // Client struct to handle the connection and communications
 pub struct RealFlightRemoteBridge {
-    reader: BufReader<TcpStream>,
-    writer: BufWriter<TcpStream>,
+    socket: UdpSocket,
+    server_address: String,
     request_counter: u32,
 }
 
 impl RealFlightRemoteBridge {
     pub fn new(address: &str) -> std::io::Result<Self> {
-        let stream = TcpStream::connect(address)?;
-        stream.set_nodelay(true).unwrap();
+        let socket = UdpSocket::bind("0.0.0.0:0")?; // Bind to any available port
+        socket.set_nonblocking(true)?;
 
         Ok(RealFlightRemoteBridge {
-            reader: BufReader::new(stream.try_clone()?),
-            writer: BufWriter::new(stream.try_clone()?),
+            socket,
+            server_address: address.to_string(),
             request_counter: 0,
         })
     }
@@ -75,28 +76,29 @@ impl RealFlightRemoteBridge {
 
         // Serialize the request
         let request_bytes = to_stdvec(&request)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
 
-        // Send the length of the request first
-        let length_bytes = (request_bytes.len() as u32).to_be_bytes();
-        self.writer.write_all(&length_bytes)?;
+        // Send the request (no length prefix needed since UDP is message-based)
+        self.socket.send_to(&request_bytes, &self.server_address)?;
 
-        // Send the actual request
-        self.writer.write_all(&request_bytes)?;
-        self.writer.flush()?;
-
-        // Read the response length
-        let mut length_buffer = [0u8; 4];
-        self.reader.read_exact(&mut length_buffer)?;
-        let response_length = u32::from_be_bytes(length_buffer) as usize;
-
-        // Read the response
-        let mut response_buffer = vec![0u8; response_length];
-        self.reader.read_exact(&mut response_buffer)?;
-
-        // Deserialize the response
-        let response: Response = from_bytes(&response_buffer)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        // Wait for response (with timeout)
+        let mut buffer = [0; 4096]; // UDP has max packet size
+        let response = loop {
+            match self.socket.recv_from(&mut buffer) {
+                Ok((size, _)) => {
+                    let response: Response = from_bytes(&buffer[..size])
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    if response.request_id == self.request_counter {
+                        break response;
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        };
 
         Ok(response)
     }
@@ -130,104 +132,62 @@ impl RealFlightRemoteBridge {
     }
 }
 
-pub struct ProxyServer {}
+pub struct ProxyServer {
+    socket: UdpSocket,
+}
 
 impl ProxyServer {
     pub fn new(port: u8) -> Result<Self, Box<dyn Error>> {
-        Ok(ProxyServer {})
+        let socket = UdpSocket::bind(format!("0.0.0.0:{}", port))?;
+        socket.set_nonblocking(true)?;
+        Ok(ProxyServer { socket })
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let host = "0.0.0.0:8080";
-        let listener = TcpListener::bind(host)?;
-        println!("Server listening on {}", host);
+        let config = Configuration {
+            simulator_host: "127.0.0.1:18083".to_string(),
+            connect_timeout: Duration::from_millis(100),
+            ..Default::default()
+        };
 
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    handle_client(stream);
+        let bridge = RealFlightBridge::new(&config).unwrap();
+        println!("Server listening on {}", self.socket.local_addr()?);
+
+        let mut buffer = [0; 4096]; // UDP max packet size
+
+        loop {
+            match self.socket.recv_from(&mut buffer) {
+                Ok((size, client_addr)) => {
+                    let request: Request = match from_bytes(&buffer[..size]) {
+                        Ok(req) => req,
+                        Err(e) => {
+                            eprintln!("Failed to deserialize request: {}", e);
+                            continue;
+                        }
+                    };
+
+                    let response = process_request(request, &bridge);
+                    let response_bytes = match to_stdvec(&response) {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            eprintln!("Failed to serialize response: {}", e);
+                            continue;
+                        }
+                    };
+
+                    self.socket.send_to(&response_bytes, client_addr)?;
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
                 }
                 Err(e) => {
-                    eprintln!("Failed to accept connection: {}", e);
+                    eprintln!("Error receiving UDP packet: {}", e);
+                    continue;
                 }
             }
         }
-
-        Ok(())
     }
-}
-
-fn handle_client(mut stream: TcpStream) {
-    let config = Configuration {
-        simulator_host: "127.0.0.1:18083".to_string(),
-        connect_timeout: Duration::from_millis(100),
-        ..Default::default()
-    };
-
-    let bridge = RealFlightBridge::new(&config).unwrap();
-
-    println!("New client connected: {}", stream.peer_addr().unwrap());
-
-    stream.set_nodelay(true).unwrap();
-
-    let mut reader = BufReader::new(&stream);
-    let mut writer = BufWriter::new(&stream);
-
-    // Buffer to hold the length of the incoming message
-    let mut length_buffer = [0u8; 4];
-
-    // Keep handling requests until the client disconnects
-    while reader.read_exact(&mut length_buffer).is_ok() {
-        // Convert the bytes to a u32 length
-        let msg_length = u32::from_be_bytes(length_buffer) as usize;
-
-        // Read the actual message
-        let mut buffer = vec![0u8; msg_length];
-        if reader.read_exact(&mut buffer).is_err() {
-            break;
-        }
-
-        // Deserialize the request
-        let request: Request = match from_bytes(&buffer) {
-            Ok(req) => req,
-            Err(e) => {
-                eprintln!("Failed to deserialize request: {}", e);
-                continue;
-            }
-        };
-
-        // println!("Received request: {:?}", request);
-
-        // Process the request and create a response
-        let response = process_request(request, &bridge);
-
-        // Serialize the response
-        let response_bytes = match to_stdvec(&response) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                eprintln!("Failed to serialize response: {}", e);
-                continue;
-            }
-        };
-
-        // Send the length of the response first
-        let length_bytes = (response_bytes.len() as u32).to_be_bytes();
-        if writer.write_all(&length_bytes).is_err() {
-            break;
-        }
-
-        // Send the actual response
-        if writer.write_all(&response_bytes).is_err() {
-            break;
-        }
-
-        // Flush to ensure the response is sent
-        if writer.flush().is_err() {
-            break;
-        }
-    }
-
-    println!("Client disconnected: {}", stream.peer_addr().unwrap());
 }
 
 fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
