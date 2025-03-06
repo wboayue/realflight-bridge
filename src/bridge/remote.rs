@@ -1,5 +1,4 @@
 use std::io::{BufReader, BufWriter};
-use std::thread;
 use std::{
     error::Error,
     io::{Read, Write},
@@ -132,18 +131,13 @@ impl RealFlightRemoteBridge {
 }
 
 pub struct ProxyServer {
-    bridge: RealFlightBridge,
+    // bridge: RealFlightBridge,
 }
 
 impl ProxyServer {
     pub fn new(port: u8) -> Result<Self, Box<dyn Error>> {
-        let config = Configuration {
-            simulator_host: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(100),
-            ..Default::default()
-        };
-        let bridge = RealFlightBridge::new(&config)?;
-        Ok(ProxyServer { bridge })
+        Ok(ProxyServer {
+        })
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
@@ -154,7 +148,7 @@ impl ProxyServer {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    handle_client(stream, &self.bridge);
+                    handle_client(stream);
                 }
                 Err(e) => {
                     eprintln!("Failed to accept connection: {}", e);
@@ -166,7 +160,14 @@ impl ProxyServer {
     }
 }
 
-fn handle_client(mut stream: TcpStream, bridge: &RealFlightBridge) {
+fn handle_client(mut stream: TcpStream) {
+    let config = Configuration {
+        simulator_host: "127.0.0.1:18083".to_string(),
+        connect_timeout: Duration::from_millis(100),
+        ..Default::default()
+    };
+    let bridge = RealFlightBridge::new(&config).unwrap();
+
     println!("New client connected: {}", stream.peer_addr().unwrap());
 
     stream.set_nodelay(true).unwrap();
@@ -200,7 +201,7 @@ fn handle_client(mut stream: TcpStream, bridge: &RealFlightBridge) {
         // println!("Received request: {:?}", request);
 
         // Process the request and create a response
-        let response = process_request(request, bridge);
+        let response = process_request(request, &bridge);
 
         // Serialize the response
         let response_bytes = match to_stdvec(&response) {

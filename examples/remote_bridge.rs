@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let tick_duration = Duration::from_secs(1) / 300;
 
     let start = Instant::now();
-    let loop_duration = Duration::from_secs(20);
+    let loop_duration = Duration::from_secs(10);
 
     println!("Starting simulation loop for {:?}", loop_duration);
 
@@ -44,9 +44,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // Update control values based on state...
         controls.channels[0] = output; // Example: set first channel to 50%
-        controls.channels[1] = 0.5; // Example: set first channel to 50%
+        controls.channels[1] = output; // Example: set first channel to 50%
         controls.channels[2] = output; // Example: set first channel to 50%
-        controls.channels[3] = 0.5; // Example: set first channel to 50%
+        controls.channels[3] = output; // Example: set first channel to 50%
+
+        controls.channels[0] = 0.8; // Example: set first channel to 50%
+        controls.channels[1] = 0.8; // Example: set first channel to 50%
+        controls.channels[2] = 0.8; // Example: set first channel to 50%
+        controls.channels[3] = 0.8; // Example: set first channel to 50%
 
         i += 1;
         //        thread::sleep(tick_duration - tick_start.elapsed());
