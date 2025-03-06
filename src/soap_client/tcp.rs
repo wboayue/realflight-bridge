@@ -191,7 +191,10 @@ impl ConnectionPool {
         let worker = thread::Builder::new().name("connection-pool".to_string());
         let handle = worker.spawn(move || {
             debug!("Creating {} connection in pool.", config.pool_size);
-            let simulator_address = config.simulator_host.parse().expect("Invalid simulator host");
+            let simulator_address = config
+                .simulator_host
+                .parse()
+                .expect("Invalid simulator host");
 
             while running.load(Ordering::Relaxed) {
                 match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
@@ -204,7 +207,7 @@ impl ConnectionPool {
                                 // pool is full
                             }
                         }
-                    },
+                    }
                     Err(e) => {
                         error!("Error creating connection: {}", e);
                         statistics.increment_error_count();

@@ -75,8 +75,8 @@ impl RealFlightRemoteBridge {
         };
 
         // Serialize the request
-        let request_bytes = to_stdvec(&request)
-            .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+        let request_bytes =
+            to_stdvec(&request).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
 
         // Send the request (no length prefix needed since UDP is message-based)
         self.socket.send_to(&request_bytes, &self.server_address)?;
