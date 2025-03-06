@@ -4,7 +4,10 @@ use std::{
     error::Error,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
 };
 
