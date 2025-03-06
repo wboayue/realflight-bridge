@@ -2,16 +2,17 @@
 
 use std::{
     error::Error,
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, ErrorKind, Read, Write},
     net::TcpStream,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
     thread,
+    time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use log::{debug, error, info};
 
@@ -19,13 +20,14 @@ use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, Statistics
 
 /// Size of header for request body
 const HEADER_LEN: usize = 120;
+const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct TcpSoapClient {
     /// Statistics engine for tracking performance
     pub(crate) statistics: Arc<StatisticsEngine>,
     /// Connection pool for managing TCP connections
-    pub(crate) connection_manager: ConnectionPool,
+    pub(crate) connection_pool: ConnectionPool,
 }
 
 impl SoapClient for TcpSoapClient {
@@ -36,7 +38,7 @@ impl SoapClient for TcpSoapClient {
     /// * `body`   - The body of the SOAP request.
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
-        let mut stream = self.connection_manager.get_connection()?;
+        let mut stream = self.connection_pool.get_connection()?;
         self.send_request(&mut stream, action, &envelope);
         self.statistics.increment_request_count();
 
@@ -53,15 +55,15 @@ impl TcpSoapClient {
         configuration: Configuration,
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, Box<dyn Error>> {
-        let connection_manager = ConnectionPool::new(configuration, statistics.clone())?;
+        let connection_pool = ConnectionPool::new(configuration, statistics.clone())?;
         Ok(TcpSoapClient {
             statistics,
-            connection_manager,
+            connection_pool,
         })
     }
 
     pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
-        self.connection_manager.ensure_pool_initialized()?;
+        self.connection_pool.ensure_pool_initialized()?;
         Ok(())
     }
 
@@ -151,7 +153,7 @@ impl ConnectionPool {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (sender, receiver) = bounded(config.pool_size);
 
-        let mut manager = ConnectionPool {
+        let mut pool = ConnectionPool {
             config,
             next_socket: receiver,
             creator_thread: None,
@@ -160,42 +162,53 @@ impl ConnectionPool {
             statistics,
         };
 
-        manager.start_socket_creator(sender)?;
+        pool.initialize_pool(sender)?;
 
-        Ok(manager)
+        Ok(pool)
     }
 
     pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
-        if !self.initialized.load(std::sync::atomic::Ordering::Relaxed) {
-            error!("Connection pool not initialized");
-            Err(anyhow!("Connection pool not initialized"))
-        } else {
-            Ok(())
+        let now = Instant::now();
+        while !self.initialized.load(Ordering::Relaxed) {
+            if now.elapsed() > INITIALIZATION_TIMEOUT {
+                return Err(anyhow!(
+                    "Connection pool did not initialize. Waited for {:?}.",
+                    INITIALIZATION_TIMEOUT
+                ));
+            }
+            thread::sleep(Duration::from_millis(100));
         }
+        Ok(())
     }
 
     // Start the background thread that creates new connections
-    fn start_socket_creator(&mut self, sender: Sender<TcpStream>) -> Result<()> {
+    fn initialize_pool(&mut self, sender: Sender<TcpStream>) -> Result<()> {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
         let initialized = Arc::clone(&self.initialized);
         let statistics = Arc::clone(&self.statistics);
 
-        debug!("Creating {} connection in pool.", config.pool_size);
-        for _ in 0..config.pool_size {
-            let stream = Self::create_connection(&config, &statistics)?;
-            sender.send(stream).unwrap();
-            initialized.store(true, Ordering::Relaxed);
-        }
-
         let worker = thread::Builder::new().name("connection-pool".to_string());
         let handle = worker.spawn(move || {
+            debug!("Creating {} connection in pool.", config.pool_size);
+            let simulator_address = config.simulator_host.parse().expect("Invalid simulator host");
+
             while running.load(Ordering::Relaxed) {
-                let connection = Self::create_connection(&config, &statistics).unwrap();
-                match sender.send_timeout(connection, config.connect_timeout) {
-                    Ok(_) => {}
+                match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
+                    Ok(stream) => {
+                        match sender.send_timeout(stream, config.connect_timeout) {
+                            Ok(_) => {
+                                initialized.store(true, Ordering::Relaxed);
+                            }
+                            Err(_) => {
+                                // pool is full
+                            }
+                        }
+                    },
                     Err(e) => {
-                        info!("Error sending connection to pool: {}", e);
+                        error!("Error creating connection: {}", e);
+                        statistics.increment_error_count();
+                        thread::sleep(config.connect_timeout);
                     }
                 }
             }
@@ -203,27 +216,6 @@ impl ConnectionPool {
 
         self.creator_thread = Some(handle?);
         Ok(())
-    }
-
-    // Create a new TCP connection with timeout
-    fn create_connection(
-        config: &Configuration,
-        statistics: &Arc<StatisticsEngine>,
-    ) -> Result<TcpStream> {
-        let addr = config.simulator_host.parse()?;
-        for _ in 0..10 {
-            match TcpStream::connect_timeout(&addr, config.connect_timeout) {
-                Ok(stream) => {
-                    return Ok(stream);
-                }
-                Err(e) => {
-                    statistics.increment_error_count();
-                    eprintln!("Error creating connection: {}", e);
-                    thread::sleep(config.connect_timeout);
-                }
-            }
-        }
-        Err(anyhow!("Failed to create connection"))
     }
 
     // Get a new connection, consuming it

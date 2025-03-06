@@ -1,5 +1,4 @@
 use std::io::{BufReader, BufWriter};
-use std::thread;
 use std::{
     error::Error,
     io::{Read, Write},
