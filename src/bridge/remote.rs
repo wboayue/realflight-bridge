@@ -122,7 +122,7 @@ impl RealFlightRemoteBridge {
     /// A `Result` containing the new client instance or an I/O error.
     pub fn new(address: &str) -> std::io::Result<Self> {
         let stream = TcpStream::connect(address)?;
-        stream.set_nodelay(true).unwrap();
+        stream.set_nodelay(true)?;
 
         Ok(RealFlightRemoteBridge {
             reader: BufReader::new(stream.try_clone()?),
@@ -218,6 +218,20 @@ impl RealFlightRemoteBridge {
 /// Default simulator host address.
 const SIMULATOR_HOST: &str = "127.0.0.1:18083";
 
+/// Server struct for handling incoming client connections.
+///
+/// ### Examples
+///
+/// ```no_run
+/// use std::error::Error;
+/// use realflight_bridge::ProxyServer;
+///
+/// fn main() -> Result<(), Box<dyn Error>> {
+///     let mut server = ProxyServer::new("0.0.0.0:8080");
+///     server.run()?; // Runs indefinitely until an error occurs
+///     Ok(())
+/// }
+/// ```
 pub struct ProxyServer {
     bind_address: String, // Address to bind the server to
     stubbed: bool,        // Whether to run in stubbed mode (no real simulator)
