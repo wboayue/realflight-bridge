@@ -172,13 +172,18 @@ impl ProxyServer {
 }
 
 fn handle_client(mut stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>> {
-    let config = Configuration {
-        simulator_host: SIMULATOR_HOST.to_string(),
-        connect_timeout: Duration::from_millis(100),
-        ..Default::default()
-    };
+    let bridge = if stubbed {
+        println!("Running in stubbed mode");
+        None
+    } else {
+        let config = Configuration {
+            simulator_host: SIMULATOR_HOST.to_string(),
+            connect_timeout: Duration::from_millis(100),
+            ..Default::default()
+        };
 
-    let bridge = RealFlightBridge::new(&config)?;
+        Some(RealFlightBridge::new(&config)?)
+    };
 
     println!("New client connected: {}", stream.peer_addr()?);
 
@@ -213,39 +218,32 @@ fn handle_client(mut stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Err
         // println!("Received request: {:?}", request);
 
         // Process the request and create a response
-        let response = if stubbed {
-            process_request_stubbed(request)
+        if stubbed {
+            let response = process_request_stubbed(request);
+            send_response(&mut writer, response)?;
         } else {
-            process_request(request, &bridge)
-        };
-
-        // Serialize the response
-        let response_bytes = match to_stdvec(&response) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                eprintln!("Failed to serialize response: {}", e);
-                continue;
+            if let Some(bridge) = &bridge {
+                let response = process_request(request, bridge);
+                send_response(&mut writer, response)?;
             }
         };
-
-        // Send the length of the response first
-        let length_bytes = (response_bytes.len() as u32).to_be_bytes();
-        if writer.write_all(&length_bytes).is_err() {
-            break;
-        }
-
-        // Send the actual response
-        if writer.write_all(&response_bytes).is_err() {
-            break;
-        }
-
-        // Flush to ensure the response is sent
-        if writer.flush().is_err() {
-            break;
-        }
     }
 
     println!("Client disconnected: {}", stream.peer_addr()?);
+    Ok(())
+}
+
+fn send_response(
+    writer: &mut BufWriter<&TcpStream>,
+    response: Response,
+) -> Result<(), Box<dyn Error>> {
+    let response_bytes = to_stdvec(&response)?;
+    let length_bytes = (response_bytes.len() as u32).to_be_bytes();
+
+    writer.write_all(&length_bytes)?;
+    writer.write_all(&response_bytes)?;
+    writer.flush()?;
+
     Ok(())
 }
 
