@@ -1,16 +1,26 @@
+use std::error::Error;
 use std::time::{Duration, Instant};
-use std::{error::Error, thread};
 
+use clap::{arg, Command};
 use realflight_bridge::{ControlInputs, RealFlightRemoteBridge};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Connect to the server
-    //    let host = "127.0.0.1:8080";
-    let host = "10.211.55.3:8080";
-    let mut bridge = RealFlightRemoteBridge::new(host)?;
-    println!("Connected to server at {}", host);
+    env_logger::init();
 
-    // target frequency
+    let matches = Command::new("remote_bridge")
+        .about("connects to a realflight_bridge_proxy running on a remote machine")
+        .arg(
+            arg!(--"proxy-host" <VALUE>)
+                .help("host and port to realflight_bridge_proxy. e.g. 196.192.29.74:18083")
+                .required(true),
+        )
+        .get_matches();
+
+    let proxy_host = matches.get_one::<String>("proxy-host").unwrap();
+    println!("Connecting to RealFlight bridge proxy at {}", proxy_host);
+
+    let mut bridge = RealFlightRemoteBridge::new(proxy_host)?;
+    println!("Connected to server at {}", proxy_host);
 
     // Reset the simulation to start from a known state
     if let Err(e) = bridge.reset_aircraft() {
@@ -25,8 +35,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize control inputs (12 channels available)
     let mut controls: ControlInputs = ControlInputs::default();
 
-    let tick_duration = Duration::from_secs(1) / 300;
-
     let start = Instant::now();
     let loop_duration = Duration::from_secs(10);
 
@@ -34,27 +42,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut i = 0;
     while start.elapsed() < loop_duration {
-        let tick_start = Instant::now();
-
         // Send control inputs and receive simulator state
         let _ = bridge.exchange_data(&controls)?;
-        // let _ = bridge.reset_aircraft()?;
 
-        let output = ((i as f32 / 1000.0).sin() + 1.0) / 2.0;
-
-        // Update control values based on state...
-        controls.channels[0] = output; // Example: set first channel to 50%
-        controls.channels[1] = output; // Example: set first channel to 50%
-        controls.channels[2] = output; // Example: set first channel to 50%
-        controls.channels[3] = output; // Example: set first channel to 50%
-
-        controls.channels[0] = 0.8; // Example: set first channel to 50%
-        controls.channels[1] = 0.8; // Example: set first channel to 50%
-        controls.channels[2] = 0.8; // Example: set first channel to 50%
-        controls.channels[3] = 0.8; // Example: set first channel to 50%
+        // Example: set channels to 80% throttle
+        controls.channels[0] = 0.8;
+        controls.channels[1] = 0.8;
+        controls.channels[2] = 0.8;
+        controls.channels[3] = 0.8;
 
         i += 1;
-        //        thread::sleep(tick_duration - tick_start.elapsed());
     }
 
     println!("Simulation complete: {} cycles in {:?}", i, start.elapsed());
