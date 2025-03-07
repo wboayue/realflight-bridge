@@ -171,7 +171,7 @@ impl ProxyServer {
     }
 }
 
-fn handle_client(mut stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>> {
+fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>> {
     let bridge = if stubbed {
         println!("Running in stubbed mode");
         None
@@ -188,7 +188,6 @@ fn handle_client(mut stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Err
     println!("New client connected: {}", stream.peer_addr()?);
 
     stream.set_nodelay(true)?;
-//    stream.set_nonblocking(true)?;
 
     let mut reader = BufReader::new(&stream);
     let mut writer = BufWriter::new(&stream);
@@ -216,17 +215,13 @@ fn handle_client(mut stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Err
             }
         };
 
-        // println!("Received request: {:?}", request);
-
         // Process the request and create a response
         if stubbed {
             let response = process_request_stubbed(request);
             send_response(&mut writer, response)?;
-        } else {
-            if let Some(bridge) = &bridge {
-                let response = process_request(request, bridge);
-                send_response(&mut writer, response)?;
-            }
+        } else if let Some(bridge) = &bridge {
+            let response = process_request(request, bridge);
+            send_response(&mut writer, response)?;
         };
     }
 

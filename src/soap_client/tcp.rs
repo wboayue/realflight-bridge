@@ -2,11 +2,11 @@
 
 use std::{
     error::Error,
-    io::{BufRead, BufReader, ErrorKind, Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     thread,
     time::{Duration, Instant},
@@ -14,7 +14,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
-use log::{debug, error, info};
+use log::{debug, error};
 
 use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, StatisticsEngine};
 
