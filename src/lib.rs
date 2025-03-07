@@ -42,6 +42,7 @@ pub mod bridge;
 mod decoders;
 mod soap_client;
 
+pub use bridge::remote::ProxyServer;
 pub use bridge::remote::RealFlightRemoteBridge;
 
 const UNUSED: &str = "";

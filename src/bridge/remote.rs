@@ -1,3 +1,58 @@
+//! This module provides a TCP based proxy for interacting with the RealFlight simulator on a remote machine.
+//! The system includes a client ([RealFlightRemoteBridge]) for sending requests and a proxy server ([ProxyServer]) for
+//! handling them, with support for both real simulator interaction and a stubbed mode for testing.
+//!
+//! ## Key Components
+//!
+//! - **[`RequestType`]**: Enumerates the types of requests that can be sent (e.g., [RequestType::EnableRC], [RequestType::ExchangeData]).
+//! - **[`Request`]**: Defines the structure of client requests, including an optional [ControlInputs] payload.
+//! - **[`Response`]**: Defines server responses, including a status and optional [SimulatorState] payload.
+//! - **[`RealFlightRemoteBridge`]**: Client struct for connecting to the server and sending requests.
+//! - **[`ProxyServer`]**: Server struct that listens for client connections and processes requests.
+//!
+//! ## Usage
+//!
+//! ### Client Example
+//! ```no_run
+//! use std::error::Error;
+//! use realflight_bridge::{RealFlightRemoteBridge, ControlInputs};
+//!
+//! fn main() -> Result<(), Box<dyn Error>> {
+//!     let mut client = RealFlightRemoteBridge::new("127.0.0.1:18083")?;
+//!     client.disable_rc()?; // Allow control via RealFlight link
+//!     let control = ControlInputs::default(); // Initialize control inputs
+//!     let state = client.exchange_data(&control)?; // Exchange data
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ### Server Example
+//! ```no_run
+//! use std::error::Error;
+//! use realflight_bridge::ProxyServer;
+//!
+//! fn main() -> Result<(), Box<dyn Error>> {
+//!     let mut server = ProxyServer::new("0.0.0.0:8080"); // Normal mode
+//!     server.run()?; // Runs indefinitely until an error occurs
+//!     Ok(())
+//! }
+//!
+//! // Stubbed mode for testing
+//! fn main_stubbed() -> Result<(), Box<dyn Error>> {
+//!     let mut server = ProxyServer::new_stubbed("0.0.0.0:8080");
+//!     server.run()?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Design Notes
+//!
+//! - **Synchronous Operation**: The server processes one client at a time, blocking until the client disconnects.
+//!
+//! ## Configuration
+//!
+//! The default simulator host is hardcoded as `"127.0.0.1:18083"`. To customize, modify the `SIMULATOR_HOST` constant.
+
 use std::io::{BufReader, BufWriter};
 use std::{
     error::Error,
@@ -154,7 +209,7 @@ impl RealFlightRemoteBridge {
         if let Some(state) = response.payload {
             Ok(state)
         } else {
-            println!("No payload in response: {:?}", response.status);
+            error!("No payload in response: {:?}", response.status);
             Err("No payload in response".into())
         }
     }
