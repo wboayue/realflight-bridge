@@ -3,7 +3,6 @@ use std::{
     error::Error,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    time::Duration,
 };
 
 use log::{error, info};
@@ -389,15 +388,15 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
 fn process_request_stubbed(request: Request) -> Response {
     match request.request_type {
         RequestType::EnableRC => Response {
-            status: ResponseStatus::Error,
+            status: ResponseStatus::Success,
             payload: None,
         },
         RequestType::DisableRC => Response {
-            status: ResponseStatus::Error,
+            status: ResponseStatus::Success,
             payload: None,
         },
         RequestType::ResetAircraft => Response {
-            status: ResponseStatus::Error,
+            status: ResponseStatus::Success,
             payload: None,
         },
         RequestType::ExchangeData => Response {
