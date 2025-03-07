@@ -130,22 +130,36 @@ impl RealFlightRemoteBridge {
     }
 }
 
-pub struct ProxyServer {}
+const SIMULATOR_HOST: &str = "127.0.0.1:18083";
+
+pub struct ProxyServer {
+    bind_address: String,
+    stubbed: bool,
+}
 
 impl ProxyServer {
-    pub fn new(port: u8) -> Result<Self, Box<dyn Error>> {
-        Ok(ProxyServer {})
+    pub fn new(bind_address: &str) -> Self {
+        ProxyServer {
+            bind_address: bind_address.to_string(),
+            stubbed: false,
+        }
+    }
+
+    pub fn new_stubbed(bind_address: &str) -> Self {
+        ProxyServer {
+            bind_address: bind_address.to_string(),
+            stubbed: true,
+        }
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let host = "0.0.0.0:8080";
-        let listener = TcpListener::bind(host)?;
-        println!("Server listening on {}", host);
+        let listener = TcpListener::bind(&self.bind_address)?;
+        println!("Server listening on {}", self.bind_address);
 
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    handle_client(stream);
+                    handle_client(stream, self.stubbed)?;
                 }
                 Err(e) => {
                     eprintln!("Failed to accept connection: {}", e);
@@ -157,18 +171,18 @@ impl ProxyServer {
     }
 }
 
-fn handle_client(mut stream: TcpStream) {
+fn handle_client(mut stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>> {
     let config = Configuration {
-        simulator_host: "127.0.0.1:18083".to_string(),
+        simulator_host: SIMULATOR_HOST.to_string(),
         connect_timeout: Duration::from_millis(100),
         ..Default::default()
     };
 
-    let bridge = RealFlightBridge::new(&config).unwrap();
+    let bridge = RealFlightBridge::new(&config)?;
 
-    println!("New client connected: {}", stream.peer_addr().unwrap());
+    println!("New client connected: {}", stream.peer_addr()?);
 
-    stream.set_nodelay(true).unwrap();
+    stream.set_nodelay(true)?;
 
     let mut reader = BufReader::new(&stream);
     let mut writer = BufWriter::new(&stream);
@@ -199,7 +213,11 @@ fn handle_client(mut stream: TcpStream) {
         // println!("Received request: {:?}", request);
 
         // Process the request and create a response
-        let response = process_request(request, &bridge);
+        let response = if stubbed {
+            process_request_stubbed(request)
+        } else {
+            process_request(request, &bridge)
+        };
 
         // Serialize the response
         let response_bytes = match to_stdvec(&response) {
@@ -227,11 +245,11 @@ fn handle_client(mut stream: TcpStream) {
         }
     }
 
-    println!("Client disconnected: {}", stream.peer_addr().unwrap());
+    println!("Client disconnected: {}", stream.peer_addr()?);
+    Ok(())
 }
 
 fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
-    // Simple mock implementation
     match request.request_type {
         RequestType::EnableRC => {
             if let Err(e) = bridge.enable_rc() {
@@ -306,5 +324,30 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
                 }
             }
         }
+    }
+}
+
+fn process_request_stubbed(request: Request) -> Response {
+    match request.request_type {
+        RequestType::EnableRC => Response {
+            request_id: request.request_id,
+            status: ResponseStatus::Error,
+            payload: None,
+        },
+        RequestType::DisableRC => Response {
+            request_id: request.request_id,
+            status: ResponseStatus::Error,
+            payload: None,
+        },
+        RequestType::ResetAircraft => Response {
+            request_id: request.request_id,
+            status: ResponseStatus::Error,
+            payload: None,
+        },
+        RequestType::ExchangeData => Response {
+            request_id: request.request_id,
+            status: ResponseStatus::Success,
+            payload: Some(SimulatorState::default()),
+        },
     }
 }
