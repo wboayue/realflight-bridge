@@ -188,6 +188,7 @@ fn handle_client(mut stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Err
     println!("New client connected: {}", stream.peer_addr()?);
 
     stream.set_nodelay(true)?;
+    stream.set_nonblocking(true)?;
 
     let mut reader = BufReader::new(&stream);
     let mut writer = BufWriter::new(&stream);

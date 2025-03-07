@@ -6,7 +6,7 @@ use realflight_bridge::{ControlInputs, RealFlightRemoteBridge};
 fn main() -> Result<(), Box<dyn Error>> {
     // Connect to the server
     //    let host = "127.0.0.1:8080";
-    let host = "192.168.4.117:8080";
+    let host = "10.211.55.3:8080";
     let mut bridge = RealFlightRemoteBridge::new(host)?;
     println!("Connected to server at {}", host);
 
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // Send control inputs and receive simulator state
         let _ = bridge.exchange_data(&controls)?;
-        //    let _ = bridge.reset_aircraft()?;
+        // let _ = bridge.reset_aircraft()?;
 
         let output = ((i as f32 / 1000.0).sin() + 1.0) / 2.0;
 
