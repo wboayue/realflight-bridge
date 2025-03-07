@@ -6,91 +6,112 @@ use std::{
     time::Duration,
 };
 
+use log::{error, info};
 use postcard::{from_bytes, to_stdvec};
 use serde::{Deserialize, Serialize};
 
 use crate::{Configuration, ControlInputs, RealFlightBridge, SimulatorState};
 
-// Define the same structures as in the server
+/// Defines the types of requests that can be sent to the server.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RequestType {
+    /// Enable remote control
     EnableRC,
+    /// Disable remote control (enable control by ReaFlight link)
     DisableRC,
+    /// Reset the aircraft state (like pressing space-bar in the simulator)
     ResetAircraft,
+    /// Send [ControlInputs] and receive [SimulatorState]
     ExchangeData,
 }
 
+/// Represents a request sent from the client to the server.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
-    pub request_id: u32,
+    /// Type of request being made
     pub request_type: RequestType,
+    /// Optional [ControlInputs] data
     pub payload: Option<ControlInputs>,
 }
 
+/// Represents a response sent from the server to the client.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
-    pub request_id: u32,
+    /// Indicates success or failure
     pub status: ResponseStatus,
+    /// Optional [SimulatorState] data
     pub payload: Option<SimulatorState>,
 }
 
+/// Indicates the status of a response.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ResponseStatus {
+    /// Operation completed successfully
     Success,
+    /// Operation failed
     Error,
 }
 
-// Client struct to handle the connection and communications
+/// Client struct for managing TCP communication with the simulator server.
 pub struct RealFlightRemoteBridge {
-    reader: BufReader<TcpStream>,
-    writer: BufWriter<TcpStream>,
-    request_counter: u32,
+    reader: BufReader<TcpStream>, // Buffered reader for incoming data
+    writer: BufWriter<TcpStream>, // Buffered writer for outgoing data
 }
 
 impl RealFlightRemoteBridge {
+    /// Creates a new client instance connected to the specified address.
+    ///
+    /// # Arguments
+    /// * `address` - The server address (e.g., "127.0.0.1:18083").
+    ///
+    /// # Returns
+    /// A `Result` containing the new client instance or an I/O error.
     pub fn new(address: &str) -> std::io::Result<Self> {
         let stream = TcpStream::connect(address)?;
         stream.set_nodelay(true).unwrap();
 
         Ok(RealFlightRemoteBridge {
             reader: BufReader::new(stream.try_clone()?),
-            writer: BufWriter::new(stream.try_clone()?),
-            request_counter: 0,
+            writer: BufWriter::new(stream),
         })
     }
 
+    /// Sends a request to the server and receives a response.
+    ///
+    /// # Arguments
+    /// * `request_type` - The type of request to send.
+    /// * `payload` - Optional [ControlInputs] to include in the request.
+    ///
+    /// # Returns
+    /// A `Result` containing the server's response or an I/O error.
     fn send_request(
         &mut self,
         request_type: RequestType,
         payload: Option<ControlInputs>,
     ) -> std::io::Result<Response> {
-        // Increment request counter for each new request
-        self.request_counter = self.request_counter.wrapping_add(1);
-
         let request = Request {
-            request_id: self.request_counter,
             request_type,
             payload,
         };
 
-        // Serialize the request
+        // Serialize the request to a byte vector
         let request_bytes = to_stdvec(&request)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        // Send the length of the request first
+        // Send the length of the request (4 bytes)
         let length_bytes = (request_bytes.len() as u32).to_be_bytes();
         self.writer.write_all(&length_bytes)?;
 
-        // Send the actual request
+        // Send the serialized request data
         self.writer.write_all(&request_bytes)?;
         self.writer.flush()?;
 
-        // Read the response length
+        // Read the response length (4 bytes)
         let mut length_buffer = [0u8; 4];
         self.reader.read_exact(&mut length_buffer)?;
         let response_length = u32::from_be_bytes(length_buffer) as usize;
 
-        // Read the response
+        // Read the response data
         let mut response_buffer = vec![0u8; response_length];
         self.reader.read_exact(&mut response_buffer)?;
 
@@ -101,21 +122,31 @@ impl RealFlightRemoteBridge {
         Ok(response)
     }
 
+    /// Enables remote control on the simulator.
     pub fn enable_rc(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_request(RequestType::EnableRC, None)?;
         Ok(())
     }
 
+    /// Disables remote control on the simulator. (Enables control by the RealFlight link.)
     pub fn disable_rc(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_request(RequestType::DisableRC, None)?;
         Ok(())
     }
 
+    /// Resets the aircraft state in the simulator.
     pub fn reset_aircraft(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_request(RequestType::ResetAircraft, None)?;
         Ok(())
     }
 
+    /// Sends [ControlInputs] to the simulator and receives the updated [SimulatorState].
+    ///
+    /// # Arguments
+    /// * `control` - The [ControlInputs] to send.
+    ///
+    /// # Returns
+    /// The [SimulatorState] or an error if no state is returned.
     pub fn exchange_data(
         &mut self,
         control: &ControlInputs,
@@ -130,14 +161,19 @@ impl RealFlightRemoteBridge {
     }
 }
 
+/// Default simulator host address.
 const SIMULATOR_HOST: &str = "127.0.0.1:18083";
 
 pub struct ProxyServer {
-    bind_address: String,
-    stubbed: bool,
+    bind_address: String, // Address to bind the server to
+    stubbed: bool,        // Whether to run in stubbed mode (no real simulator)
 }
 
 impl ProxyServer {
+    /// Creates a new server instance.
+    ///
+    /// # Arguments
+    /// * `bind_address` - The address to bind to (e.g., "0.0.0.0:8080").
     pub fn new(bind_address: &str) -> Self {
         ProxyServer {
             bind_address: bind_address.to_string(),
@@ -145,6 +181,10 @@ impl ProxyServer {
         }
     }
 
+    /// Creates a new server instance in stubbed mode.
+    ///
+    /// # Arguments
+    /// * `bind_address` - The address to bind to.
     pub fn new_stubbed(bind_address: &str) -> Self {
         ProxyServer {
             bind_address: bind_address.to_string(),
@@ -152,14 +192,21 @@ impl ProxyServer {
         }
     }
 
+    /// Runs the server, listening for incoming connections.
+    /// Server should run indefinitely until an error occurs.
+    /// Server is designed to handle one client at a time.
+    ///
+    /// # Returns
+    /// A `Result` indicating success or an error.
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let listener = TcpListener::bind(&self.bind_address)?;
         println!("Server listening on {}", self.bind_address);
 
+        // Accept incoming connections and handle them
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    handle_client(stream, self.stubbed)?;
+                    handle_client(stream, self.stubbed)?; // Handle each client
                 }
                 Err(e) => {
                     eprintln!("Failed to accept connection: {}", e);
@@ -171,51 +218,55 @@ impl ProxyServer {
     }
 }
 
+/// Handles a single client connection.
+///
+/// # Arguments
+/// * `stream` - The TCP stream for the client.
+/// * `stubbed` - Whether to run in stubbed mode.
+///
+/// # Returns
+/// A `Result` indicating success or an error.
 fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>> {
+    // Initialize bridge if not in stubbed mode
     let bridge = if stubbed {
-        println!("Running in stubbed mode");
+        info!("Running in stubbed mode");
         None
     } else {
         let config = Configuration {
             simulator_host: SIMULATOR_HOST.to_string(),
-            connect_timeout: Duration::from_millis(100),
             ..Default::default()
         };
 
         Some(RealFlightBridge::new(&config)?)
     };
 
-    println!("New client connected: {}", stream.peer_addr()?);
+    info!("New client connected: {}", stream.peer_addr()?);
 
-    stream.set_nodelay(true)?;
+    stream.set_nodelay(true)?; // Disable Nagle's algorithm
 
     let mut reader = BufReader::new(&stream);
     let mut writer = BufWriter::new(&stream);
 
-    // Buffer to hold the length of the incoming message
-    let mut length_buffer = [0u8; 4];
+    let mut length_buffer = [0u8; 4]; // Buffer for message length
 
-    // Keep handling requests until the client disconnects
+    // Process requests until client disconnects
     while reader.read_exact(&mut length_buffer).is_ok() {
-        // Convert the bytes to a u32 length
         let msg_length = u32::from_be_bytes(length_buffer) as usize;
 
-        // Read the actual message
+        // Read the request data
         let mut buffer = vec![0u8; msg_length];
-        if reader.read_exact(&mut buffer).is_err() {
-            break;
-        }
+        reader.read_exact(&mut buffer)?;
 
         // Deserialize the request
         let request: Request = match from_bytes(&buffer) {
             Ok(req) => req,
             Err(e) => {
-                eprintln!("Failed to deserialize request: {}", e);
+                error!("Failed to deserialize request: {}", e);
                 continue;
             }
         };
 
-        // Process the request and create a response
+        // Process request based on mode
         if stubbed {
             let response = process_request_stubbed(request);
             send_response(&mut writer, response)?;
@@ -225,10 +276,18 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
         };
     }
 
-    println!("Client disconnected: {}", stream.peer_addr()?);
+    info!("Client disconnected: {}", stream.peer_addr()?);
     Ok(())
 }
 
+/// Sends a response to the client.
+///
+/// # Arguments
+/// * `writer` - The buffered writer for the TCP stream.
+/// * `response` - The response to send.
+///
+/// # Returns
+/// A `Result` indicating success or an error.
 fn send_response(
     writer: &mut BufWriter<&TcpStream>,
     response: Response,
@@ -243,19 +302,25 @@ fn send_response(
     Ok(())
 }
 
+/// Processes a request using forwarding to simulator via [RealFlightBridge].
+///
+/// # Arguments
+/// * `request` - The client's request.
+/// * `bridge`  - The [RealFlightBridge] instance.
+///
+/// # Returns
+/// The response to send back to the client.
 fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
     match request.request_type {
         RequestType::EnableRC => {
             if let Err(e) = bridge.enable_rc() {
-                println!("Error disabling RC: {}", e);
+                error!("Error enabling RC: {}", e);
                 Response {
-                    request_id: request.request_id,
                     status: ResponseStatus::Error,
                     payload: None,
                 }
             } else {
                 Response {
-                    request_id: request.request_id,
                     status: ResponseStatus::Success,
                     payload: None,
                 }
@@ -263,15 +328,13 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
         }
         RequestType::DisableRC => {
             if let Err(e) = bridge.disable_rc() {
-                println!("Error disabling RC: {}", e);
+                error!("Error disabling RC: {}", e);
                 Response {
-                    request_id: request.request_id,
                     status: ResponseStatus::Error,
                     payload: None,
                 }
             } else {
                 Response {
-                    request_id: request.request_id,
                     status: ResponseStatus::Success,
                     payload: None,
                 }
@@ -279,15 +342,13 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
         }
         RequestType::ResetAircraft => {
             if let Err(e) = bridge.reset_aircraft() {
-                println!("Error resetting aircraft: {}", e);
+                error!("Error resetting aircraft: {}", e);
                 Response {
-                    request_id: request.request_id,
                     status: ResponseStatus::Error,
                     payload: None,
                 }
             } else {
                 Response {
-                    request_id: request.request_id,
                     status: ResponseStatus::Success,
                     payload: None,
                 }
@@ -297,14 +358,12 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
             if let Some(payload) = request.payload {
                 match bridge.exchange_data(&payload) {
                     Ok(state) => Response {
-                        request_id: request.request_id,
                         status: ResponseStatus::Success,
                         payload: Some(state),
                     },
                     Err(e) => {
-                        println!("Error exchanging data: {}", e);
+                        error!("Error exchanging data: {}", e);
                         Response {
-                            request_id: request.request_id,
                             status: ResponseStatus::Error,
                             payload: None,
                         }
@@ -312,7 +371,6 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
                 }
             } else {
                 Response {
-                    request_id: request.request_id,
                     status: ResponseStatus::Error,
                     payload: None,
                 }
@@ -321,25 +379,28 @@ fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
     }
 }
 
+/// Processes a request in stubbed mode (no real simulator).
+///
+/// # Arguments
+/// * `request` - The client's request.
+///
+/// # Returns
+/// A mocked response for testing purposes.
 fn process_request_stubbed(request: Request) -> Response {
     match request.request_type {
         RequestType::EnableRC => Response {
-            request_id: request.request_id,
             status: ResponseStatus::Error,
             payload: None,
         },
         RequestType::DisableRC => Response {
-            request_id: request.request_id,
             status: ResponseStatus::Error,
             payload: None,
         },
         RequestType::ResetAircraft => Response {
-            request_id: request.request_id,
             status: ResponseStatus::Error,
             payload: None,
         },
         RequestType::ExchangeData => Response {
-            request_id: request.request_id,
             status: ResponseStatus::Success,
             payload: Some(SimulatorState::default()),
         },
