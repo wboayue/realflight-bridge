@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .about("connects to a realflight_bridge_proxy running on a remote machine")
         .arg(
             arg!(--"proxy-host" <VALUE>)
-                .help("host and port to realflight_bridge_proxy. e.g. 196.192.29.74:18083")
+                .help("host and port to realflight_bridge_proxy. e.g. 196.192.29.74:8080")
                 .required(true),
         )
         .get_matches();
