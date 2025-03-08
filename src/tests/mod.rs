@@ -27,7 +27,7 @@ fn create_configuration(port: u16) -> Configuration {
 
 fn create_bridge(port: u16) -> Result<RealFlightBridge, Box<dyn std::error::Error>> {
     let configuration = create_configuration(port);
-    RealFlightBridge::new(&configuration)
+    RealFlightBridge::with_configuration(&configuration)
 }
 
 /// Generate a random port number. Mitigates chances of port conflicts.

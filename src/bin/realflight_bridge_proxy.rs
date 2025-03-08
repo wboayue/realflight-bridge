@@ -23,13 +23,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .version("0.1")
         .about("Starts a proxy server for the RealFlight bridge")
         .arg(
-            arg!(--bind_address <VALUE>)
+            arg!(--"bind-address" <VALUE>)
                 .help("Address to bind the server to")
                 .default_value("0.0.0.0:8080"),
         )
         .get_matches();
 
-    let bind_address = matches.get_one::<String>("bind_address").unwrap();
+    let bind_address = matches.get_one::<String>("bind-address").unwrap();
 
     let mut server = ProxyServer::new(bind_address);
     server.run()?;

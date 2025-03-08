@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    let bridge = match RealFlightBridge::new(&configuration) {
+    let bridge = match RealFlightBridge::with_configuration(&configuration) {
         Ok(client) => client,
         Err(e) => {
             eprintln!("Error connecting to RealFlight simulator: {}", e);
