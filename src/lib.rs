@@ -47,7 +47,7 @@ pub use bridge::remote::ProxyServer;
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
 
-const UNUSED: &str = "";
+const EMPTY_BODY: &str = "";
 
 /// A high-level client for interacting with RealFlight simulators via RealFlight Link.
 ///
@@ -117,6 +117,52 @@ pub struct RealFlightBridge {
 }
 
 impl RealFlightBridge {
+
+    /// Creates a new [RealFlightBridge] instance configured to communicate
+    /// with a RealFlight simulator running on local machine.
+    ///
+    /// # Returns
+    ///
+    /// A [Result] containing a fully initialized [RealFlightBridge] if the TCP connection
+    /// pool is successfully created. Returns an error if the simulator address cannot be
+    /// resolved or if the pool could not be initialized.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use realflight_bridge::{RealFlightBridge, Configuration};
+    /// use std::error::Error;
+    ///
+    /// fn main() -> Result<(), Box<dyn Error>> {
+    ///     // Build a bridge to the RealFlight simulator.
+    ///     // Connects to simulator at 127.0.0.1:18083
+    ///     let bridge = RealFlightBridge::new()?;
+    ///
+    ///     // Now you can interact with RealFlight:
+    ///     // - Send/receive flight control data
+    ///     // - Reset aircraft
+    ///     // - Toggle RC input
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error in the following situations:
+    ///
+    /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
+    pub fn new() -> Result<RealFlightBridge, Box<dyn Error>> {
+        let statistics = Arc::new(StatisticsEngine::new());
+        let soap_client = TcpSoapClient::new(Configuration::default(), statistics.clone())?;
+        soap_client.ensure_pool_initialized()?;
+
+        Ok(RealFlightBridge {
+            statistics: statistics.clone(),
+            soap_client: Box::new(soap_client),
+        })
+    }
+
     /// Creates a new [RealFlightBridge] instance configured to communicate
     /// with a RealFlight simulator using a TCP-based Soap client.
     ///
@@ -142,7 +188,7 @@ impl RealFlightBridge {
     ///     let config = Configuration::default();
     ///
     ///     // Build a bridge to the RealFlight simulator.
-    ///     let bridge = RealFlightBridge::new(&config)?;
+    ///     let bridge = RealFlightBridge::with_configuration(&config)?;
     ///
     ///     // Now you can interact with RealFlight:
     ///     // - Send/receive flight control data
@@ -159,7 +205,7 @@ impl RealFlightBridge {
     ///
     /// - If the simulator address specified in `configuration` is invalid.
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
-    pub fn new(configuration: &Configuration) -> Result<RealFlightBridge, Box<dyn Error>> {
+    pub fn with_configuration(configuration: &Configuration) -> Result<RealFlightBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
         let soap_client = TcpSoapClient::new(configuration.clone(), statistics.clone())?;
         soap_client.ensure_pool_initialized()?;
@@ -272,7 +318,7 @@ impl RealFlightBridge {
     /// ```
     pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
         self.soap_client
-            .send_action("RestoreOriginalControllerDevice", UNUSED)?
+            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)?
             .into()
     }
 
@@ -308,7 +354,7 @@ impl RealFlightBridge {
     /// ```
     pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
         self.soap_client
-            .send_action("InjectUAVControllerInterface", UNUSED)?
+            .send_action("InjectUAVControllerInterface", EMPTY_BODY)?
             .into()
     }
 
@@ -344,7 +390,7 @@ impl RealFlightBridge {
     /// ```
     pub fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
         self.soap_client
-            .send_action("ResetAircraft", UNUSED)?
+            .send_action("ResetAircraft", EMPTY_BODY)?
             .into()
     }
 }
