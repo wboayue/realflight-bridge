@@ -305,7 +305,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
             ..Default::default()
         };
 
-        Some(RealFlightBridge::new(&config)?)
+        Some(RealFlightBridge::with_configuration(&config)?)
     };
 
     info!("New client connected: {}", stream.peer_addr()?);
