@@ -7,17 +7,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     let matches = Command::new("record")
-        .version("1.0")
-        .author("Wil Boayue <wil@wsbsolutions.com")
-        .about("save simulator data to a file")
+        .about("verify connection to RealFlight simulator")
         .arg(
             arg!(--simulator_host <VALUE>)
-                .help("url to RealFlight simulator")
+                .help("host and port to RealFlight simulator. e.g. 127.0.0.1:18083")
                 .default_value("127.0.0.1:18083"),
         )
         .get_matches();
 
-    let simulator_host = matches.get_one::<String>("simulator_url").unwrap();
+    let simulator_host = matches.get_one::<String>("simulator_host").unwrap();
     info!("Connecting to RealFlight simulator at {}", simulator_host);
 
     let configuration = Configuration {

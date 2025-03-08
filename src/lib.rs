@@ -19,6 +19,8 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use serde::Deserialize;
+use serde::Serialize;
 use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
@@ -36,8 +38,14 @@ use decoders::extract_element;
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::extract_element;
 
+pub mod bridge;
 mod decoders;
 mod soap_client;
+
+#[doc(inline)]
+pub use bridge::remote::ProxyServer;
+#[doc(inline)]
+pub use bridge::remote::RealFlightRemoteBridge;
 
 const UNUSED: &str = "";
 
@@ -52,7 +60,7 @@ const UNUSED: &str = "";
 /// - Retrieve real-time flight state from the simulator.
 /// - Toggle between internal and external RC control devices.
 /// - Reset aircraft position and orientation.
-///  
+///
 /// # Examples
 ///
 /// ```no_run
@@ -71,7 +79,7 @@ const UNUSED: &str = "";
 ///     inputs.channels[0] = 0.5; // Neutral aileron
 ///     inputs.channels[1] = 0.5; // Neutral elevator
 ///     inputs.channels[2] = 1.0; // Full throttle
-///     
+///
 ///     // Enable external control
 ///     bridge.disable_rc()?;
 ///
@@ -153,13 +161,12 @@ impl RealFlightBridge {
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
     pub fn new(configuration: &Configuration) -> Result<RealFlightBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
+        let soap_client = TcpSoapClient::new(configuration.clone(), statistics.clone())?;
+        soap_client.ensure_pool_initialized()?;
 
         Ok(RealFlightBridge {
             statistics: statistics.clone(),
-            soap_client: Box::new(TcpSoapClient::new(
-                configuration.clone(),
-                statistics.clone(),
-            )?),
+            soap_client: Box::new(soap_client),
         })
     }
 
@@ -552,7 +559,7 @@ impl Default for Configuration {
 ///     - Camera gimbal
 ///     - Lights
 ///     - Custom functions#[derive(Default, Debug)]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct ControlInputs {
     /// Array of 12 channel values, each between 0.0 and 1.0
     pub channels: [f32; 12],
@@ -560,7 +567,7 @@ pub struct ControlInputs {
 
 /// Represents the complete state of the simulated aircraft in RealFlight.
 /// All physical quantities use SI units through the `uom` crate.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
     pub previous_inputs: ControlInputs,
