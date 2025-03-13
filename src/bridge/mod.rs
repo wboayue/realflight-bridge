@@ -1,15 +1,11 @@
 use std::error::Error;
 
-use crate::{ControlInputs, SimulatorState, Statistics};
+use crate::{ControlInputs, SimulatorState};
 
 pub mod local;
 pub mod remote;
 
 pub trait RealFlightBridge {
-
-    /// Get statistics for the RealFlightBridge
-    fn statistics(&self) -> Statistics;
-
     /// Exchanges flight control data with the RealFlight simulator.
     ///
     /// This method transmits the provided [ControlInputs] (e.g., RC channel values)

@@ -7,6 +7,8 @@ use crate::{
 #[cfg(test)]
 use crate::StubSoapClient;
 
+use super::RealFlightBridge;
+
 const EMPTY_BODY: &str = "";
 
 /// A high-level client for interacting with RealFlight simulators via RealFlight Link.
@@ -24,7 +26,7 @@ const EMPTY_BODY: &str = "";
 /// # Examples
 ///
 /// ```no_run
-/// use realflight_bridge::{RealFlightLocalBridge, Configuration, ControlInputs};
+/// use realflight_bridge::{RealFlightBridge, RealFlightLocalBridge, Configuration, ControlInputs};
 /// use std::error::Error;
 ///
 /// fn main() -> Result<(), Box<dyn Error>> {
@@ -71,6 +73,158 @@ const EMPTY_BODY: &str = "";
 pub struct RealFlightLocalBridge {
     statistics: Arc<StatisticsEngine>,
     soap_client: Box<dyn SoapClient>,
+}
+
+impl RealFlightBridge for RealFlightLocalBridge {
+    /// Exchanges flight control data with the RealFlight simulator.
+    ///
+    /// This method transmits the provided [ControlInputs] (e.g., RC channel values)
+    /// to the RealFlight simulator and retrieves an updated [SimulatorState] in return,
+    /// including position, orientation, velocities, and more.
+    ///
+    /// # Parameters
+    ///
+    /// - `control`: A [ControlInputs] struct specifying up to 12 RC channels (0.0–1.0 range).
+    ///
+    /// # Returns
+    ///
+    /// A [Result] with the updated [SimulatorState] on success, or an error if
+    /// something goes wrong (e.g., SOAP fault, network timeout).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use realflight_bridge::{RealFlightBridge, RealFlightLocalBridge, Configuration, ControlInputs};
+    /// use std::error::Error;
+    ///
+    /// fn main() -> Result<(), Box<dyn Error>> {
+    ///     let bridge = RealFlightLocalBridge::new()?;
+    ///
+    ///     // Create sample control inputs
+    ///     let mut inputs = ControlInputs::default();
+    ///     inputs.channels[0] = 0.5; // Aileron neutral
+    ///     inputs.channels[2] = 1.0; // Full throttle
+    ///
+    ///     // Exchange data with the simulator
+    ///     let state = bridge.exchange_data(&inputs)?;
+    ///     println!("Current airspeed: {:?}", state.airspeed);
+    ///     println!("Altitude above ground: {:?}", state.altitude_agl);
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
+        let body = encode_control_inputs(control);
+        let response = self.soap_client.send_action("ExchangeData", &body)?;
+        match response.status_code {
+            200 => crate::decoders::decode_simulator_state(&response.body),
+            _ => Err(crate::decode_fault(&response).into()),
+        }
+    }
+
+    /// Reverts the RealFlight simulator to use its original Spektrum (or built-in) RC input.
+    ///
+    /// Calling [RealFlightBridge::enable_rc] instructs RealFlight to restore its native RC controller
+    /// device (e.g., Spektrum). Once enabled, external RC control via the RealFlight Link
+    /// interface is disabled until you explicitly call [RealFlightBridge::disable_rc].
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the simulator successfully reverts to using the original RC controller.
+    /// An `Err`` is returned if RealFlight cannot locate or restore the original controller device.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use realflight_bridge::{RealFlightBridge, RealFlightLocalBridge, Configuration};
+    /// use std::error::Error;
+    ///
+    /// fn main() -> Result<(), Box<dyn Error>> {
+    ///     let bridge = RealFlightLocalBridge::new()?;
+    ///
+    ///     // Switch back to native Spektrum controller
+    ///     bridge.enable_rc()?;
+    ///
+    ///     // The simulator is now using its default RC input
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
+        self.soap_client
+            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)?
+            .into()
+    }
+
+    /// Switches the RealFlight simulator’s input to the external RealFlight Link controller,
+    /// effectively disabling any native Spektrum (or other built-in) RC device.
+    ///
+    /// Once [RealFlightBridge::disable_rc] is called, RealFlight listens exclusively for commands sent
+    /// through this external interface. To revert to the original RC device, call
+    /// [RealFlightBridge::enable_rc].
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if RealFlight Link mode is successfully activated, or an `Err` if
+    /// the request fails (e.g., simulator is not ready or rejects the command).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use realflight_bridge::{RealFlightBridge, RealFlightLocalBridge, Configuration};
+    /// use std::error::Error;
+    ///
+    /// fn main() -> Result<(), Box<dyn Error>> {
+    ///     let bridge = RealFlightLocalBridge::new()?;
+    ///
+    ///     // Switch to the external RealFlight Link input
+    ///     bridge.disable_rc()?;
+    ///
+    ///     // Now the simulator expects input via RealFlight Link
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
+        self.soap_client
+            .send_action("InjectUAVControllerInterface", EMPTY_BODY)?
+            .into()
+    }
+
+    /// Resets the currently loaded aircraft in the RealFlight simulator, analogous
+    /// to pressing the spacebar in the simulator’s interface.
+    ///
+    /// This call repositions the aircraft back to its initial state and orientation,
+    /// clearing any damage or off-runway positioning. It’s useful for rapid iteration
+    /// when testing control loops or flight maneuvers.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` upon a successful reset. Returns an error if RealFlight rejects the command
+    /// or if a network issue prevents delivery.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use realflight_bridge::{RealFlightBridge, RealFlightLocalBridge, Configuration};
+    /// use std::error::Error;
+    ///
+    /// fn main() -> Result<(), Box<dyn Error>> {
+    ///     let bridge = RealFlightLocalBridge::new()?;
+    ///
+    ///     // Perform a flight test...
+    ///     // ...
+    ///
+    ///     // Reset the aircraft to starting conditions:
+    ///     bridge.reset_aircraft()?;
+    ///     Ok(())
+    /// }
+    /// ```
+    fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
+        self.soap_client
+            .send_action("ResetAircraft", EMPTY_BODY)?
+            .into()
+    }
 }
 
 impl RealFlightLocalBridge {
@@ -198,156 +352,6 @@ impl RealFlightLocalBridge {
     /// Get statistics for the RealFlightBridge
     pub fn statistics(&self) -> Statistics {
         self.statistics.snapshot()
-    }
-
-    /// Exchanges flight control data with the RealFlight simulator.
-    ///
-    /// This method transmits the provided [ControlInputs] (e.g., RC channel values)
-    /// to the RealFlight simulator and retrieves an updated [SimulatorState] in return,
-    /// including position, orientation, velocities, and more.
-    ///
-    /// # Parameters
-    ///
-    /// - `control`: A [ControlInputs] struct specifying up to 12 RC channels (0.0–1.0 range).
-    ///
-    /// # Returns
-    ///
-    /// A [Result] with the updated [SimulatorState] on success, or an error if
-    /// something goes wrong (e.g., SOAP fault, network timeout).
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use realflight_bridge::{RealFlightLocalBridge, Configuration, ControlInputs};
-    /// use std::error::Error;
-    ///
-    /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightLocalBridge::new()?;
-    ///
-    ///     // Create sample control inputs
-    ///     let mut inputs = ControlInputs::default();
-    ///     inputs.channels[0] = 0.5; // Aileron neutral
-    ///     inputs.channels[2] = 1.0; // Full throttle
-    ///
-    ///     // Exchange data with the simulator
-    ///     let state = bridge.exchange_data(&inputs)?;
-    ///     println!("Current airspeed: {:?}", state.airspeed);
-    ///     println!("Altitude above ground: {:?}", state.altitude_agl);
-    ///
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
-        let body = encode_control_inputs(control);
-        let response = self.soap_client.send_action("ExchangeData", &body)?;
-        match response.status_code {
-            200 => crate::decoders::decode_simulator_state(&response.body),
-            _ => Err(crate::decode_fault(&response).into()),
-        }
-    }
-
-    /// Reverts the RealFlight simulator to use its original Spektrum (or built-in) RC input.
-    ///
-    /// Calling [RealFlightBridge::enable_rc] instructs RealFlight to restore its native RC controller
-    /// device (e.g., Spektrum). Once enabled, external RC control via the RealFlight Link
-    /// interface is disabled until you explicitly call [RealFlightBridge::disable_rc].
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` if the simulator successfully reverts to using the original RC controller.
-    /// An `Err`` is returned if RealFlight cannot locate or restore the original controller device.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
-    /// use std::error::Error;
-    ///
-    /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightLocalBridge::new()?;
-    ///
-    ///     // Switch back to native Spektrum controller
-    ///     bridge.enable_rc()?;
-    ///
-    ///     // The simulator is now using its default RC input
-    ///
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.soap_client
-            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)?
-            .into()
-    }
-
-    /// Switches the RealFlight simulator’s input to the external RealFlight Link controller,
-    /// effectively disabling any native Spektrum (or other built-in) RC device.
-    ///
-    /// Once [RealFlightBridge::disable_rc] is called, RealFlight listens exclusively for commands sent
-    /// through this external interface. To revert to the original RC device, call
-    /// [RealFlightBridge::enable_rc].
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` if RealFlight Link mode is successfully activated, or an `Err` if
-    /// the request fails (e.g., simulator is not ready or rejects the command).
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
-    /// use std::error::Error;
-    ///
-    /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightLocalBridge::new()?;
-    ///
-    ///     // Switch to the external RealFlight Link input
-    ///     bridge.disable_rc()?;
-    ///
-    ///     // Now the simulator expects input via RealFlight Link
-    ///
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
-        self.soap_client
-            .send_action("InjectUAVControllerInterface", EMPTY_BODY)?
-            .into()
-    }
-
-    /// Resets the currently loaded aircraft in the RealFlight simulator, analogous
-    /// to pressing the spacebar in the simulator’s interface.
-    ///
-    /// This call repositions the aircraft back to its initial state and orientation,
-    /// clearing any damage or off-runway positioning. It’s useful for rapid iteration
-    /// when testing control loops or flight maneuvers.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` upon a successful reset. Returns an error if RealFlight rejects the command
-    /// or if a network issue prevents delivery.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
-    /// use std::error::Error;
-    ///
-    /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightLocalBridge::new()?;
-    ///
-    ///     // Perform a flight test...
-    ///     // ...
-    ///
-    ///     // Reset the aircraft to starting conditions:
-    ///     bridge.reset_aircraft()?;
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
-        self.soap_client
-            .send_action("ResetAircraft", EMPTY_BODY)?
-            .into()
     }
 }
 

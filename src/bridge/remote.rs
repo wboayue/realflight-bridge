@@ -67,6 +67,7 @@ use serde::{Deserialize, Serialize};
 use crate::{ControlInputs, SimulatorState};
 
 use super::local::{Configuration, RealFlightLocalBridge};
+use super::RealFlightBridge;
 
 /// Defines the types of requests that can be sent to the server.
 #[derive(Debug, Serialize, Deserialize)]

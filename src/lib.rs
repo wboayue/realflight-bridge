@@ -42,8 +42,6 @@ mod decoders;
 mod soap_client;
 
 #[doc(inline)]
-pub use bridge::RealFlightBridge;
-#[doc(inline)]
 pub use bridge::local::Configuration;
 #[doc(inline)]
 pub use bridge::local::RealFlightLocalBridge;
@@ -51,6 +49,8 @@ pub use bridge::local::RealFlightLocalBridge;
 pub use bridge::remote::ProxyServer;
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
+#[doc(inline)]
+pub use bridge::RealFlightBridge;
 
 #[derive(Debug)]
 struct SoapResponse {
