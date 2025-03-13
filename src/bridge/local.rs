@@ -24,12 +24,12 @@ const EMPTY_BODY: &str = "";
 /// # Examples
 ///
 /// ```no_run
-/// use realflight_bridge::{RealFlightBridge, Configuration, ControlInputs};
+/// use realflight_bridge::{RealFlightLocalBridge, Configuration, ControlInputs};
 /// use std::error::Error;
 ///
 /// fn main() -> Result<(), Box<dyn Error>> {
 ///     // Build a RealFlightBridge client
-///     let bridge = RealFlightBridge::new()?;
+///     let bridge = RealFlightLocalBridge::new()?;
 ///
 ///     // Create sample control inputs
 ///     let mut inputs = ControlInputs::default();
@@ -68,12 +68,12 @@ const EMPTY_BODY: &str = "";
 /// Use [`statistics()`](#method.statistics) to retrieve current performance metrics
 /// such as request count, errors, and average frame rate. This is useful for profiling
 /// real-time loops or detecting dropped messages.
-pub struct RealFlightBridge {
+pub struct RealFlightLocalBridge {
     statistics: Arc<StatisticsEngine>,
     soap_client: Box<dyn SoapClient>,
 }
 
-impl RealFlightBridge {
+impl RealFlightLocalBridge {
     /// Creates a new [RealFlightBridge] instance configured to communicate
     /// with a RealFlight simulator running on local machine.
     ///
@@ -86,13 +86,13 @@ impl RealFlightBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightBridge, Configuration};
+    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
     /// use std::error::Error;
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
     ///     // Build a bridge to the RealFlight simulator.
     ///     // Connects to simulator at 127.0.0.1:18083
-    ///     let bridge = RealFlightBridge::new()?;
+    ///     let bridge = RealFlightLocalBridge::new()?;
     ///
     ///     // Now you can interact with RealFlight:
     ///     // - Send/receive flight control data
@@ -108,12 +108,12 @@ impl RealFlightBridge {
     /// This function will return an error in the following situations:
     ///
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
-    pub fn new() -> Result<RealFlightBridge, Box<dyn Error>> {
+    pub fn new() -> Result<RealFlightLocalBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
         let soap_client = TcpSoapClient::new(Configuration::default(), statistics.clone())?;
         soap_client.ensure_pool_initialized()?;
 
-        Ok(RealFlightBridge {
+        Ok(RealFlightLocalBridge {
             statistics: statistics.clone(),
             soap_client: Box::new(soap_client),
         })
@@ -136,7 +136,7 @@ impl RealFlightBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightBridge, Configuration};
+    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
     /// use std::error::Error;
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
@@ -144,7 +144,7 @@ impl RealFlightBridge {
     ///     let config = Configuration::default();
     ///
     ///     // Build a bridge to the RealFlight simulator.
-    ///     let bridge = RealFlightBridge::with_configuration(&config)?;
+    ///     let bridge = RealFlightLocalBridge::with_configuration(&config)?;
     ///
     ///     // Now you can interact with RealFlight:
     ///     // - Send/receive flight control data
@@ -163,12 +163,12 @@ impl RealFlightBridge {
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
     pub fn with_configuration(
         configuration: &Configuration,
-    ) -> Result<RealFlightBridge, Box<dyn Error>> {
+    ) -> Result<RealFlightLocalBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
         let soap_client = TcpSoapClient::new(configuration.clone(), statistics.clone())?;
         soap_client.ensure_pool_initialized()?;
 
-        Ok(RealFlightBridge {
+        Ok(RealFlightLocalBridge {
             statistics: statistics.clone(),
             soap_client: Box::new(soap_client),
         })
@@ -179,12 +179,12 @@ impl RealFlightBridge {
     #[cfg(test)]
     pub(crate) fn stub(
         mut soap_client: StubSoapClient,
-    ) -> Result<RealFlightBridge, Box<dyn Error>> {
+    ) -> Result<RealFlightLocalBridge, Box<dyn Error>> {
         let statistics = Arc::new(StatisticsEngine::new());
 
         soap_client.statistics = Some(statistics.clone());
 
-        Ok(RealFlightBridge {
+        Ok(RealFlightLocalBridge {
             statistics,
             soap_client: Box::new(soap_client),
         })
@@ -218,11 +218,11 @@ impl RealFlightBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightBridge, Configuration, ControlInputs};
+    /// use realflight_bridge::{RealFlightLocalBridge, Configuration, ControlInputs};
     /// use std::error::Error;
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightBridge::new()?;
+    ///     let bridge = RealFlightLocalBridge::new()?;
     ///
     ///     // Create sample control inputs
     ///     let mut inputs = ControlInputs::default();
@@ -260,11 +260,11 @@ impl RealFlightBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightBridge, Configuration};
+    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
     /// use std::error::Error;
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightBridge::new()?;
+    ///     let bridge = RealFlightLocalBridge::new()?;
     ///
     ///     // Switch back to native Spektrum controller
     ///     bridge.enable_rc()?;
@@ -295,11 +295,11 @@ impl RealFlightBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightBridge, Configuration};
+    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
     /// use std::error::Error;
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightBridge::new()?;
+    ///     let bridge = RealFlightLocalBridge::new()?;
     ///
     ///     // Switch to the external RealFlight Link input
     ///     bridge.disable_rc()?;
@@ -330,11 +330,11 @@ impl RealFlightBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightBridge, Configuration};
+    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
     /// use std::error::Error;
     ///
     /// fn main() -> Result<(), Box<dyn Error>> {
-    ///     let bridge = RealFlightBridge::new()?;
+    ///     let bridge = RealFlightLocalBridge::new()?;
     ///
     ///     // Perform a flight test...
     ///     // ...

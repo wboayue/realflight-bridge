@@ -66,7 +66,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ControlInputs, SimulatorState};
 
-use super::local::{Configuration, RealFlightBridge};
+use super::local::{Configuration, RealFlightLocalBridge};
 
 /// Defines the types of requests that can be sent to the server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -307,7 +307,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
             ..Default::default()
         };
 
-        Some(RealFlightBridge::with_configuration(&config)?)
+        Some(RealFlightLocalBridge::with_configuration(&config)?)
     };
 
     info!("New client connected: {}", stream.peer_addr()?);
@@ -380,7 +380,7 @@ fn send_response(
 ///
 /// # Returns
 /// The response to send back to the client.
-fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
+fn process_request(request: Request, bridge: &RealFlightLocalBridge) -> Response {
     match request.request_type {
         RequestType::EnableRC => {
             if let Err(e) = bridge.enable_rc() {

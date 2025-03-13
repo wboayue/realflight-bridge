@@ -17,7 +17,6 @@
 use std::error::Error;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -45,7 +44,7 @@ mod soap_client;
 #[doc(inline)]
 pub use bridge::local::Configuration;
 #[doc(inline)]
-pub use bridge::local::RealFlightBridge;
+pub use bridge::local::RealFlightLocalBridge;
 #[doc(inline)]
 pub use bridge::remote::ProxyServer;
 #[doc(inline)]
@@ -228,11 +227,11 @@ pub struct SimulatorState {
 /// - `request_count`: The total number of SOAP requests sent to the simulator. Loops back to 0 after `u32::MAX`.
 ///
 /// ```no_run
-/// use realflight_bridge::{RealFlightBridge, Configuration};
+/// use realflight_bridge::{RealFlightLocalBridge, Configuration};
 /// use std::error::Error;
 ///
 /// fn main() -> Result<(), Box<dyn Error>> {
-///     let bridge = RealFlightBridge::new()?;
+///     let bridge = RealFlightLocalBridge::new()?;
 ///
 ///     // Send some commands...
 ///
