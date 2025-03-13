@@ -42,6 +42,8 @@ mod decoders;
 mod soap_client;
 
 #[doc(inline)]
+pub use bridge::RealFlightBridge;
+#[doc(inline)]
 pub use bridge::local::Configuration;
 #[doc(inline)]
 pub use bridge::local::RealFlightLocalBridge;
