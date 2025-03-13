@@ -16,7 +16,8 @@ use anyhow::{anyhow, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use log::{debug, error};
 
-use crate::{encode_envelope, Configuration, SoapClient, SoapResponse, StatisticsEngine};
+use crate::bridge::local::{encode_envelope, Configuration, SoapClient};
+use crate::{SoapResponse, StatisticsEngine};
 
 /// Size of header for request body
 const HEADER_LEN: usize = 120;

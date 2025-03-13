@@ -13,6 +13,7 @@ use uom::si::velocity::meter_per_second;
 use uom::si::volume::liter;
 
 use super::*;
+use crate::bridge::local::{Configuration, RealFlightBridge};
 use crate::decoders::OUNCES_PER_LITER;
 use soap_stub::Server;
 

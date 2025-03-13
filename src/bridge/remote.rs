@@ -64,7 +64,9 @@ use log::{error, info};
 use postcard::{from_bytes, to_stdvec};
 use serde::{Deserialize, Serialize};
 
-use crate::{Configuration, ControlInputs, RealFlightBridge, SimulatorState};
+use crate::{ControlInputs, SimulatorState};
+
+use super::local::{Configuration, RealFlightBridge};
 
 /// Defines the types of requests that can be sent to the server.
 #[derive(Debug, Serialize, Deserialize)]
