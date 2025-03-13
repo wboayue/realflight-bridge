@@ -523,7 +523,7 @@ pub struct Configuration {
     /// * Recommended range: 25-100ms for local connections
     ///
     /// # Default
-    /// 50 milliseconds
+    /// 5 milliseconds
     pub connect_timeout: Duration,
 
     /// Size of the connection pool.
@@ -551,7 +551,7 @@ impl Default for Configuration {
     fn default() -> Self {
         Configuration {
             simulator_host: "127.0.0.1:18083".to_string(),
-            connect_timeout: Duration::from_millis(50),
+            connect_timeout: Duration::from_millis(5),
             pool_size: 1,
         }
     }

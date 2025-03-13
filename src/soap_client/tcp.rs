@@ -196,18 +196,27 @@ impl ConnectionPool {
                 .parse()
                 .expect("Invalid simulator host");
 
+            for _ in 0..config.pool_size {
+                let stream = TcpStream::connect(&simulator_address).unwrap();
+                sender.send(stream).unwrap();
+            }
+
+            initialized.store(true, Ordering::Relaxed);
+
             while running.load(Ordering::Relaxed) {
+                if sender.is_full() {
+                    thread::sleep(config.connect_timeout / 2);
+                    continue;
+                }
+
                 match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
-                    Ok(stream) => {
-                        match sender.send_timeout(stream, config.connect_timeout) {
-                            Ok(_) => {
-                                initialized.store(true, Ordering::Relaxed);
-                            }
-                            Err(_) => {
-                                // pool is full
-                            }
+                    Ok(stream) => match sender.send(stream) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("Error sending connection: {}", e);
+                            statistics.increment_error_count();
                         }
-                    }
+                    },
                     Err(e) => {
                         error!("Error creating connection: {}", e);
                         statistics.increment_error_count();
