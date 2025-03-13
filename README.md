@@ -38,20 +38,22 @@ cargo add realflight-bridge
 
 ## Example Usage
 
+This library provides a trait `RealFlightBridge` and two implementations `RealFlightLocalBridge` and `RealFlightRemoteBridge` to interact with a local or remote simulator. The remote implementation requires an instance of `realflight_bridge_proxy` running local to the simulator.
+
 ### Running Bridge local to RealFlight
 
-RealFlight Link is a SOAP API that requires a new connection for each request, which introduces significant overhead with a non-local connection. Since connecting via the loopback interface has minimal overhead, running the bridge on the same host is the recommended approach.
+RealFlight Link implements a SOAP API that requires a new connection for each request, this introduces significant overhead with non-local connections. Since connecting via the loopback interface has minimal overhead, running the bridge on the same host as the simulator is the recommended approach.
 
 The following example demonstrates how to connect to RealFlight Link, set up the simulation, and send control inputs while receiving simulator state feedback.
 
 ```rust
 use std::error::Error;
 
-use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge};
+use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge, RealFlightLocalBridge};
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Creates bridge with default configuration (connects to 127.0.0.1:18083)
-    let bridge = RealFlightBridge::new()?;
+    let bridge: RealFlightBridge = RealFlightLocalBridge::new()?;
 
     // Reset the simulation to start from a known state
     bridge.reset_aircraft()?;
@@ -106,10 +108,10 @@ The following example shows how your application code connects to the simulator 
 
 ```rust
 use std::error::Error;
-use realflight_bridge::{RealFlightRemoteBridge, ControlInputs};
+use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, ControlInputs};
 
 fn main() -> Result<(), Box<dyn Error>> {
-  let mut client = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
+  let mut client: RealFlightBridge = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
 
   // Disable RC input and enable external control
   client.disable_rc()?;

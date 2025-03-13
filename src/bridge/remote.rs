@@ -142,10 +142,7 @@ impl RealFlightBridge for RealFlightRemoteBridge {
     ///
     /// # Returns
     /// The [SimulatorState] or an error if no state is returned.
-    fn exchange_data(
-        &self,
-        control: &ControlInputs,
-    ) -> Result<SimulatorState, Box<dyn Error>> {
+    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
         let response = self.send_request(RequestType::ExchangeData, Some(control.clone()))?;
         if let Some(state) = response.payload {
             Ok(state)
