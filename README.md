@@ -12,13 +12,11 @@
 
 [RealFlight](https://www.realflight.com/) is a leading RC flight simulator that provides a realistic, physics-based environment for flying fixed-wing aircraft, helicopters, and drones. Used by both hobbyists and professionals, it simulates aerodynamics, wind conditions, and control responses, making it an excellent tool for flight control algorithm validation.
 
-This Rust library interfaces with [RealFlight Link](https://forums.realflight.com/index.php?threads/flightaxis-link-q-a.32854/), enabling external flight controllers to interact with the simulator. It allows developers to:
+**RealFlightBridge** is a Rust library that interfaces with [RealFlight Link](https://forums.realflight.com/index.php?threads/flightaxis-link-q-a.32854/), enabling external flight controllers to interact with the simulator. It allows developers to:
 
 * Send control commands to simulated aircraft.
 * Receive real-time simulated flight data for state estimation and control.
 * Test stabilization and autonomy algorithms in a controlled environment.
-
-Custom aircraft models can also be created to closely match real-world designs, providing a more precise testing and development platform.
 
 ## Prerequisites
 
@@ -28,6 +26,8 @@ Custom aircraft models can also be created to closely match real-world designs, 
   2. Go to Settings > Physics -> Quality -> RealFlight Link Enabled
   3. Enable RealFlight Link
 
+The simulator requires a restart after enabling RealFlight Link.
+
 ## Install
 
 Use the latest version directly from crates.io:
@@ -36,22 +36,29 @@ Use the latest version directly from crates.io:
 cargo add realflight-bridge
 ```
 
-## Example Usage
+## Architecture
 
-### Running Bridge local to RealFlight
+This library provides two main ways to connect to RealFlight:
 
-RealFlight Link is a SOAP API that requires a new connection for each request, which introduces significant overhead with a non-local connection. Since connecting via the loopback interface has minimal overhead, running the bridge on the same host is the recommended approach.
+1. **Local Bridge**: Connect directly to RealFlight running on the same machine
+2. **Remote Bridge**: Connect to RealFlight running on a different machine via a proxy server
+
+## Usage Examples
+
+### Local Connection
+
+RealFlight Link implements a SOAP API that requires a new connection for each request, this introduces significant overhead with non-local connections. Since connecting via the loopback interface has minimal overhead, running the bridge on the same host as the simulator is the recommended approach.
 
 The following example demonstrates how to connect to RealFlight Link, set up the simulation, and send control inputs while receiving simulator state feedback.
 
 ```rust
 use std::error::Error;
 
-use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge};
+use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge, RealFlightLocalBridge};
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Creates bridge with default configuration (connects to 127.0.0.1:18083)
-    let bridge = RealFlightBridge::new()?;
+    let bridge: RealFlightBridge = RealFlightLocalBridge::new()?;
 
     // Reset the simulation to start from a known state
     bridge.reset_aircraft()?;
@@ -79,12 +86,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-### Running Bridge on remote computer
+### Remote Connection
 
 There are some cases where we may want to run the bridge on a computer that is not running the RealFlight simulator.
 For example, you may be developing on a Mac while RealFlight runs only on Windows. To support this scenario, a proxy with an efficient communication protocol was created to forward messages from a remote computer to the simulator via RealFlightBridge. This still requires a low-latency connection. It works well on wired networks or when a Mac communicates with the simulator hosted in a Parallels VM; however, I could not achieve a high enough loop frequency (you want at least 200Hz) over WiFi.
 
-#### Install Proxy
+#### Remote Connection (Server)
 
 On the same machine running the RealFlight simulator, install the proxy using the following command.
 
@@ -100,16 +107,16 @@ realflight_bridge_proxy
 
 By default, `realflight_bridge_proxy` binds to `0.0.0.0:8080`. This can be changed by passing the `--bind-address` argument to `realflight_bridge_proxy`.
 
-#### Using Proxy in Application
+#### Remote Connection (Client)
 
 The following example shows how your application code connects to the simulator using the proxy.
 
 ```rust
 use std::error::Error;
-use realflight_bridge::{RealFlightRemoteBridge, ControlInputs};
+use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, ControlInputs};
 
 fn main() -> Result<(), Box<dyn Error>> {
-  let mut client = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
+  let mut client: RealFlightBridge = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
 
   // Disable RC input and enable external control
   client.disable_rc()?;

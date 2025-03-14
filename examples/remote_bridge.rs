@@ -2,7 +2,7 @@ use std::error::Error;
 use std::time::{Duration, Instant};
 
 use clap::{arg, Command};
-use realflight_bridge::{ControlInputs, RealFlightRemoteBridge};
+use realflight_bridge::{ControlInputs, RealFlightBridge, RealFlightRemoteBridge};
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let proxy_host = matches.get_one::<String>("proxy-host").unwrap();
     println!("Connecting to RealFlight bridge proxy at {}", proxy_host);
 
-    let mut bridge = RealFlightRemoteBridge::new(proxy_host)?;
+    let bridge = RealFlightRemoteBridge::new(proxy_host)?;
     println!("Connected to server at {}", proxy_host);
 
     // Reset the simulation to start from a known state

@@ -1,7 +1,7 @@
 use clap::{arg, Command};
 use log::{debug, info};
 
-use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge};
+use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge, RealFlightLocalBridge};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    let bridge = match RealFlightBridge::with_configuration(&configuration) {
+    let bridge = match RealFlightLocalBridge::with_configuration(&configuration) {
         Ok(client) => client,
         Err(e) => {
             eprintln!("Error connecting to RealFlight simulator: {}", e);

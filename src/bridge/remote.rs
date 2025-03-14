@@ -15,7 +15,7 @@
 //! ### Client Example
 //! ```no_run
 //! use std::error::Error;
-//! use realflight_bridge::{RealFlightRemoteBridge, ControlInputs};
+//! use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, ControlInputs};
 //!
 //! fn main() -> Result<(), Box<dyn Error>> {
 //!     let mut client = RealFlightRemoteBridge::new("127.0.0.1:18083")?;
@@ -53,6 +53,7 @@
 //!
 //! The default simulator host is hardcoded as `"127.0.0.1:18083"`. To customize, modify the `SIMULATOR_HOST` constant.
 
+use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
 use std::{
     error::Error,
@@ -64,7 +65,10 @@ use log::{error, info};
 use postcard::{from_bytes, to_stdvec};
 use serde::{Deserialize, Serialize};
 
-use crate::{Configuration, ControlInputs, RealFlightBridge, SimulatorState};
+use crate::{ControlInputs, SimulatorState};
+
+use super::local::{Configuration, RealFlightLocalBridge};
+use super::RealFlightBridge;
 
 /// Defines the types of requests that can be sent to the server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -108,8 +112,45 @@ pub enum ResponseStatus {
 
 /// Client struct for managing TCP communication with the simulator server.
 pub struct RealFlightRemoteBridge {
-    reader: BufReader<TcpStream>, // Buffered reader for incoming data
-    writer: BufWriter<TcpStream>, // Buffered writer for outgoing data
+    reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
+    writer: RefCell<BufWriter<TcpStream>>, // Buffered writer for outgoing data
+}
+
+impl RealFlightBridge for RealFlightRemoteBridge {
+    /// Enables remote control on the simulator.
+    fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
+        self.send_request(RequestType::EnableRC, None)?;
+        Ok(())
+    }
+
+    /// Disables remote control on the simulator. (Enables control by the RealFlight link.)
+    fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
+        self.send_request(RequestType::DisableRC, None)?;
+        Ok(())
+    }
+
+    /// Resets the aircraft state in the simulator.
+    fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
+        self.send_request(RequestType::ResetAircraft, None)?;
+        Ok(())
+    }
+
+    /// Sends [ControlInputs] to the simulator and receives the updated [SimulatorState].
+    ///
+    /// # Arguments
+    /// * `control` - The [ControlInputs] to send.
+    ///
+    /// # Returns
+    /// The [SimulatorState] or an error if no state is returned.
+    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
+        let response = self.send_request(RequestType::ExchangeData, Some(control.clone()))?;
+        if let Some(state) = response.payload {
+            Ok(state)
+        } else {
+            error!("No payload in response: {:?}", response.status);
+            Err("No payload in response".into())
+        }
+    }
 }
 
 impl RealFlightRemoteBridge {
@@ -125,8 +166,8 @@ impl RealFlightRemoteBridge {
         stream.set_nodelay(true)?;
 
         Ok(RealFlightRemoteBridge {
-            reader: BufReader::new(stream.try_clone()?),
-            writer: BufWriter::new(stream),
+            reader: RefCell::new(BufReader::new(stream.try_clone()?)),
+            writer: RefCell::new(BufWriter::new(stream)),
         })
     }
 
@@ -139,7 +180,7 @@ impl RealFlightRemoteBridge {
     /// # Returns
     /// A `Result` containing the server's response or an I/O error.
     fn send_request(
-        &mut self,
+        &self,
         request_type: RequestType,
         payload: Option<ControlInputs>,
     ) -> std::io::Result<Response> {
@@ -152,66 +193,32 @@ impl RealFlightRemoteBridge {
         let request_bytes = to_stdvec(&request)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
+        let mut writer = self.writer.borrow_mut();
+
         // Send the length of the request (4 bytes)
         let length_bytes = (request_bytes.len() as u32).to_be_bytes();
-        self.writer.write_all(&length_bytes)?;
+        writer.write_all(&length_bytes)?;
 
         // Send the serialized request data
-        self.writer.write_all(&request_bytes)?;
-        self.writer.flush()?;
+        writer.write_all(&request_bytes)?;
+        writer.flush()?;
+
+        let mut reader = self.reader.borrow_mut();
 
         // Read the response length (4 bytes)
         let mut length_buffer = [0u8; 4];
-        self.reader.read_exact(&mut length_buffer)?;
+        reader.read_exact(&mut length_buffer)?;
         let response_length = u32::from_be_bytes(length_buffer) as usize;
 
         // Read the response data
         let mut response_buffer = vec![0u8; response_length];
-        self.reader.read_exact(&mut response_buffer)?;
+        reader.read_exact(&mut response_buffer)?;
 
         // Deserialize the response
         let response: Response = from_bytes(&response_buffer)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
         Ok(response)
-    }
-
-    /// Enables remote control on the simulator.
-    pub fn enable_rc(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_request(RequestType::EnableRC, None)?;
-        Ok(())
-    }
-
-    /// Disables remote control on the simulator. (Enables control by the RealFlight link.)
-    pub fn disable_rc(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_request(RequestType::DisableRC, None)?;
-        Ok(())
-    }
-
-    /// Resets the aircraft state in the simulator.
-    pub fn reset_aircraft(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_request(RequestType::ResetAircraft, None)?;
-        Ok(())
-    }
-
-    /// Sends [ControlInputs] to the simulator and receives the updated [SimulatorState].
-    ///
-    /// # Arguments
-    /// * `control` - The [ControlInputs] to send.
-    ///
-    /// # Returns
-    /// The [SimulatorState] or an error if no state is returned.
-    pub fn exchange_data(
-        &mut self,
-        control: &ControlInputs,
-    ) -> Result<SimulatorState, Box<dyn Error>> {
-        let response = self.send_request(RequestType::ExchangeData, Some(control.clone()))?;
-        if let Some(state) = response.payload {
-            Ok(state)
-        } else {
-            error!("No payload in response: {:?}", response.status);
-            Err("No payload in response".into())
-        }
     }
 }
 
@@ -305,7 +312,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
             ..Default::default()
         };
 
-        Some(RealFlightBridge::with_configuration(&config)?)
+        Some(RealFlightLocalBridge::with_configuration(&config)?)
     };
 
     info!("New client connected: {}", stream.peer_addr()?);
@@ -378,7 +385,7 @@ fn send_response(
 ///
 /// # Returns
 /// The response to send back to the client.
-fn process_request(request: Request, bridge: &RealFlightBridge) -> Response {
+fn process_request(request: Request, bridge: &RealFlightLocalBridge) -> Response {
     match request.request_type {
         RequestType::EnableRC => {
             if let Err(e) = bridge.enable_rc() {

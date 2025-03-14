@@ -13,6 +13,7 @@ use uom::si::velocity::meter_per_second;
 use uom::si::volume::liter;
 
 use super::*;
+use crate::bridge::local::{Configuration, RealFlightLocalBridge};
 use crate::decoders::OUNCES_PER_LITER;
 use soap_stub::Server;
 
@@ -25,9 +26,9 @@ fn create_configuration(port: u16) -> Configuration {
     }
 }
 
-fn create_bridge(port: u16) -> Result<RealFlightBridge, Box<dyn std::error::Error>> {
+fn create_bridge(port: u16) -> Result<RealFlightLocalBridge, Box<dyn std::error::Error>> {
     let configuration = create_configuration(port);
-    RealFlightBridge::with_configuration(&configuration)
+    RealFlightLocalBridge::with_configuration(&configuration)
 }
 
 /// Generate a random port number. Mitigates chances of port conflicts.
@@ -64,7 +65,7 @@ pub fn test_tcp_soap_client() {
 pub fn test_reset_aircraft() {
     // Assemble
     let soap_client = StubSoapClient::new(vec!["reset-aircraft-200".to_string()]);
-    let bridge = RealFlightBridge::stub(soap_client).unwrap();
+    let bridge = RealFlightLocalBridge::stub(soap_client).unwrap();
 
     // Act
     let result = bridge.reset_aircraft();
@@ -89,7 +90,7 @@ pub fn test_reset_aircraft() {
 pub fn test_disable_rc_200() {
     // Assemble
     let soap_client = StubSoapClient::new(vec!["inject-uav-controller-interface-200".to_string()]);
-    let bridge = RealFlightBridge::stub(soap_client).unwrap();
+    let bridge = RealFlightLocalBridge::stub(soap_client).unwrap();
 
     // Act
     let result = bridge.disable_rc();
@@ -114,7 +115,7 @@ pub fn test_disable_rc_200() {
 pub fn test_disable_rc_500() {
     // Assemble
     let soap_client = StubSoapClient::new(vec!["inject-uav-controller-interface-500".to_string()]);
-    let bridge = RealFlightBridge::stub(soap_client).unwrap();
+    let bridge = RealFlightLocalBridge::stub(soap_client).unwrap();
 
     // Act
     let result = bridge.disable_rc();
@@ -133,7 +134,7 @@ pub fn test_enable_rc_200() {
     // Assemble
     let soap_client =
         StubSoapClient::new(vec!["restore-original-controller-device-200".to_string()]);
-    let bridge = RealFlightBridge::stub(soap_client).unwrap();
+    let bridge = RealFlightLocalBridge::stub(soap_client).unwrap();
 
     // Act
     let result = bridge.enable_rc();
@@ -158,7 +159,7 @@ pub fn test_enable_rc_500() {
     // Assemble
     let soap_client =
         StubSoapClient::new(vec!["restore-original-controller-device-500".to_string()]);
-    let bridge = RealFlightBridge::stub(soap_client).unwrap();
+    let bridge = RealFlightLocalBridge::stub(soap_client).unwrap();
 
     // Act
     let result = bridge.enable_rc();
@@ -181,7 +182,7 @@ pub fn test_exchange_data_200() {
 
     // Assemble
     let soap_client = StubSoapClient::new(vec!["return-data-200".to_string()]);
-    let bridge = RealFlightBridge::stub(soap_client).unwrap();
+    let bridge = RealFlightLocalBridge::stub(soap_client).unwrap();
 
     // Act
     let mut control = ControlInputs::default();
@@ -339,7 +340,7 @@ pub fn test_exchange_data_500() {
 
     // Assemble
     let soap_client = StubSoapClient::new(vec!["return-data-500".to_string()]);
-    let bridge = RealFlightBridge::stub(soap_client).unwrap();
+    let bridge = RealFlightLocalBridge::stub(soap_client).unwrap();
 
     // Act
     let mut control = ControlInputs::default();
