@@ -58,7 +58,7 @@ use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge, RealFlig
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Creates bridge with default configuration (connects to 127.0.0.1:18083)
-    let bridge: RealFlightBridge = RealFlightLocalBridge::new()?;
+    let bridge = RealFlightLocalBridge::new()?;
 
     // Reset the simulation to start from a known state
     bridge.reset_aircraft()?;
@@ -116,7 +116,7 @@ use std::error::Error;
 use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, ControlInputs};
 
 fn main() -> Result<(), Box<dyn Error>> {
-  let mut client: RealFlightBridge = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
+  let mut client = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
 
   // Disable RC input and enable external control
   client.disable_rc()?;
