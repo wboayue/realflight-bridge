@@ -198,7 +198,7 @@ impl ConnectionPool {
                 .expect("Invalid simulator host");
 
             for _ in 0..config.pool_size {
-                let stream = TcpStream::connect(&simulator_address).unwrap();
+                let stream = TcpStream::connect(simulator_address).unwrap();
                 sender.send(stream).unwrap();
             }
 

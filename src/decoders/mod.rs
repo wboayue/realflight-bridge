@@ -1,19 +1,30 @@
 use std::error::Error;
 
 use log::debug;
+#[cfg(feature = "uom")]
 use uom::si::acceleration::meter_per_second_squared;
+#[cfg(feature = "uom")]
 use uom::si::angle::degree;
+#[cfg(feature = "uom")]
 use uom::si::electric_charge::milliampere_hour;
+#[cfg(feature = "uom")]
 use uom::si::electric_current::ampere;
+#[cfg(feature = "uom")]
 use uom::si::electric_potential::volt;
+#[cfg(feature = "uom")]
 use uom::si::length::meter;
+#[cfg(feature = "uom")]
 use uom::si::time::second;
+#[cfg(feature = "uom")]
 use uom::si::velocity::meter_per_second;
+#[cfg(feature = "uom")]
 use uom::si::volume::liter;
+#[cfg(feature = "uom")]
 use uom::si::{angular_velocity::degree_per_second, f32::*};
 
 use super::SimulatorState;
 
+#[cfg(feature = "uom")]
 pub const OUNCES_PER_LITER: f32 = 33.814;
 
 pub fn extract_element(name: &str, xml: &str) -> Option<String> {
@@ -109,6 +120,7 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
     Ok(result)
 }
 
+#[cfg(feature = "uom")]
 fn decode_state_field(
     state: &mut SimulatorState,
     name: &str,
@@ -260,6 +272,159 @@ fn decode_state_field(
     Ok(())
 }
 
+#[cfg(not(feature = "uom"))]
+fn decode_state_field(
+    state: &mut SimulatorState,
+    name: &str,
+    value: &str,
+) -> Result<(), Box<dyn Error>> {
+    match name {
+        "m-currentPhysicsTime-SEC" => {
+            state.current_physics_time = as_f32(name, value)?;
+        }
+        "m-currentPhysicsSpeedMultiplier" => {
+            state.current_physics_speed_multiplier = as_f32(name, value)?;
+        }
+        "m-airspeed-MPS" => {
+            state.airspeed = as_f32(name, value)?;
+        }
+        "m-altitudeASL-MTR" => {
+            state.altitude_asl = as_f32(name, value)?;
+        }
+        "m-altitudeAGL-MTR" => {
+            state.altitude_agl = as_f32(name, value)?;
+        }
+        "m-groundspeed-MPS" => {
+            state.groundspeed = as_f32(name, value)?;
+        }
+        "m-pitchRate-DEGpSEC" => {
+            state.pitch_rate = as_f32(name, value)?;
+        }
+        "m-rollRate-DEGpSEC" => {
+            state.roll_rate = as_f32(name, value)?;
+        }
+        "m-yawRate-DEGpSEC" => {
+            state.yaw_rate = as_f32(name, value)?;
+        }
+        "m-azimuth-DEG" => {
+            state.azimuth = as_f32(name, value)?;
+        }
+        "m-inclination-DEG" => {
+            state.inclination = as_f32(name, value)?;
+        }
+        "m-roll-DEG" => {
+            state.roll = as_f32(name, value)?;
+        }
+        "m-orientationQuaternion-X" => {
+            state.orientation_quaternion_x = as_f32(name, value)?;
+        }
+        "m-orientationQuaternion-Y" => {
+            state.orientation_quaternion_y = as_f32(name, value)?;
+        }
+        "m-orientationQuaternion-Z" => {
+            state.orientation_quaternion_z = as_f32(name, value)?;
+        }
+        "m-orientationQuaternion-W" => {
+            state.orientation_quaternion_w = as_f32(name, value)?;
+        }
+        "m-aircraftPositionX-MTR" => {
+            state.aircraft_position_x = as_f32(name, value)?;
+        }
+        "m-aircraftPositionY-MTR" => {
+            state.aircraft_position_y = as_f32(name, value)?;
+        }
+        "m-velocityWorldU-MPS" => {
+            state.velocity_world_u = as_f32(name, value)?;
+        }
+        "m-velocityWorldV-MPS" => {
+            state.velocity_world_v = as_f32(name, value)?;
+        }
+        "m-velocityWorldW-MPS" => {
+            state.velocity_world_w = as_f32(name, value)?;
+        }
+        "m-velocityBodyU-MPS" => {
+            state.velocity_body_u = as_f32(name, value)?;
+        }
+        "m-velocityBodyV-MPS" => {
+            state.velocity_body_v = as_f32(name, value)?;
+        }
+        "m-velocityBodyW-MPS" => {
+            state.velocity_body_w = as_f32(name, value)?;
+        }
+        "m-accelerationWorldAX-MPS2" => {
+            state.acceleration_world_ax = as_f32(name, value)?;
+        }
+        "m-accelerationWorldAY-MPS2" => {
+            state.acceleration_world_ay = as_f32(name, value)?;
+        }
+        "m-accelerationWorldAZ-MPS2" => {
+            state.acceleration_world_az = as_f32(name, value)?;
+        }
+        "m-accelerationBodyAX-MPS2" => {
+            state.acceleration_body_ax = as_f32(name, value)?;
+        }
+        "m-accelerationBodyAY-MPS2" => {
+            state.acceleration_body_ay = as_f32(name, value)?;
+        }
+        "m-accelerationBodyAZ-MPS2" => {
+            state.acceleration_body_az = as_f32(name, value)?;
+        }
+        "m-windX-MPS" => {
+            state.wind_x = as_f32(name, value)?;
+        }
+        "m-windY-MPS" => {
+            state.wind_y = as_f32(name, value)?;
+        }
+        "m-windZ-MPS" => {
+            state.wind_z = as_f32(name, value)?;
+        }
+        "m-propRPM" => {
+            state.prop_rpm = as_f32(name, value)?;
+        }
+        "m-heliMainRotorRPM" => {
+            state.heli_main_rotor_rpm = as_f32(name, value)?;
+        }
+        "m-batteryVoltage-VOLTS" => {
+            state.battery_voltage = as_f32(name, value)?;
+        }
+        "m-batteryCurrentDraw-AMPS" => {
+            state.battery_current_draw = as_f32(name, value)?;
+        }
+        "m-batteryRemainingCapacity-MAH" => {
+            state.battery_remaining_capacity = as_f32(name, value)?;
+        }
+        "m-fuelRemaining-OZ" => {
+            state.fuel_remaining = as_f32(name, value)?;
+        }
+        "m-isLocked" => {
+            state.is_locked = as_bool(name, value)?;
+        }
+        "m-hasLostComponents" => {
+            state.has_lost_components = as_bool(name, value)?;
+        }
+        "m-anEngineIsRunning" => {
+            state.an_engine_is_running = as_bool(name, value)?;
+        }
+        "m-isTouchingGround" => {
+            state.is_touching_ground = as_bool(name, value)?;
+        }
+        "m-flightAxisControllerIsActive" => {
+            state.flight_axis_controller_is_active = as_bool(name, value)?;
+        }
+        "m-currentAircraftStatus" => {
+            state.current_aircraft_status = value.to_string();
+        }
+        "m-resetButtonHasBeenPressed" => {
+            state.reset_button_has_been_pressed = as_bool(name, value)?;
+        }
+        _ => {
+            debug!("Unexpected attribute {}: {}", name, value);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "uom")]
 fn as_time(name: &str, value: &str) -> Result<Time, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -276,6 +441,7 @@ fn as_f32(name: &str, value: &str) -> Result<f32, Box<dyn Error>> {
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_velocity(name: &str, value: &str) -> Result<Velocity, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -284,6 +450,7 @@ fn as_velocity(name: &str, value: &str) -> Result<Velocity, Box<dyn Error>> {
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_angular_velocity(name: &str, value: &str) -> Result<AngularVelocity, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -292,6 +459,7 @@ fn as_angular_velocity(name: &str, value: &str) -> Result<AngularVelocity, Box<d
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_length(name: &str, value: &str) -> Result<Length, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -300,6 +468,7 @@ fn as_length(name: &str, value: &str) -> Result<Length, Box<dyn Error>> {
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_angle(name: &str, value: &str) -> Result<Angle, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -308,6 +477,7 @@ fn as_angle(name: &str, value: &str) -> Result<Angle, Box<dyn Error>> {
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_acceleration(name: &str, value: &str) -> Result<Acceleration, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -316,6 +486,7 @@ fn as_acceleration(name: &str, value: &str) -> Result<Acceleration, Box<dyn Erro
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_electrical_potential(name: &str, value: &str) -> Result<ElectricPotential, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -328,6 +499,7 @@ fn as_electrical_potential(name: &str, value: &str) -> Result<ElectricPotential,
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_electrical_current(name: &str, value: &str) -> Result<ElectricCurrent, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -336,6 +508,7 @@ fn as_electrical_current(name: &str, value: &str) -> Result<ElectricCurrent, Box
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_electrical_charge(name: &str, value: &str) -> Result<ElectricCharge, Box<dyn Error>> {
     let result = value.parse();
     match result {
@@ -344,6 +517,7 @@ fn as_electrical_charge(name: &str, value: &str) -> Result<ElectricCharge, Box<d
     }
 }
 
+#[cfg(feature = "uom")]
 fn as_volume(name: &str, value: &str, factor: Option<f32>) -> Result<Volume, Box<dyn Error>> {
     let result = value.parse();
     match result {

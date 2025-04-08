@@ -26,3 +26,4 @@ jobs:
     - name: test
       run: |
         cargo test
+        cargo test --no-default-features
