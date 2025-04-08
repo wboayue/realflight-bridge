@@ -16,8 +16,7 @@ exclude = [
 ]
 
 [features]
-#default = ["uom"]
-default = []
+default = ["uom"]
 uom = ["dep:uom"]
 bench-internals = []
 

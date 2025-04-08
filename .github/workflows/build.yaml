@@ -26,4 +26,4 @@ jobs:
     - name: test
       run: |
         cargo test
-        cargo test --features uom
+        cargo test --no-default-features
