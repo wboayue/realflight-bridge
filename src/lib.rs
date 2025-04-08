@@ -420,6 +420,5 @@ fn decode_fault(response: &SoapResponse) -> String {
     }
 }
 
-#[cfg(feature = "uom")]
 #[cfg(test)]
 pub mod tests;
