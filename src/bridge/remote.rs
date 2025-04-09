@@ -53,8 +53,10 @@
 //!
 //! The default simulator host is hardcoded as `"127.0.0.1:18083"`. To customize, modify the `SIMULATOR_HOST` constant.
 
+use core::panic;
 use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
+use std::str::LinesAny;
 use std::{
     error::Error,
     io::{Read, Write},
@@ -67,8 +69,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ControlInputs, SimulatorState};
 
-use super::local::{Configuration, RealFlightLocalBridge};
+use super::local::{self, Configuration, RealFlightLocalBridge};
 use super::RealFlightBridge;
+
+#[cfg(test)]
+mod tests;
 
 /// Defines the types of requests that can be sent to the server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -240,7 +245,7 @@ const SIMULATOR_HOST: &str = "127.0.0.1:18083";
 /// }
 /// ```
 pub struct ProxyServer {
-    bind_address: String, // Address to bind the server to
+    listener: Option<TcpListener>, // TCP listener for incoming connections
     stubbed: bool,        // Whether to run in stubbed mode (no real simulator)
 }
 
@@ -250,21 +255,25 @@ impl ProxyServer {
     /// # Arguments
     /// * `bind_address` - The address to bind to (e.g., "0.0.0.0:8080").
     pub fn new(bind_address: &str) -> Self {
+        let listener = TcpListener::bind(bind_address).unwrap();
         ProxyServer {
-            bind_address: bind_address.to_string(),
+            listener: Some(listener),
             stubbed: false,
         }
     }
 
     /// Creates a new server instance in stubbed mode.
-    ///
-    /// # Arguments
-    /// * `bind_address` - The address to bind to.
-    pub fn new_stubbed(bind_address: &str) -> Self {
-        ProxyServer {
-            bind_address: bind_address.to_string(),
-            stubbed: true,
-        }
+    pub fn new_stubbed() -> (Self, String) {
+        let bind_address = "127.0.0.1:0";
+        let listener = TcpListener::bind(bind_address).unwrap();
+        let local_addr = listener.local_addr().unwrap().to_string();
+        (
+            ProxyServer {
+                listener: Some(listener),
+                stubbed: true,
+            },
+            local_addr
+        )
     }
 
     /// Runs the server, listening for incoming connections.
@@ -274,8 +283,9 @@ impl ProxyServer {
     /// # Returns
     /// A `Result` indicating success or an error.
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let listener = TcpListener::bind(&self.bind_address)?;
-        println!("Server listening on {}", self.bind_address);
+        let listener = self.listener.take().ok_or("Listener not initialized")?;
+
+        println!("Server listening on {}", listener.local_addr()?);
 
         // Accept incoming connections and handle them
         for stream in listener.incoming() {
