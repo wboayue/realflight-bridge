@@ -1,6 +1,6 @@
 //! This module provides a TCP based proxy for interacting with the RealFlight simulator on a remote machine.
 //! The system includes a client ([RealFlightRemoteBridge]) for sending requests and a proxy server ([ProxyServer]) for
-//! handling them, with support for both real simulator interaction and a stubbed mode for testing.
+//! handling them.
 //!
 //! ## Key Components
 //!
@@ -36,22 +36,11 @@
 //!     server.run()?; // Runs indefinitely until an error occurs
 //!     Ok(())
 //! }
-//!
-//! // Stubbed mode for testing
-//! fn main_stubbed() -> Result<(), Box<dyn Error>> {
-//!     let (mut server, address) = ProxyServer::new_stubbed();
-//!     server.run()?;  // single request and exit
-//!     Ok(())
-//! }
 //! ```
 //!
 //! ## Design Notes
 //!
 //! - **Synchronous Operation**: The server processes one client at a time, blocking until the client disconnects.
-//!
-//! ## Configuration
-//!
-//! The default simulator host is hardcoded as `"127.0.0.1:18083"`. To customize, modify the `SIMULATOR_HOST` constant.
 
 use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
@@ -261,6 +250,8 @@ impl ProxyServer {
     }
 
     /// Creates a new server instance in stubbed mode.
+    /// This mode is used for testing purposes and does not require a real simulator.
+    #[cfg(test)]
     pub fn new_stubbed() -> (Self, String) {
         let bind_address = "127.0.0.1:0";
         let listener = TcpListener::bind(bind_address).unwrap();
