@@ -329,7 +329,6 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
     info!("New client connected: {}", stream.peer_addr()?);
 
     stream.set_nodelay(true)?; // Disable Nagle's algorithm
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
 
     let mut reader = BufReader::new(&stream);
     let mut writer = BufWriter::new(&stream);
