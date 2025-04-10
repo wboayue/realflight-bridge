@@ -39,8 +39,8 @@
 //!
 //! // Stubbed mode for testing
 //! fn main_stubbed() -> Result<(), Box<dyn Error>> {
-//!     let mut server = ProxyServer::new_stubbed("0.0.0.0:8080");
-//!     server.run()?;
+//!     let (mut server, address) = ProxyServer::new_stubbed();
+//!     server.run()?;  // single request and exit
 //!     Ok(())
 //! }
 //! ```
@@ -53,10 +53,8 @@
 //!
 //! The default simulator host is hardcoded as `"127.0.0.1:18083"`. To customize, modify the `SIMULATOR_HOST` constant.
 
-use core::panic;
 use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
-use std::str::LinesAny;
 use std::{
     error::Error,
     io::{Read, Write},
@@ -69,7 +67,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ControlInputs, SimulatorState};
 
-use super::local::{self, Configuration, RealFlightLocalBridge};
+use super::local::{Configuration, RealFlightLocalBridge};
 use super::RealFlightBridge;
 
 #[cfg(test)]
@@ -246,7 +244,7 @@ const SIMULATOR_HOST: &str = "127.0.0.1:18083";
 /// ```
 pub struct ProxyServer {
     listener: Option<TcpListener>, // TCP listener for incoming connections
-    stubbed: bool,        // Whether to run in stubbed mode (no real simulator)
+    stubbed: bool,                 // Whether to run in stubbed mode (no real simulator)
 }
 
 impl ProxyServer {
@@ -272,7 +270,7 @@ impl ProxyServer {
                 listener: Some(listener),
                 stubbed: true,
             },
-            local_addr
+            local_addr,
         )
     }
 
@@ -292,6 +290,9 @@ impl ProxyServer {
             match stream {
                 Ok(stream) => {
                     handle_client(stream, self.stubbed)?; // Handle each client
+                    if self.stubbed {
+                        break; // Exit after handling one client in stubbed mode
+                    }
                 }
                 Err(e) => {
                     eprintln!("Failed to accept connection: {}", e);
@@ -328,6 +329,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
     info!("New client connected: {}", stream.peer_addr()?);
 
     stream.set_nodelay(true)?; // Disable Nagle's algorithm
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
 
     let mut reader = BufReader::new(&stream);
     let mut writer = BufWriter::new(&stream);
@@ -335,6 +337,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
     let mut length_buffer = [0u8; 4]; // Buffer for message length
 
     // Process requests until client disconnects
+
     while reader.read_exact(&mut length_buffer).is_ok() {
         let msg_length = u32::from_be_bytes(length_buffer) as usize;
 
@@ -355,6 +358,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
         if stubbed {
             let response = process_request_stubbed(request);
             send_response(&mut writer, response)?;
+            break;
         } else if let Some(bridge) = &bridge {
             let response = process_request(request, bridge);
             send_response(&mut writer, response)?;

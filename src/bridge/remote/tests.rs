@@ -5,13 +5,9 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    ControlInputs, RealFlightBridge, SimulatorState,
-};
+use crate::{ControlInputs, RealFlightBridge, SimulatorState};
 
 use super::*;
-
-const TEST_SERVER_ADDR: &str = "127.0.0.1:18084";
 
 /// Tests connecting to a non-existent server - should fail with connection refused
 #[test]
@@ -28,9 +24,10 @@ fn test_connection_failure() {
 /// Tests enable_rc functionality with stubbed server
 #[test]
 fn test_enable_rc() {
-    // Start a server in a separate thread
     let (mut server, server_address) = ProxyServer::new_stubbed();
-    let server_thread = thread::spawn(move|| {
+
+    // Start a server in a separate thread
+    let server_thread = thread::spawn(move || {
         let _ = server.run(); // Run until error or client disconnect
     });
 
@@ -39,37 +36,49 @@ fn test_enable_rc() {
 
     // Call enable_rc and verify success
     let result = client.enable_rc();
-    assert!(result.is_ok());
 
-    // Clean up
-    terminate_server(TEST_SERVER_ADDR);
+    assert!(result.is_ok(), "Enable RC failed: {:?}", result);
+
     let _ = server_thread.join();
 }
 
 /// Tests disable_rc functionality with stubbed server
 #[test]
 fn test_disable_rc() {
-    let server_thread = spawn_stubbed_server();
-    let client = RealFlightRemoteBridge::new(TEST_SERVER_ADDR).unwrap();
+    let (mut server, server_address) = ProxyServer::new_stubbed();
+
+    // Start a server in a separate thread
+    let server_thread = thread::spawn(move || {
+        let _ = server.run(); // Run until error or client disconnect
+    });
+
+    // Connect client
+    let client = RealFlightRemoteBridge::new(&server_address).unwrap();
 
     let result = client.disable_rc();
-    assert!(result.is_ok());
 
-    terminate_server(TEST_SERVER_ADDR);
+    assert!(result.is_ok(), "Disable RC failed: {:?}", result);
+
     let _ = server_thread.join();
 }
 
 /// Tests reset_aircraft functionality with stubbed server
 #[test]
 fn test_reset_aircraft() {
-    let server_thread = spawn_stubbed_server();
-    let client = RealFlightRemoteBridge::new(TEST_SERVER_ADDR).unwrap();
+    let (mut server, server_address) = ProxyServer::new_stubbed();
+
+    // Start a server in a separate thread
+    let server_thread = thread::spawn(move || {
+        let _ = server.run(); // Run until error or client disconnect
+    });
+
+    // Connect client
+    let client = RealFlightRemoteBridge::new(&server_address).unwrap();
 
     let result = client.reset_aircraft();
-    println!("Result: {:?}", result);
-    assert!(result.is_ok());
 
-    terminate_server(TEST_SERVER_ADDR);
+    assert!(result.is_ok(), "Reset aircraft failed: {:?}", result);
+
     let _ = server_thread.join();
 }
 
@@ -77,21 +86,29 @@ fn test_reset_aircraft() {
 /// Should return a default SimulatorState when in stubbed mode
 #[test]
 fn test_exchange_data() {
-    let server_thread = spawn_stubbed_server();
-    let client = RealFlightRemoteBridge::new(TEST_SERVER_ADDR).unwrap();
+    let (mut server, server_address) = ProxyServer::new_stubbed();
+
+    // Start a server in a separate thread
+    let server_thread = thread::spawn(move || {
+        let _ = server.run(); // Run until error or client disconnect
+    });
+
+    // Connect client
+    let client = RealFlightRemoteBridge::new(&server_address).unwrap();
 
     // Create control inputs to send
     let control = ControlInputs::default();
 
     // Exchange data and verify we get a simulator state back
     let result = client.exchange_data(&control);
-    assert!(result.is_ok());
+
+    assert!(result.is_ok(), "Exchange data failed: {:?}", result);
 
     // In stubbed mode, we should get back a default SimulatorState
     let state = result.unwrap();
+
     assert_eq!(state, SimulatorState::default());
 
-    terminate_server(TEST_SERVER_ADDR);
     let _ = server_thread.join();
 }
 
@@ -100,8 +117,9 @@ fn test_exchange_data() {
 #[test]
 fn test_exchange_data_no_payload() {
     // Start a mock server that returns Success but no payload
-    let server_thread = thread::spawn(|| {
-        let listener = TcpListener::bind(TEST_SERVER_ADDR).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server_thread = thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
             // Set up a mock server that returns Success but no payload for ExchangeData
             handle_mock_exchange_no_payload(stream);
@@ -110,14 +128,14 @@ fn test_exchange_data_no_payload() {
 
     thread::sleep(Duration::from_millis(100));
 
-    let client = RealFlightRemoteBridge::new(TEST_SERVER_ADDR).unwrap();
+    let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
     let control = ControlInputs::default();
 
     // Should return an error if no payload
     let result = client.exchange_data(&control);
     assert!(result.is_err());
 
-    terminate_server(TEST_SERVER_ADDR);
+    terminate_server(&address.to_string());
     let _ = server_thread.join();
 }
 
@@ -125,8 +143,9 @@ fn test_exchange_data_no_payload() {
 #[test]
 fn test_malformed_response() {
     // Start a mock server that returns invalid data
-    let server_thread = thread::spawn(|| {
-        let listener = TcpListener::bind(TEST_SERVER_ADDR).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server_thread = thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
             // Set up a mock that returns invalid data
             handle_mock_malformed_response(stream);
@@ -135,7 +154,7 @@ fn test_malformed_response() {
 
     thread::sleep(Duration::from_millis(100));
 
-    let client = RealFlightRemoteBridge::new(TEST_SERVER_ADDR).unwrap();
+    let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
 
     // Any request should fail with invalid data error
     let result = client.enable_rc();
@@ -146,7 +165,7 @@ fn test_malformed_response() {
         assert_eq!(io_err.kind(), ErrorKind::InvalidData);
     }
 
-    terminate_server(TEST_SERVER_ADDR);
+    terminate_server(&address.to_string());
     let _ = server_thread.join();
 }
 
@@ -154,8 +173,9 @@ fn test_malformed_response() {
 #[test]
 fn test_server_disconnect() {
     // Start a server that will disconnect after accepting connection
-    let server_thread = thread::spawn(|| {
-        let listener = TcpListener::bind(TEST_SERVER_ADDR).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server_thread = thread::spawn(move || {
         if let Ok((_, _)) = listener.accept() {
             // Immediately return to close the connection
             return;
@@ -164,48 +184,20 @@ fn test_server_disconnect() {
 
     thread::sleep(Duration::from_millis(100));
 
-    let client = RealFlightRemoteBridge::new(TEST_SERVER_ADDR).unwrap();
+    let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
 
     // Allow time for the server to disconnect
     thread::sleep(Duration::from_millis(50));
 
     // Any request should fail with connection reset or similar error
     let result = client.enable_rc();
+
     assert!(result.is_err());
 
     let _ = server_thread.join();
 }
 
-/// Tests handling when proxy server runs in real (non-stubbed) mode
-/// This is a more advanced test that would require mocking the RealFlightLocalBridge
-#[test]
-fn test_real_mode_proxy_behavior() {
-    // Note: This would require more complex setup including:
-    // 1. Creating a mock RealFlightLocalBridge
-    // 2. Injecting it into the ProxyServer
-    // This is beyond the scope of simple unit tests and would be an integration test
-
-    // As a placeholder, we'll just assert true
-    // In a real implementation, this test would verify the correct forwarding
-    // of requests to the local bridge
-    assert!(true);
-}
-
 // Helper functions for tests
-
-/// Spawns a stubbed server in a separate thread
-fn spawn_stubbed_server() -> thread::JoinHandle<String> {
-    let handle = thread::spawn(|| {
-        let (mut server, server_address) = ProxyServer::new_stubbed();
-        server.run().unwrap();
-        server_address
-    });
-
-    // Give the server time to start
-    thread::sleep(Duration::from_millis(100));
-
-    handle
-}
 
 /// Forces termination of a running server by connecting to it
 /// and then immediately closing the connection
@@ -218,7 +210,7 @@ fn terminate_server(address: &str) {
 
 /// Mock handler that returns a success response with no payload for ExchangeData
 fn handle_mock_exchange_no_payload(mut stream: TcpStream) {
-    use postcard::{to_stdvec};
+    use postcard::to_stdvec;
 
     stream.set_nodelay(true).unwrap();
 
