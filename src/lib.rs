@@ -221,7 +221,7 @@ pub struct SimulatorState {
 /// Represents the complete state of the simulated aircraft in RealFlight.
 /// All physical quantities use SI units through the `uom` crate.
 #[cfg(not(feature = "uom"))]
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
     pub previous_inputs: ControlInputs,
