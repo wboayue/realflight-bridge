@@ -111,7 +111,7 @@ impl From<SoapResponse> for Result<(), Box<dyn Error>> {
 ///     - Camera gimbal
 ///     - Lights
 ///     - Custom functions#[derive(Default, Debug)]
-#[derive(Default, Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ControlInputs {
     /// Array of 12 channel values, each between 0.0 and 1.0
     pub channels: [f32; 12],
@@ -120,7 +120,7 @@ pub struct ControlInputs {
 /// Represents the complete state of the simulated aircraft in RealFlight.
 /// All physical quantities use SI units through the `uom` crate.
 #[cfg(feature = "uom")]
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
     pub previous_inputs: ControlInputs,
@@ -221,7 +221,7 @@ pub struct SimulatorState {
 /// Represents the complete state of the simulated aircraft in RealFlight.
 /// All physical quantities use SI units through the `uom` crate.
 #[cfg(not(feature = "uom"))]
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
     pub previous_inputs: ControlInputs,

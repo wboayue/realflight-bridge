@@ -1,6 +1,6 @@
 //! This module provides a TCP based proxy for interacting with the RealFlight simulator on a remote machine.
 //! The system includes a client ([RealFlightRemoteBridge]) for sending requests and a proxy server ([ProxyServer]) for
-//! handling them, with support for both real simulator interaction and a stubbed mode for testing.
+//! handling them.
 //!
 //! ## Key Components
 //!
@@ -36,22 +36,11 @@
 //!     server.run()?; // Runs indefinitely until an error occurs
 //!     Ok(())
 //! }
-//!
-//! // Stubbed mode for testing
-//! fn main_stubbed() -> Result<(), Box<dyn Error>> {
-//!     let mut server = ProxyServer::new_stubbed("0.0.0.0:8080");
-//!     server.run()?;
-//!     Ok(())
-//! }
 //! ```
 //!
 //! ## Design Notes
 //!
 //! - **Synchronous Operation**: The server processes one client at a time, blocking until the client disconnects.
-//!
-//! ## Configuration
-//!
-//! The default simulator host is hardcoded as `"127.0.0.1:18083"`. To customize, modify the `SIMULATOR_HOST` constant.
 
 use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
@@ -69,6 +58,9 @@ use crate::{ControlInputs, SimulatorState};
 
 use super::local::{Configuration, RealFlightLocalBridge};
 use super::RealFlightBridge;
+
+#[cfg(test)]
+mod tests;
 
 /// Defines the types of requests that can be sent to the server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -240,8 +232,8 @@ const SIMULATOR_HOST: &str = "127.0.0.1:18083";
 /// }
 /// ```
 pub struct ProxyServer {
-    bind_address: String, // Address to bind the server to
-    stubbed: bool,        // Whether to run in stubbed mode (no real simulator)
+    listener: Option<TcpListener>, // TCP listener for incoming connections
+    stubbed: bool,                 // Whether to run in stubbed mode (no real simulator)
 }
 
 impl ProxyServer {
@@ -250,21 +242,27 @@ impl ProxyServer {
     /// # Arguments
     /// * `bind_address` - The address to bind to (e.g., "0.0.0.0:8080").
     pub fn new(bind_address: &str) -> Self {
+        let listener = TcpListener::bind(bind_address).unwrap();
         ProxyServer {
-            bind_address: bind_address.to_string(),
+            listener: Some(listener),
             stubbed: false,
         }
     }
 
     /// Creates a new server instance in stubbed mode.
-    ///
-    /// # Arguments
-    /// * `bind_address` - The address to bind to.
-    pub fn new_stubbed(bind_address: &str) -> Self {
-        ProxyServer {
-            bind_address: bind_address.to_string(),
-            stubbed: true,
-        }
+    /// This mode is used for testing purposes and does not require a real simulator.
+    #[cfg(test)]
+    pub fn new_stubbed() -> (Self, String) {
+        let bind_address = "127.0.0.1:0";
+        let listener = TcpListener::bind(bind_address).unwrap();
+        let local_addr = listener.local_addr().unwrap().to_string();
+        (
+            ProxyServer {
+                listener: Some(listener),
+                stubbed: true,
+            },
+            local_addr,
+        )
     }
 
     /// Runs the server, listening for incoming connections.
@@ -274,14 +272,18 @@ impl ProxyServer {
     /// # Returns
     /// A `Result` indicating success or an error.
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let listener = TcpListener::bind(&self.bind_address)?;
-        println!("Server listening on {}", self.bind_address);
+        let listener = self.listener.take().ok_or("Listener not initialized")?;
+
+        println!("Server listening on {}", listener.local_addr()?);
 
         // Accept incoming connections and handle them
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
                     handle_client(stream, self.stubbed)?; // Handle each client
+                    if self.stubbed {
+                        break; // Exit after handling one client in stubbed mode
+                    }
                 }
                 Err(e) => {
                     eprintln!("Failed to accept connection: {}", e);
@@ -325,6 +327,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
     let mut length_buffer = [0u8; 4]; // Buffer for message length
 
     // Process requests until client disconnects
+
     while reader.read_exact(&mut length_buffer).is_ok() {
         let msg_length = u32::from_be_bytes(length_buffer) as usize;
 
@@ -345,6 +348,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
         if stubbed {
             let response = process_request_stubbed(request);
             send_response(&mut writer, response)?;
+            break;
         } else if let Some(bridge) = &bridge {
             let response = process_request(request, bridge);
             send_response(&mut writer, response)?;
