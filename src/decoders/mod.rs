@@ -104,10 +104,10 @@ fn to_time(v: f32) -> Time {
 }
 
 /// Parse string to f32 and convert using provided function
-fn parse_with<T>(
+fn parse_with<T, F: Fn(f32) -> T>(
     name: &str,
     value: &str,
-    convert: fn(f32) -> T,
+    convert: F,
 ) -> Result<T, Box<dyn Error>> {
     let v: f32 = value
         .parse()
@@ -371,6 +371,7 @@ fn parse_fuel(name: &str, value: &str) -> Result<Volume, Box<dyn Error>> {
     parse_with(name, value, |v| to_volume(v / OUNCES_PER_LITER))
 }
 
+/// Parse fuel: keep raw ounces value without uom
 #[cfg(not(feature = "uom"))]
 fn parse_fuel(name: &str, value: &str) -> Result<Volume, Box<dyn Error>> {
     parse_f32(name, value)
