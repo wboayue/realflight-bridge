@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::time::{Duration, Instant};
 
-use clap::{arg, Command};
+use clap::{Command, arg};
 use realflight_bridge::{ControlInputs, RealFlightBridge, RealFlightRemoteBridge};
 
 fn main() -> Result<(), Box<dyn Error>> {

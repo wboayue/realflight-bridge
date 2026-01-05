@@ -1,7 +1,8 @@
 use std::{error::Error, sync::Arc, time::Duration};
 
 use crate::{
-    ControlInputs, SimulatorState, SoapResponse, Statistics, StatisticsEngine, TcpSoapClient,
+    BridgeError, ControlInputs, SimulatorState, SoapResponse, Statistics, StatisticsEngine,
+    TcpSoapClient,
 };
 
 #[cfg(test)]
@@ -113,12 +114,15 @@ impl RealFlightBridge for RealFlightLocalBridge {
     ///     Ok(())
     /// }
     /// ```
-    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
+    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
         let body = encode_control_inputs(control);
-        let response = self.soap_client.send_action("ExchangeData", &body)?;
+        let response = self
+            .soap_client
+            .send_action("ExchangeData", &body)
+            .map_err(|e| BridgeError::SoapFault(e.to_string()))?;
         match response.status_code {
             200 => crate::decoders::decode_simulator_state(&response.body),
-            _ => Err(crate::decode_fault(&response).into()),
+            _ => Err(BridgeError::SoapFault(crate::decode_fault(&response))),
         }
     }
 
@@ -150,9 +154,10 @@ impl RealFlightBridge for RealFlightLocalBridge {
     ///     Ok(())
     /// }
     /// ```
-    fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
+    fn enable_rc(&self) -> Result<(), BridgeError> {
         self.soap_client
-            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)?
+            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)
+            .map_err(|e| BridgeError::SoapFault(e.to_string()))?
             .into()
     }
 
@@ -185,9 +190,10 @@ impl RealFlightBridge for RealFlightLocalBridge {
     ///     Ok(())
     /// }
     /// ```
-    fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
+    fn disable_rc(&self) -> Result<(), BridgeError> {
         self.soap_client
-            .send_action("InjectUAVControllerInterface", EMPTY_BODY)?
+            .send_action("InjectUAVControllerInterface", EMPTY_BODY)
+            .map_err(|e| BridgeError::SoapFault(e.to_string()))?
             .into()
     }
 
@@ -220,9 +226,10 @@ impl RealFlightBridge for RealFlightLocalBridge {
     ///     Ok(())
     /// }
     /// ```
-    fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
+    fn reset_aircraft(&self) -> Result<(), BridgeError> {
         self.soap_client
-            .send_action("ResetAircraft", EMPTY_BODY)?
+            .send_action("ResetAircraft", EMPTY_BODY)
+            .map_err(|e| BridgeError::SoapFault(e.to_string()))?
             .into()
     }
 }

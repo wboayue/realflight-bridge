@@ -1,4 +1,4 @@
-use clap::{arg, Command};
+use clap::{Command, arg};
 use log::{debug, info};
 
 use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge, RealFlightLocalBridge};

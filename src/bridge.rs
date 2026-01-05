@@ -1,6 +1,4 @@
-use std::error::Error;
-
-use crate::{ControlInputs, SimulatorState};
+use crate::{BridgeError, ControlInputs, SimulatorState};
 
 pub mod local;
 pub mod remote;
@@ -20,7 +18,7 @@ pub trait RealFlightBridge {
     ///
     /// A [Result] with the updated [SimulatorState] on success, or an error if
     /// something goes wrong (e.g., SOAP fault, network timeout).
-    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>>;
+    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError>;
 
     /// Reverts the RealFlight simulator to use its original Spektrum (or built-in) RC input.
     ///
@@ -32,7 +30,7 @@ pub trait RealFlightBridge {
     ///
     /// `Ok(())` if the simulator successfully reverts to using the original RC controller.
     /// An `Err`` is returned if RealFlight cannot locate or restore the original controller device.
-    fn enable_rc(&self) -> Result<(), Box<dyn Error>>;
+    fn enable_rc(&self) -> Result<(), BridgeError>;
 
     /// Switches the RealFlight simulator’s input to the external RealFlight Link controller,
     /// effectively disabling any native Spektrum (or other built-in) RC device.
@@ -45,7 +43,7 @@ pub trait RealFlightBridge {
     ///
     /// Returns `Ok(())` if RealFlight Link mode is successfully activated, or an `Err` if
     /// the request fails (e.g., simulator is not ready or rejects the command).
-    fn disable_rc(&self) -> Result<(), Box<dyn Error>>;
+    fn disable_rc(&self) -> Result<(), BridgeError>;
 
     /// Resets the currently loaded aircraft in the RealFlight simulator, analogous
     /// to pressing the spacebar in the simulator’s interface.
@@ -58,5 +56,5 @@ pub trait RealFlightBridge {
     ///
     /// `Ok(())` upon a successful reset. Returns an error if RealFlight rejects the command
     /// or if a network issue prevents delivery.
-    fn reset_aircraft(&self) -> Result<(), Box<dyn Error>>;
+    fn reset_aircraft(&self) -> Result<(), BridgeError>;
 }

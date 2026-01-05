@@ -54,10 +54,10 @@ use log::{error, info};
 use postcard::{from_bytes, to_stdvec};
 use serde::{Deserialize, Serialize};
 
-use crate::{ControlInputs, SimulatorState};
+use crate::{BridgeError, ControlInputs, SimulatorState};
 
-use super::local::RealFlightLocalBridge;
 use super::RealFlightBridge;
+use super::local::RealFlightLocalBridge;
 
 #[cfg(test)]
 mod tests;
@@ -104,15 +104,24 @@ pub enum ResponseStatus {
 
 impl Response {
     fn success() -> Self {
-        Self { status: ResponseStatus::Success, payload: None }
+        Self {
+            status: ResponseStatus::Success,
+            payload: None,
+        }
     }
 
     fn success_with(state: SimulatorState) -> Self {
-        Self { status: ResponseStatus::Success, payload: Some(state) }
+        Self {
+            status: ResponseStatus::Success,
+            payload: Some(state),
+        }
     }
 
     fn error() -> Self {
-        Self { status: ResponseStatus::Error, payload: None }
+        Self {
+            status: ResponseStatus::Error,
+            payload: None,
+        }
     }
 
     /// Convert a Result into a Response, logging errors with context
@@ -135,19 +144,19 @@ pub struct RealFlightRemoteBridge {
 
 impl RealFlightBridge for RealFlightRemoteBridge {
     /// Enables remote control on the simulator.
-    fn enable_rc(&self) -> Result<(), Box<dyn Error>> {
+    fn enable_rc(&self) -> Result<(), BridgeError> {
         self.send_request(RequestType::EnableRC, None)?;
         Ok(())
     }
 
     /// Disables remote control on the simulator. (Enables control by the RealFlight link.)
-    fn disable_rc(&self) -> Result<(), Box<dyn Error>> {
+    fn disable_rc(&self) -> Result<(), BridgeError> {
         self.send_request(RequestType::DisableRC, None)?;
         Ok(())
     }
 
     /// Resets the aircraft state in the simulator.
-    fn reset_aircraft(&self) -> Result<(), Box<dyn Error>> {
+    fn reset_aircraft(&self) -> Result<(), BridgeError> {
         self.send_request(RequestType::ResetAircraft, None)?;
         Ok(())
     }
@@ -159,13 +168,13 @@ impl RealFlightBridge for RealFlightRemoteBridge {
     ///
     /// # Returns
     /// The [SimulatorState] or an error if no state is returned.
-    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, Box<dyn Error>> {
+    fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
         let response = self.send_request(RequestType::ExchangeData, Some(control.clone()))?;
         if let Some(state) = response.payload {
             Ok(state)
         } else {
             error!("No payload in response: {:?}", response.status);
-            Err("No payload in response".into())
+            Err(BridgeError::SoapFault("No payload in response".to_string()))
         }
     }
 }
@@ -416,7 +425,9 @@ fn process_request(request: Request, bridge: &RealFlightLocalBridge) -> Response
     match request.request_type {
         RequestType::EnableRC => Response::from_result(bridge.enable_rc(), "enabling RC"),
         RequestType::DisableRC => Response::from_result(bridge.disable_rc(), "disabling RC"),
-        RequestType::ResetAircraft => Response::from_result(bridge.reset_aircraft(), "resetting aircraft"),
+        RequestType::ResetAircraft => {
+            Response::from_result(bridge.reset_aircraft(), "resetting aircraft")
+        }
         RequestType::ExchangeData => match request.payload {
             Some(payload) => match bridge.exchange_data(&payload) {
                 Ok(state) => Response::success_with(state),
