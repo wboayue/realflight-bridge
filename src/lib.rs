@@ -68,6 +68,9 @@ mod decoders;
 
 mod soap_client;
 
+/// Default RealFlight simulator address (localhost on standard port)
+pub const DEFAULT_SIMULATOR_HOST: &str = "127.0.0.1:18083";
+
 #[doc(inline)]
 pub use bridge::local::Configuration;
 #[doc(inline)]

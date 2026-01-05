@@ -501,7 +501,7 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Configuration {
-            simulator_host: "127.0.0.1:18083".to_string(),
+            simulator_host: crate::DEFAULT_SIMULATOR_HOST.to_string(),
             connect_timeout: Duration::from_millis(5),
             pool_size: 1,
         }

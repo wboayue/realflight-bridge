@@ -56,7 +56,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ControlInputs, SimulatorState};
 
-use super::local::{Configuration, RealFlightLocalBridge};
+use super::local::RealFlightLocalBridge;
 use super::RealFlightBridge;
 
 #[cfg(test)]
@@ -239,9 +239,6 @@ impl RealFlightRemoteBridge {
     }
 }
 
-/// Default simulator host address.
-const SIMULATOR_HOST: &str = "127.0.0.1:18083";
-
 /// Server struct for handling incoming client connections.
 ///
 /// ### Examples
@@ -340,12 +337,7 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
         info!("Running in stubbed mode");
         None
     } else {
-        let config = Configuration {
-            simulator_host: SIMULATOR_HOST.to_string(),
-            ..Default::default()
-        };
-
-        Some(RealFlightLocalBridge::with_configuration(&config)?)
+        Some(RealFlightLocalBridge::new()?)
     };
 
     info!("New client connected: {}", stream.peer_addr()?);
