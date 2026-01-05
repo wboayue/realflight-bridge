@@ -6,7 +6,7 @@ use std::{
     net::TcpStream,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     thread,
     time::{Duration, Instant},
@@ -40,13 +40,10 @@ impl SoapClient for TcpSoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_pool.get_connection()?;
-        self.send_request(&mut stream, action, &envelope);
+        self.send_request(&mut stream, action, &envelope)?;
         self.statistics.increment_request_count();
 
-        match self.read_response(&mut BufReader::new(stream)) {
-            Some(response) => Ok(response),
-            None => Err("Failed to read response".into()),
-        }
+        self.read_response(&mut BufReader::new(stream))
     }
 }
 
@@ -69,7 +66,12 @@ impl TcpSoapClient {
     }
 
     /// Sends a request to the simulator.
-    fn send_request(&self, stream: &mut TcpStream, action: &str, envelope: &str) {
+    fn send_request(
+        &self,
+        stream: &mut TcpStream,
+        action: &str,
+        envelope: &str,
+    ) -> Result<(), Box<dyn Error>> {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
         request.push_str("POST / HTTP/1.1\r\n");
@@ -79,59 +81,52 @@ impl TcpSoapClient {
         request.push_str("\r\n");
         request.push_str(envelope);
 
-        stream
-            .write_all(request.as_bytes())
-            .expect("Failed to write request");
-        stream.flush().expect("Failed to flush request");
+        stream.write_all(request.as_bytes())?;
+        stream.flush()?;
+        Ok(())
     }
 
     /// Reads the raw response from the simulator.
-    fn read_response(&self, stream: &mut BufReader<TcpStream>) -> Option<SoapResponse> {
+    fn read_response(
+        &self,
+        stream: &mut BufReader<TcpStream>,
+    ) -> Result<SoapResponse, Box<dyn Error>> {
         let mut status_line = String::new();
-
-        if let Err(e) = stream.read_line(&mut status_line) {
-            eprintln!("Error reading status line: {}", e);
-            return None;
-        }
+        stream.read_line(&mut status_line)?;
 
         if status_line.is_empty() {
-            return None;
+            return Err("Empty response from simulator".into());
         }
 
         let status_code: u32 = status_line
             .split_whitespace()
             .nth(1)
-            .unwrap()
+            .ok_or("Malformed HTTP status line: missing status code")?
             .parse()
-            .unwrap();
+            .map_err(|e| format!("Invalid HTTP status code: {}", e))?;
 
         // Read headers
-        let mut headers = String::new();
         let mut content_length: Option<usize> = None;
         loop {
             let mut line = String::new();
-            stream.read_line(&mut line).unwrap();
+            stream.read_line(&mut line)?;
             if line == "\r\n" {
                 break; // End of headers
             }
-            if line.to_lowercase().starts_with("content-length:") {
-                if let Some(length) = line.split_whitespace().nth(1) {
-                    content_length = length.trim().parse().ok();
-                }
+            if line.to_lowercase().starts_with("content-length:")
+                && let Some(length) = line.split_whitespace().nth(1)
+            {
+                content_length = length.trim().parse().ok();
             }
-            headers.push_str(&line);
         }
 
         // Read the body based on Content-Length
-        if let Some(length) = content_length {
-            let mut body = vec![0; length];
-            stream.read_exact(&mut body).unwrap();
-            let body = String::from_utf8_lossy(&body).to_string();
+        let length = content_length.ok_or("Missing Content-Length header")?;
+        let mut body = vec![0; length];
+        stream.read_exact(&mut body)?;
+        let body = String::from_utf8_lossy(&body).to_string();
 
-            Some(SoapResponse { status_code, body })
-        } else {
-            None
-        }
+        Ok(SoapResponse { status_code, body })
     }
 }
 
@@ -144,6 +139,7 @@ pub(crate) struct ConnectionPool {
     creator_thread: Option<thread::JoinHandle<()>>,
     running: Arc<AtomicBool>,
     initialized: Arc<AtomicBool>,
+    init_error: Arc<Mutex<Option<String>>>,
     statistics: Arc<StatisticsEngine>,
 }
 
@@ -160,6 +156,7 @@ impl ConnectionPool {
             creator_thread: None,
             running: Arc::new(AtomicBool::new(true)),
             initialized: Arc::new(AtomicBool::new(false)),
+            init_error: Arc::new(Mutex::new(None)),
             statistics,
         };
 
@@ -171,6 +168,15 @@ impl ConnectionPool {
     pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
         let now = Instant::now();
         while !self.initialized.load(Ordering::Relaxed) {
+            // Check for initialization error
+            if let Some(err) = self
+                .init_error
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().cloned())
+            {
+                return Err(anyhow!("Connection pool initialization failed: {}", err));
+            }
             if now.elapsed() > INITIALIZATION_TIMEOUT {
                 return Err(anyhow!(
                     "Connection pool did not initialize. Waited for {:?}.",
@@ -187,23 +193,55 @@ impl ConnectionPool {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
         let initialized = Arc::clone(&self.initialized);
+        let init_error = Arc::clone(&self.init_error);
         let statistics = Arc::clone(&self.statistics);
 
         let worker = thread::Builder::new().name("connection-pool".to_string());
         let handle = worker.spawn(move || {
-            debug!("Creating {} connection in pool.", config.pool_size);
-            let simulator_address = config
-                .simulator_host
-                .parse()
-                .expect("Invalid simulator host");
+            debug!("Creating {} connections in pool.", config.pool_size);
 
-            for _ in 0..config.pool_size {
-                let stream = TcpStream::connect(simulator_address).unwrap();
-                sender.send(stream).unwrap();
+            let simulator_address = match config.simulator_host.parse() {
+                Ok(addr) => addr,
+                Err(e) => {
+                    let msg = format!("Invalid simulator host '{}': {}", config.simulator_host, e);
+                    error!("{}", msg);
+                    if let Ok(mut guard) = init_error.lock() {
+                        *guard = Some(msg);
+                    }
+                    return;
+                }
+            };
+
+            // Create initial connections
+            for i in 0..config.pool_size {
+                match TcpStream::connect(simulator_address) {
+                    Ok(stream) => {
+                        if let Err(e) = sender.send(stream) {
+                            let msg = format!("Failed to queue initial connection {}: {}", i, e);
+                            error!("{}", msg);
+                            if let Ok(mut guard) = init_error.lock() {
+                                *guard = Some(msg);
+                            }
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        let msg = format!(
+                            "Failed to connect to simulator at {}: {}",
+                            config.simulator_host, e
+                        );
+                        error!("{}", msg);
+                        if let Ok(mut guard) = init_error.lock() {
+                            *guard = Some(msg);
+                        }
+                        return;
+                    }
+                }
             }
 
             initialized.store(true, Ordering::Relaxed);
 
+            // Continue creating connections as needed
             while running.load(Ordering::Relaxed) {
                 if sender.is_full() {
                     thread::sleep(config.connect_timeout / 2);
@@ -211,13 +249,12 @@ impl ConnectionPool {
                 }
 
                 match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
-                    Ok(stream) => match sender.send(stream) {
-                        Ok(_) => {}
-                        Err(e) => {
+                    Ok(stream) => {
+                        if let Err(e) = sender.send(stream) {
                             error!("Error sending connection: {}", e);
                             statistics.increment_error_count();
                         }
-                    },
+                    }
                     Err(e) => {
                         error!("Error creating connection: {}", e);
                         statistics.increment_error_count();
