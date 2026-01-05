@@ -24,3 +24,5 @@ Cargo.lock
 
 tarpaulin-report.html
 flamegraph.svg
+/plans
+
