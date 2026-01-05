@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Write, sync::Arc, time::Duration};
+use std::{fmt::Write, sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
 use crate::soap_client::{SoapClient, tcp::TcpSoapClient};
@@ -113,10 +113,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// ```
     fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
         let body = encode_control_inputs(control);
-        let response = self
-            .soap_client
-            .send_action("ExchangeData", &body)
-            .map_err(|e| BridgeError::SoapFault(e.to_string()))?;
+        let response = self.soap_client.send_action("ExchangeData", &body)?;
         match response.status_code {
             200 => crate::decoders::decode_simulator_state(&response.body),
             _ => Err(BridgeError::SoapFault(response.fault_message())),
@@ -153,8 +150,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// ```
     fn enable_rc(&self) -> Result<(), BridgeError> {
         self.soap_client
-            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)
-            .map_err(|e| BridgeError::SoapFault(e.to_string()))?
+            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)?
             .into()
     }
 
@@ -189,8 +185,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// ```
     fn disable_rc(&self) -> Result<(), BridgeError> {
         self.soap_client
-            .send_action("InjectUAVControllerInterface", EMPTY_BODY)
-            .map_err(|e| BridgeError::SoapFault(e.to_string()))?
+            .send_action("InjectUAVControllerInterface", EMPTY_BODY)?
             .into()
     }
 
@@ -225,8 +220,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// ```
     fn reset_aircraft(&self) -> Result<(), BridgeError> {
         self.soap_client
-            .send_action("ResetAircraft", EMPTY_BODY)
-            .map_err(|e| BridgeError::SoapFault(e.to_string()))?
+            .send_action("ResetAircraft", EMPTY_BODY)?
             .into()
     }
 }
@@ -244,10 +238,9 @@ impl RealFlightLocalBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
-    /// use std::error::Error;
+    /// use realflight_bridge::{RealFlightLocalBridge, BridgeError};
     ///
-    /// fn main() -> Result<(), Box<dyn Error>> {
+    /// fn main() -> Result<(), BridgeError> {
     ///     // Build a bridge to the RealFlight simulator.
     ///     // Connects to simulator at 127.0.0.1:18083
     ///     let bridge = RealFlightLocalBridge::new()?;
@@ -266,7 +259,7 @@ impl RealFlightLocalBridge {
     /// This function will return an error in the following situations:
     ///
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
-    pub fn new() -> Result<RealFlightLocalBridge, Box<dyn Error>> {
+    pub fn new() -> Result<RealFlightLocalBridge, BridgeError> {
         let statistics = Arc::new(StatisticsEngine::new());
         let soap_client = TcpSoapClient::new(Configuration::default(), statistics.clone())?;
         soap_client.ensure_pool_initialized()?;
@@ -294,10 +287,9 @@ impl RealFlightLocalBridge {
     /// # Examples
     ///
     /// ```no_run
-    /// use realflight_bridge::{RealFlightLocalBridge, Configuration};
-    /// use std::error::Error;
+    /// use realflight_bridge::{RealFlightLocalBridge, Configuration, BridgeError};
     ///
-    /// fn main() -> Result<(), Box<dyn Error>> {
+    /// fn main() -> Result<(), BridgeError> {
     ///     // Use default localhost-based config.
     ///     let config = Configuration::default();
     ///
@@ -321,7 +313,7 @@ impl RealFlightLocalBridge {
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
     pub fn with_configuration(
         configuration: &Configuration,
-    ) -> Result<RealFlightLocalBridge, Box<dyn Error>> {
+    ) -> Result<RealFlightLocalBridge, BridgeError> {
         let statistics = Arc::new(StatisticsEngine::new());
         let soap_client = TcpSoapClient::new(configuration.clone(), statistics.clone())?;
         soap_client.ensure_pool_initialized()?;
@@ -335,17 +327,15 @@ impl RealFlightLocalBridge {
     /// Creates a new RealFlightLink client
     /// simulator_url: the url to the RealFlight simulator
     #[cfg(test)]
-    pub(crate) fn stub(
-        mut soap_client: StubSoapClient,
-    ) -> Result<RealFlightLocalBridge, Box<dyn Error>> {
+    pub(crate) fn stub(mut soap_client: StubSoapClient) -> RealFlightLocalBridge {
         let statistics = Arc::new(StatisticsEngine::new());
 
         soap_client.statistics = Some(statistics.clone());
 
-        Ok(RealFlightLocalBridge {
+        RealFlightLocalBridge {
             statistics,
             soap_client: Box::new(soap_client),
-        })
+        }
     }
 
     #[cfg(test)]

@@ -1,11 +1,9 @@
 //! Provides and implementation of a SOAP client that returns stubbed responses.
 //! Useful for testing.
 
-use std::{
-    error::Error,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
+use crate::BridgeError;
 use crate::StatisticsEngine;
 
 use super::{SoapClient, SoapResponse, encode_envelope};
@@ -39,7 +37,7 @@ impl StubSoapClient {
 
 #[cfg(test)]
 impl SoapClient for StubSoapClient {
-    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         eprintln!("Sending action: {}", action);
 
         let envelope = encode_envelope(action, body);
