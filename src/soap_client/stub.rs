@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::bridge::local::{encode_envelope, SoapClient};
+use crate::bridge::local::{SoapClient, encode_envelope};
 use crate::{SoapResponse, StatisticsEngine};
 
 #[cfg(test)]

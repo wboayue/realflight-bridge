@@ -2,8 +2,8 @@ use std::error::Error;
 
 use log::debug;
 
-use crate::unit_types::*;
 use crate::SimulatorState;
+use crate::unit_types::*;
 
 #[cfg(feature = "uom")]
 use uom::si::{
