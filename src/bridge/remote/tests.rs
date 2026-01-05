@@ -1,3 +1,10 @@
+//! Tests for RealFlightRemoteBridge and ProxyServer.
+//!
+//! Organized into submodules:
+//! - `connection_tests`: Connection establishment and timeout tests
+//! - `operation_tests`: Tests for bridge operations (enable_rc, disable_rc, etc.)
+//! - `error_handling`: Tests for error conditions and edge cases
+
 use std::{
     io::ErrorKind,
     net::{TcpListener, TcpStream},
@@ -8,6 +15,10 @@ use std::{
 use crate::{BridgeError, ControlInputs, RealFlightBridge, SimulatorState};
 
 use super::*;
+
+// ============================================================================
+// Connection Tests
+// ============================================================================
 
 /// Tests connecting to a non-existent server - should fail with connection refused
 #[test]
@@ -20,6 +31,29 @@ fn test_connection_failure() {
         assert_eq!(e.kind(), ErrorKind::ConnectionRefused);
     }
 }
+
+/// Tests custom timeout functionality
+#[test]
+fn test_with_timeout_connection_failure() {
+    let start = std::time::Instant::now();
+    let result = RealFlightRemoteBridge::with_timeout("127.0.0.1:1", Duration::from_millis(100));
+    let elapsed = start.elapsed();
+
+    assert!(result.is_err());
+    // Should fail relatively quickly (within reasonable margin of timeout)
+    assert!(elapsed < Duration::from_secs(2));
+}
+
+/// Tests invalid address handling
+#[test]
+fn test_invalid_address() {
+    let result = RealFlightRemoteBridge::new("not-a-valid-address");
+    assert!(result.is_err());
+}
+
+// ============================================================================
+// Operation Tests
+// ============================================================================
 
 /// Tests enable_rc functionality with stubbed server
 #[test]

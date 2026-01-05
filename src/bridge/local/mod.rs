@@ -60,7 +60,7 @@ const EMPTY_BODY: &str = "";
 /// - SOAP faults (e.g., simulator not ready or invalid commands)
 /// - Parsing issues for responses
 ///
-/// Any non-2xx HTTP status code will typically return an error containing the simulator’s
+/// Any non-2xx HTTP status code will typically return an error containing the simulator's
 /// fault message, if available.
 ///
 /// # Statistics
@@ -154,7 +154,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
             .into()
     }
 
-    /// Switches the RealFlight simulator’s input to the external RealFlight Link controller,
+    /// Switches the RealFlight simulator's input to the external RealFlight Link controller,
     /// effectively disabling any native Spektrum (or other built-in) RC device.
     ///
     /// Once [RealFlightBridge::disable_rc] is called, RealFlight listens exclusively for commands sent
@@ -190,10 +190,10 @@ impl RealFlightBridge for RealFlightLocalBridge {
     }
 
     /// Resets the currently loaded aircraft in the RealFlight simulator, analogous
-    /// to pressing the spacebar in the simulator’s interface.
+    /// to pressing the spacebar in the simulator's interface.
     ///
     /// This call repositions the aircraft back to its initial state and orientation,
-    /// clearing any damage or off-runway positioning. It’s useful for rapid iteration
+    /// clearing any damage or off-runway positioning. It's useful for rapid iteration
     /// when testing control loops or flight maneuvers.
     ///
     /// # Returns
@@ -351,7 +351,7 @@ impl RealFlightLocalBridge {
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
 
-fn encode_control_inputs(inputs: &ControlInputs) -> String {
+pub(crate) fn encode_control_inputs(inputs: &ControlInputs) -> String {
     let mut message = String::with_capacity(CONTROL_INPUTS_CAPACITY);
 
     message.push_str("<pControlInputs>");
@@ -480,3 +480,6 @@ impl Default for Configuration {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
