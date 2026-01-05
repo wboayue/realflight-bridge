@@ -24,7 +24,7 @@ fn test_connection_failure() {
 /// Tests enable_rc functionality with stubbed server
 #[test]
 fn test_enable_rc() {
-    let (mut server, server_address) = ProxyServer::new_stubbed();
+    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
 
     // Start a server in a separate thread
     let server_thread = thread::spawn(move || {
@@ -45,7 +45,7 @@ fn test_enable_rc() {
 /// Tests disable_rc functionality with stubbed server
 #[test]
 fn test_disable_rc() {
-    let (mut server, server_address) = ProxyServer::new_stubbed();
+    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
 
     // Start a server in a separate thread
     let server_thread = thread::spawn(move || {
@@ -65,7 +65,7 @@ fn test_disable_rc() {
 /// Tests reset_aircraft functionality with stubbed server
 #[test]
 fn test_reset_aircraft() {
-    let (mut server, server_address) = ProxyServer::new_stubbed();
+    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
 
     // Start a server in a separate thread
     let server_thread = thread::spawn(move || {
@@ -86,7 +86,7 @@ fn test_reset_aircraft() {
 /// Should return a default SimulatorState when in stubbed mode
 #[test]
 fn test_exchange_data() {
-    let (mut server, server_address) = ProxyServer::new_stubbed();
+    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
 
     // Start a server in a separate thread
     let server_thread = thread::spawn(move || {

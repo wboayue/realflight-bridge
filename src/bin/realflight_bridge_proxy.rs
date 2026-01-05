@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let bind_address = matches.get_one::<String>("bind-address").unwrap();
 
-    let mut server = ProxyServer::new(bind_address);
+    let mut server = ProxyServer::new(bind_address)?;
     server.run()?;
 
     Ok(())

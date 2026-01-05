@@ -32,7 +32,7 @@
 //! use realflight_bridge::ProxyServer;
 //!
 //! fn main() -> Result<(), Box<dyn Error>> {
-//!     let mut server = ProxyServer::new("0.0.0.0:8080"); // Normal mode
+//!     let mut server = ProxyServer::new("0.0.0.0:8080")?; // Normal mode
 //!     server.run()?; // Runs indefinitely until an error occurs
 //!     Ok(())
 //! }
@@ -226,7 +226,7 @@ const SIMULATOR_HOST: &str = "127.0.0.1:18083";
 /// use realflight_bridge::ProxyServer;
 ///
 /// fn main() -> Result<(), Box<dyn Error>> {
-///     let mut server = ProxyServer::new("0.0.0.0:8080");
+///     let mut server = ProxyServer::new("0.0.0.0:8080")?;
 ///     server.run()?; // Runs indefinitely until an error occurs
 ///     Ok(())
 /// }
@@ -241,28 +241,34 @@ impl ProxyServer {
     ///
     /// # Arguments
     /// * `bind_address` - The address to bind to (e.g., "0.0.0.0:8080").
-    pub fn new(bind_address: &str) -> Self {
-        let listener = TcpListener::bind(bind_address).unwrap();
-        ProxyServer {
+    ///
+    /// # Returns
+    /// A `Result` containing the server instance or an I/O error if binding fails.
+    pub fn new(bind_address: &str) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(bind_address)?;
+        Ok(ProxyServer {
             listener: Some(listener),
             stubbed: false,
-        }
+        })
     }
 
     /// Creates a new server instance in stubbed mode.
     /// This mode is used for testing purposes and does not require a real simulator.
+    ///
+    /// # Returns
+    /// A `Result` containing a tuple of (server instance, bound address) or an I/O error.
     #[cfg(test)]
-    pub fn new_stubbed() -> (Self, String) {
+    pub fn new_stubbed() -> std::io::Result<(Self, String)> {
         let bind_address = "127.0.0.1:0";
-        let listener = TcpListener::bind(bind_address).unwrap();
-        let local_addr = listener.local_addr().unwrap().to_string();
-        (
+        let listener = TcpListener::bind(bind_address)?;
+        let local_addr = listener.local_addr()?.to_string();
+        Ok((
             ProxyServer {
                 listener: Some(listener),
                 stubbed: true,
             },
             local_addr,
-        )
+        ))
     }
 
     /// Runs the server, listening for incoming connections.
