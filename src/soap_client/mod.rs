@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use crate::BridgeError;
 use crate::decoders::extract_element;
 
@@ -35,7 +33,7 @@ impl From<SoapResponse> for Result<(), BridgeError> {
 
 /// Trait for sending SOAP requests to the RealFlight simulator
 pub(crate) trait SoapClient: Send {
-    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>>;
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError>;
     #[cfg(test)]
     fn requests(&self) -> Vec<String> {
         Vec::new()

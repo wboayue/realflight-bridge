@@ -14,10 +14,9 @@
 //!
 //! ### Client Example
 //! ```no_run
-//! use std::error::Error;
-//! use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, ControlInputs};
+//! use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, BridgeError, ControlInputs};
 //!
-//! fn main() -> Result<(), Box<dyn Error>> {
+//! fn main() -> Result<(), BridgeError> {
 //!     let mut client = RealFlightRemoteBridge::new("127.0.0.1:18083")?;
 //!     client.disable_rc()?; // Allow control via RealFlight link
 //!     let control = ControlInputs::default(); // Initialize control inputs
@@ -28,10 +27,9 @@
 //!
 //! ### Server Example
 //! ```no_run
-//! use std::error::Error;
-//! use realflight_bridge::ProxyServer;
+//! use realflight_bridge::{ProxyServer, BridgeError};
 //!
-//! fn main() -> Result<(), Box<dyn Error>> {
+//! fn main() -> Result<(), BridgeError> {
 //!     let mut server = ProxyServer::new("0.0.0.0:8080")?; // Normal mode
 //!     server.run()?; // Runs indefinitely until an error occurs
 //!     Ok(())
@@ -46,7 +44,6 @@ use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
 use std::time::Duration;
 use std::{
-    error::Error,
     io::{Read, Write},
     net::{TcpListener, TcpStream, ToSocketAddrs},
 };
@@ -277,10 +274,9 @@ impl RealFlightRemoteBridge {
 /// ### Examples
 ///
 /// ```no_run
-/// use std::error::Error;
-/// use realflight_bridge::ProxyServer;
+/// use realflight_bridge::{ProxyServer, BridgeError};
 ///
-/// fn main() -> Result<(), Box<dyn Error>> {
+/// fn main() -> Result<(), BridgeError> {
 ///     let mut server = ProxyServer::new("0.0.0.0:8080")?;
 ///     server.run()?; // Runs indefinitely until an error occurs
 ///     Ok(())
@@ -299,7 +295,7 @@ impl ProxyServer {
     ///
     /// # Returns
     /// A `Result` containing the server instance or an error if binding or bridge creation fails.
-    pub fn new(bind_address: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new(bind_address: &str) -> Result<Self, BridgeError> {
         let listener = TcpListener::bind(bind_address)?;
         let bridge = RealFlightLocalBridge::new()?;
         Ok(ProxyServer {
@@ -315,11 +311,11 @@ impl ProxyServer {
     /// * `bridge` - The bridge implementation to use for simulator communication.
     ///
     /// # Returns
-    /// A `Result` containing the server instance or an I/O error if binding fails.
+    /// A `Result` containing the server instance or an error if binding fails.
     pub fn with_bridge(
         bind_address: &str,
         bridge: Box<dyn RealFlightBridge + Send>,
-    ) -> std::io::Result<Self> {
+    ) -> Result<Self, BridgeError> {
         let listener = TcpListener::bind(bind_address)?;
         Ok(ProxyServer {
             listener: Some(listener),
@@ -352,8 +348,11 @@ impl ProxyServer {
     ///
     /// # Returns
     /// A `Result` indicating success or an error.
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let listener = self.listener.take().ok_or("Listener not initialized")?;
+    pub fn run(&mut self) -> Result<(), BridgeError> {
+        let listener = self
+            .listener
+            .take()
+            .ok_or_else(|| BridgeError::Initialization("Listener not initialized".into()))?;
         let stubbed = self.bridge.is_none();
 
         println!("Server listening on {}", listener.local_addr()?);
@@ -388,7 +387,7 @@ impl ProxyServer {
 fn handle_client(
     stream: TcpStream,
     bridge: Option<&(dyn RealFlightBridge + Send)>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), BridgeError> {
     let stubbed = bridge.is_none();
     if stubbed {
         info!("Running in stubbed mode");
@@ -444,11 +443,9 @@ fn handle_client(
 ///
 /// # Returns
 /// A `Result` indicating success or an error.
-fn send_response(
-    writer: &mut BufWriter<&TcpStream>,
-    response: Response,
-) -> Result<(), Box<dyn Error>> {
-    let response_bytes = to_stdvec(&response)?;
+fn send_response(writer: &mut BufWriter<&TcpStream>, response: Response) -> Result<(), BridgeError> {
+    let response_bytes = to_stdvec(&response)
+        .map_err(|e| BridgeError::SoapFault(format!("Failed to serialize response: {}", e)))?;
     let length_bytes = (response_bytes.len() as u32).to_be_bytes();
 
     writer.write_all(&length_bytes)?;

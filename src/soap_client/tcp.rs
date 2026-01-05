@@ -1,7 +1,6 @@
 //! Provides and implementation of a SOAP client that uses the TCP protocol.
 
 use std::{
-    error::Error,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     sync::{
@@ -12,10 +11,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Result, anyhow};
 use crossbeam_channel::{Receiver, Sender, bounded};
 use log::{debug, error};
 
+use crate::BridgeError;
 use crate::StatisticsEngine;
 use crate::bridge::local::Configuration;
 
@@ -39,7 +38,7 @@ impl SoapClient for TcpSoapClient {
     /// # Arguments
     /// * `action` - The SOAP action to send.
     /// * `body`   - The body of the SOAP request.
-    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>> {
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         let envelope = encode_envelope(action, body);
         let mut stream = self.connection_pool.get_connection()?;
         self.send_request(&mut stream, action, &envelope)?;
@@ -54,7 +53,7 @@ impl TcpSoapClient {
     pub fn new(
         configuration: Configuration,
         statistics: Arc<StatisticsEngine>,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, BridgeError> {
         let connection_pool = ConnectionPool::new(configuration, statistics.clone())?;
         Ok(TcpSoapClient {
             statistics,
@@ -62,7 +61,7 @@ impl TcpSoapClient {
         })
     }
 
-    pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
+    pub(crate) fn ensure_pool_initialized(&self) -> Result<(), BridgeError> {
         self.connection_pool.ensure_pool_initialized()?;
         Ok(())
     }
@@ -73,7 +72,7 @@ impl TcpSoapClient {
         stream: &mut TcpStream,
         action: &str,
         envelope: &str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), BridgeError> {
         let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
 
         request.push_str("POST / HTTP/1.1\r\n");
@@ -92,20 +91,20 @@ impl TcpSoapClient {
     fn read_response(
         &self,
         stream: &mut BufReader<TcpStream>,
-    ) -> Result<SoapResponse, Box<dyn Error>> {
+    ) -> Result<SoapResponse, BridgeError> {
         let mut status_line = String::new();
         stream.read_line(&mut status_line)?;
 
         if status_line.is_empty() {
-            return Err("Empty response from simulator".into());
+            return Err(BridgeError::SoapFault("Empty response from simulator".into()));
         }
 
         let status_code: u32 = status_line
             .split_whitespace()
             .nth(1)
-            .ok_or("Malformed HTTP status line: missing status code")?
+            .ok_or_else(|| BridgeError::SoapFault("Malformed HTTP status line: missing status code".into()))?
             .parse()
-            .map_err(|e| format!("Invalid HTTP status code: {}", e))?;
+            .map_err(|e| BridgeError::SoapFault(format!("Invalid HTTP status code: {}", e)))?;
 
         // Read headers
         let mut content_length: Option<usize> = None;
@@ -123,7 +122,7 @@ impl TcpSoapClient {
         }
 
         // Read the body based on Content-Length
-        let length = content_length.ok_or("Missing Content-Length header")?;
+        let length = content_length.ok_or_else(|| BridgeError::SoapFault("Missing Content-Length header".into()))?;
         let mut body = vec![0; length];
         stream.read_exact(&mut body)?;
         let body = String::from_utf8_lossy(&body).to_string();
@@ -149,7 +148,7 @@ impl ConnectionPool {
     pub fn new(
         config: Configuration,
         statistics: Arc<StatisticsEngine>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, BridgeError> {
         let (sender, receiver) = bounded(config.pool_size);
 
         let mut pool = ConnectionPool {
@@ -167,7 +166,7 @@ impl ConnectionPool {
         Ok(pool)
     }
 
-    pub(crate) fn ensure_pool_initialized(&self) -> Result<()> {
+    pub(crate) fn ensure_pool_initialized(&self) -> Result<(), BridgeError> {
         let now = Instant::now();
         while !self.initialized.load(Ordering::Relaxed) {
             // Check for initialization error
@@ -177,13 +176,16 @@ impl ConnectionPool {
                 .ok()
                 .and_then(|g| g.as_ref().cloned())
             {
-                return Err(anyhow!("Connection pool initialization failed: {}", err));
+                return Err(BridgeError::Initialization(format!(
+                    "Connection pool initialization failed: {}",
+                    err
+                )));
             }
             if now.elapsed() > INITIALIZATION_TIMEOUT {
-                return Err(anyhow!(
+                return Err(BridgeError::Initialization(format!(
                     "Connection pool did not initialize. Waited for {:?}.",
                     INITIALIZATION_TIMEOUT
-                ));
+                )));
             }
             thread::sleep(Duration::from_millis(100));
         }
@@ -191,7 +193,7 @@ impl ConnectionPool {
     }
 
     // Start the background thread that creates new connections
-    fn initialize_pool(&mut self, sender: Sender<TcpStream>) -> Result<()> {
+    fn initialize_pool(&mut self, sender: Sender<TcpStream>) -> Result<(), BridgeError> {
         let config = self.config.clone();
         let running = Arc::clone(&self.running);
         let initialized = Arc::clone(&self.initialized);
@@ -266,13 +268,17 @@ impl ConnectionPool {
             }
         });
 
-        self.creator_thread = Some(handle?);
+        self.creator_thread = Some(
+            handle.map_err(|e| BridgeError::Initialization(format!("Failed to spawn connection pool thread: {}", e)))?,
+        );
         Ok(())
     }
 
     // Get a new connection, consuming it
-    pub fn get_connection(&self) -> Result<TcpStream, Box<dyn std::error::Error>> {
-        Ok(self.next_socket.recv()?)
+    pub fn get_connection(&self) -> Result<TcpStream, BridgeError> {
+        self.next_socket
+            .recv()
+            .map_err(|e| BridgeError::Initialization(format!("Failed to get connection from pool: {}", e)))
     }
 }
 

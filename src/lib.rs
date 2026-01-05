@@ -28,6 +28,10 @@ pub enum BridgeError {
     #[error("Connection failed: {0}")]
     Connection(#[from] std::io::Error),
 
+    /// Initialization failed
+    #[error("Initialization failed: {0}")]
+    Initialization(String),
+
     /// SOAP fault returned by the simulator
     #[error("SOAP fault: {0}")]
     SoapFault(String),
@@ -254,10 +258,9 @@ pub struct SimulatorState {
 /// - `request_count`: The total number of SOAP requests sent to the simulator. Loops back to 0 after `u32::MAX`.
 ///
 /// ```no_run
-/// use realflight_bridge::{RealFlightLocalBridge, Configuration};
-/// use std::error::Error;
+/// use realflight_bridge::{RealFlightLocalBridge, BridgeError};
 ///
-/// fn main() -> Result<(), Box<dyn Error>> {
+/// fn main() -> Result<(), BridgeError> {
 ///     let bridge = RealFlightLocalBridge::new()?;
 ///
 ///     // Send some commands...
