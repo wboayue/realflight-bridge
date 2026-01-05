@@ -1,14 +1,11 @@
 use std::{error::Error, sync::Arc, time::Duration};
 
-use crate::{
-    BridgeError, ControlInputs, SimulatorState, SoapResponse, Statistics, StatisticsEngine,
-    TcpSoapClient,
-};
+use super::RealFlightBridge;
+use crate::soap_client::{SoapClient, tcp::TcpSoapClient};
+use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 
 #[cfg(test)]
-use crate::StubSoapClient;
-
-use super::RealFlightBridge;
+use crate::soap_client::stub::StubSoapClient;
 
 const EMPTY_BODY: &str = "";
 
@@ -122,7 +119,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
             .map_err(|e| BridgeError::SoapFault(e.to_string()))?;
         match response.status_code {
             200 => crate::decoders::decode_simulator_state(&response.body),
-            _ => Err(BridgeError::SoapFault(crate::decode_fault(&response))),
+            _ => Err(BridgeError::SoapFault(response.fault_message())),
         }
     }
 
@@ -362,30 +359,9 @@ impl RealFlightLocalBridge {
     }
 }
 
-pub(crate) trait SoapClient {
-    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, Box<dyn Error>>;
-    #[cfg(test)]
-    fn requests(&self) -> Vec<String> {
-        Vec::new()
-    }
-}
-
 const CONTROL_INPUTS_CAPACITY: usize = 291;
 
-pub(crate) fn encode_envelope(action: &str, body: &str) -> String {
-    let mut envelope = String::with_capacity(200 + body.len());
-
-    envelope.push_str("<?xml version='1.0' encoding='UTF-8'?>");
-    envelope.push_str("<soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>");
-    envelope.push_str("<soap:Body>");
-    envelope.push_str(&format!("<{}>{}</{}>", action, body, action));
-    envelope.push_str("</soap:Body>");
-    envelope.push_str("</soap:Envelope>");
-
-    envelope
-}
-
-pub(crate) fn encode_control_inputs(inputs: &ControlInputs) -> String {
+fn encode_control_inputs(inputs: &ControlInputs) -> String {
     let mut message = String::with_capacity(CONTROL_INPUTS_CAPACITY);
 
     message.push_str("<pControlInputs>");

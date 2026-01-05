@@ -6,8 +6,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::bridge::local::{SoapClient, encode_envelope};
-use crate::{SoapResponse, StatisticsEngine};
+use crate::StatisticsEngine;
+
+use super::{SoapClient, SoapResponse, encode_envelope};
 
 #[cfg(test)]
 pub(crate) struct StubSoapClient {
