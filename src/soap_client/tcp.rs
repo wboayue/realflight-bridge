@@ -216,7 +216,7 @@ impl ConnectionPool {
 
             // Create initial connections
             for i in 0..config.pool_size {
-                match TcpStream::connect(simulator_address) {
+                match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
                     Ok(stream) => {
                         if let Err(e) = sender.send(stream) {
                             let msg = format!("Failed to queue initial connection {}: {}", i, e);
