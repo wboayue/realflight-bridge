@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use clap::{arg, Command};
+use clap::{Command, arg};
 use realflight_bridge::bridge::remote::ProxyServer;
 
 /// Entry point for the RealFlight Bridge Proxy server application.

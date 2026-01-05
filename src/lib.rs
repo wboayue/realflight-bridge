@@ -72,6 +72,8 @@ mod soap_client;
 pub const DEFAULT_SIMULATOR_HOST: &str = "127.0.0.1:18083";
 
 #[doc(inline)]
+pub use bridge::RealFlightBridge;
+#[doc(inline)]
 pub use bridge::local::Configuration;
 #[doc(inline)]
 pub use bridge::local::RealFlightLocalBridge;
@@ -79,8 +81,6 @@ pub use bridge::local::RealFlightLocalBridge;
 pub use bridge::remote::ProxyServer;
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
-#[doc(inline)]
-pub use bridge::RealFlightBridge;
 
 #[derive(Debug)]
 struct SoapResponse {

@@ -5,18 +5,18 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Result};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use anyhow::{Result, anyhow};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use log::{debug, error};
 
-use crate::bridge::local::{encode_envelope, Configuration, SoapClient};
+use crate::bridge::local::{Configuration, SoapClient, encode_envelope};
 use crate::{SoapResponse, StatisticsEngine};
 
 /// Size of header for request body
