@@ -133,12 +133,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 ## Control Channels
 
-The ControlInputs struct provides 12 channels for aircraft control. Each channel value should be set between -1.0 and 1.0, where:
+The ControlInputs struct provides 12 channels for aircraft control. Each channel value should be set between 0.0 and 1.0, where:
 
-* -1.0 represents the minimum value
+* 0.0 represents the minimum value
+* 0.5 represents the neutral/center position (for control surfaces)
 * 1.0 represents the maximum value
-
-For example, a channel controlling a motor might only use values from 0.0 to 1.0, while a channel controlling an elevator might utilize the full range from -1.0 to 1.0.
 
 ## SimulatorState
 
