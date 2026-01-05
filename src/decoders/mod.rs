@@ -163,7 +163,7 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, BridgeError> 
                 state = ParseState::OpenTag;
             }
             ParseState::OpenTag if ch == '>' => {
-                open_tag = key.clone();
+                open_tag = std::mem::take(&mut key);
                 content.clear();
                 state = ParseState::Content;
             }

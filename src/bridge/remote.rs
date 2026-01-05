@@ -141,6 +141,7 @@ impl Response {
 pub struct RealFlightRemoteBridge {
     reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
     writer: RefCell<BufWriter<TcpStream>>, // Buffered writer for outgoing data
+    response_buffer: RefCell<Vec<u8>>,     // Reusable buffer for responses
 }
 
 impl RealFlightBridge for RealFlightRemoteBridge {
@@ -214,6 +215,7 @@ impl RealFlightRemoteBridge {
         Ok(RealFlightRemoteBridge {
             reader: RefCell::new(BufReader::new(stream.try_clone()?)),
             writer: RefCell::new(BufWriter::new(stream)),
+            response_buffer: RefCell::new(Vec::with_capacity(4096)),
         })
     }
 
@@ -256,8 +258,10 @@ impl RealFlightRemoteBridge {
         reader.read_exact(&mut length_buffer)?;
         let response_length = u32::from_be_bytes(length_buffer) as usize;
 
-        // Read the response data
-        let mut response_buffer = vec![0u8; response_length];
+        // Read the response data into reusable buffer
+        let mut response_buffer = self.response_buffer.borrow_mut();
+        response_buffer.clear();
+        response_buffer.resize(response_length, 0);
         reader.read_exact(&mut response_buffer)?;
 
         // Deserialize the response
