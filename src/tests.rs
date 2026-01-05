@@ -19,6 +19,7 @@ use uom::si::velocity::meter_per_second;
 #[cfg(feature = "uom")]
 use uom::si::volume::liter;
 
+use crate::BridgeError;
 use crate::bridge::local::{Configuration, RealFlightLocalBridge};
 #[cfg(feature = "uom")]
 use crate::decoders::OUNCES_PER_LITER;
@@ -134,10 +135,11 @@ pub fn test_disable_rc_500() {
 
     // Assert
     match result {
-        Err(e) => {
-            assert_eq!(e.to_string(), "Preexisting controller reference");
+        Err(BridgeError::SoapFault(msg)) => {
+            assert_eq!(msg, "Preexisting controller reference");
         }
-        _ => panic!("expected error from bridge.disable_rc"),
+        Err(e) => panic!("expected SoapFault, got {:?}", e),
+        Ok(_) => panic!("expected error from bridge.disable_rc"),
     }
 }
 
@@ -178,13 +180,11 @@ pub fn test_enable_rc_500() {
 
     // Assert
     match result {
-        Err(e) => {
-            assert_eq!(
-                e.to_string(),
-                "Pointer to original controller device is null"
-            );
+        Err(BridgeError::SoapFault(msg)) => {
+            assert_eq!(msg, "Pointer to original controller device is null");
         }
-        _ => panic!("expected error from bridge.enable_rc"),
+        Err(e) => panic!("expected SoapFault, got {:?}", e),
+        Ok(_) => panic!("expected error from bridge.enable_rc"),
     }
 }
 
@@ -370,13 +370,12 @@ pub fn test_exchange_data_500() {
     let result = bridge.exchange_data(&control);
 
     // Assert
-    if let Err(ref e) = result {
-        assert_eq!(
-            e.to_string(),
-            "RealFlight Link controller has not been instantiated"
-        );
-    } else {
-        panic!("expected error from bridge.exchange_data");
+    match result {
+        Err(BridgeError::SoapFault(msg)) => {
+            assert_eq!(msg, "RealFlight Link controller has not been instantiated");
+        }
+        Err(e) => panic!("expected SoapFault, got {:?}", e),
+        Ok(_) => panic!("expected error from bridge.exchange_data"),
     }
 
     let requests = bridge.requests();

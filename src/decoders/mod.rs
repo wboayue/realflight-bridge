@@ -1,7 +1,6 @@
-use std::error::Error;
-
 use log::debug;
 
+use crate::BridgeError;
 use crate::SimulatorState;
 use crate::unit_types::*;
 
@@ -104,14 +103,11 @@ fn to_time(v: f32) -> Time {
 }
 
 /// Parse string to f32 and convert using provided function
-fn parse_with<T, F: Fn(f32) -> T>(
-    name: &str,
-    value: &str,
-    convert: F,
-) -> Result<T, Box<dyn Error>> {
-    let v: f32 = value
-        .parse()
-        .map_err(|e| format!("Failed to parse {}: {}. {}", name, value, e))?;
+fn parse_with<T, F: Fn(f32) -> T>(name: &str, value: &str, convert: F) -> Result<T, BridgeError> {
+    let v: f32 = value.parse().map_err(|e| BridgeError::Parse {
+        field: name.to_string(),
+        message: format!("{}", e),
+    })?;
     Ok(convert(v))
 }
 
@@ -138,7 +134,7 @@ enum ParseState {
     CloseTag,
 }
 
-pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error>> {
+pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, BridgeError> {
     let mut state = ParseState::FindTag;
     let mut key = String::new();
     let mut open_tag = String::new();
@@ -183,11 +179,9 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
             ParseState::CloseTag if ch == '>' => {
                 if open_tag == key {
                     if open_tag == "item" {
-                        let value = content.parse::<f32>().map_err(|e| {
-                            format!(
-                                "Failed to parse channel {}: {}. {}",
-                                channel_ndx, content, e
-                            )
+                        let value = content.parse::<f32>().map_err(|e| BridgeError::Parse {
+                            field: format!("channel[{}]", channel_ndx),
+                            message: format!("{}", e),
                         })?;
                         result.previous_inputs.channels[channel_ndx] = value;
                         channel_ndx += 1;
@@ -212,7 +206,7 @@ fn decode_state_field(
     state: &mut SimulatorState,
     name: &str,
     value: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), BridgeError> {
     match name {
         "m-currentPhysicsTime-SEC" => {
             state.current_physics_time = parse_with(name, value, to_time)?;
@@ -359,28 +353,30 @@ fn decode_state_field(
     Ok(())
 }
 
-fn parse_f32(name: &str, value: &str) -> Result<f32, Box<dyn Error>> {
-    value
-        .parse()
-        .map_err(|e| format!("Failed to parse {}: {}. {}", name, value, e).into())
+fn parse_f32(name: &str, value: &str) -> Result<f32, BridgeError> {
+    value.parse().map_err(|e| BridgeError::Parse {
+        field: name.to_string(),
+        message: format!("{}", e),
+    })
 }
 
 /// Parse fuel: convert ounces to liters with uom, keep raw value without
 #[cfg(feature = "uom")]
-fn parse_fuel(name: &str, value: &str) -> Result<Volume, Box<dyn Error>> {
+fn parse_fuel(name: &str, value: &str) -> Result<Volume, BridgeError> {
     parse_with(name, value, |v| to_volume(v / OUNCES_PER_LITER))
 }
 
 /// Parse fuel: keep raw ounces value without uom
 #[cfg(not(feature = "uom"))]
-fn parse_fuel(name: &str, value: &str) -> Result<Volume, Box<dyn Error>> {
+fn parse_fuel(name: &str, value: &str) -> Result<Volume, BridgeError> {
     parse_f32(name, value)
 }
 
-fn parse_bool(name: &str, value: &str) -> Result<bool, Box<dyn Error>> {
-    value
-        .parse()
-        .map_err(|e| format!("Failed to parse {}: {}. {}", name, value, e).into())
+fn parse_bool(name: &str, value: &str) -> Result<bool, BridgeError> {
+    value.parse().map_err(|e| BridgeError::Parse {
+        field: name.to_string(),
+        message: format!("{}", e),
+    })
 }
 
 #[cfg(test)]

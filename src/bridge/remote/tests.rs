@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{ControlInputs, RealFlightBridge, SimulatorState};
+use crate::{BridgeError, ControlInputs, RealFlightBridge, SimulatorState};
 
 use super::*;
 
@@ -160,9 +160,13 @@ fn test_malformed_response() {
     let result = client.enable_rc();
     assert!(result.is_err());
     if let Err(e) = result {
-        // Should be an io::Error with InvalidData kind
-        let io_err = e.downcast::<std::io::Error>().unwrap();
-        assert_eq!(io_err.kind(), ErrorKind::InvalidData);
+        // Should be a Connection error with InvalidData kind
+        match e {
+            BridgeError::Connection(io_err) => {
+                assert_eq!(io_err.kind(), ErrorKind::InvalidData);
+            }
+            _ => panic!("Expected BridgeError::Connection, got {:?}", e),
+        }
     }
 
     terminate_server(&address.to_string());

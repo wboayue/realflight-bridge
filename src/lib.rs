@@ -14,12 +14,29 @@
 //!
 //! See [README](https://github.com/wboayue/realflight-link) for examples and usage.
 
-use std::error::Error;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
+
+/// Errors that can occur when interacting with the RealFlight simulator.
+#[derive(Debug, Error)]
+pub enum BridgeError {
+    /// Connection to the simulator failed
+    #[error("Connection failed: {0}")]
+    Connection(#[from] std::io::Error),
+
+    /// SOAP fault returned by the simulator
+    #[error("SOAP fault: {0}")]
+    SoapFault(String),
+
+    /// Failed to parse simulator response
+    #[error("Parse error for field '{field}': {message}")]
+    Parse { field: String, message: String },
+}
+
 use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
@@ -88,11 +105,11 @@ struct SoapResponse {
     body: String,
 }
 
-impl From<SoapResponse> for Result<(), Box<dyn Error>> {
+impl From<SoapResponse> for Result<(), BridgeError> {
     fn from(val: SoapResponse) -> Self {
         match val.status_code {
             200 => Ok(()),
-            _ => Err(decode_fault(&val).into()),
+            _ => Err(BridgeError::SoapFault(decode_fault(&val))),
         }
     }
 }
