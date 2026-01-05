@@ -287,23 +287,43 @@ impl RealFlightRemoteBridge {
 /// }
 /// ```
 pub struct ProxyServer {
-    listener: Option<TcpListener>, // TCP listener for incoming connections
-    stubbed: bool,                 // Whether to run in stubbed mode (no real simulator)
+    listener: Option<TcpListener>,                 // TCP listener for incoming connections
+    bridge: Option<Box<dyn RealFlightBridge + Send>>, // Bridge to simulator (None for stubbed mode)
 }
 
 impl ProxyServer {
-    /// Creates a new server instance.
+    /// Creates a new server instance with a default local bridge.
     ///
     /// # Arguments
     /// * `bind_address` - The address to bind to (e.g., "0.0.0.0:8080").
     ///
     /// # Returns
+    /// A `Result` containing the server instance or an error if binding or bridge creation fails.
+    pub fn new(bind_address: &str) -> Result<Self, Box<dyn Error>> {
+        let listener = TcpListener::bind(bind_address)?;
+        let bridge = RealFlightLocalBridge::new()?;
+        Ok(ProxyServer {
+            listener: Some(listener),
+            bridge: Some(Box::new(bridge)),
+        })
+    }
+
+    /// Creates a new server instance with a custom bridge implementation.
+    ///
+    /// # Arguments
+    /// * `bind_address` - The address to bind to (e.g., "0.0.0.0:8080").
+    /// * `bridge` - The bridge implementation to use for simulator communication.
+    ///
+    /// # Returns
     /// A `Result` containing the server instance or an I/O error if binding fails.
-    pub fn new(bind_address: &str) -> std::io::Result<Self> {
+    pub fn with_bridge(
+        bind_address: &str,
+        bridge: Box<dyn RealFlightBridge + Send>,
+    ) -> std::io::Result<Self> {
         let listener = TcpListener::bind(bind_address)?;
         Ok(ProxyServer {
             listener: Some(listener),
-            stubbed: false,
+            bridge: Some(bridge),
         })
     }
 
@@ -320,7 +340,7 @@ impl ProxyServer {
         Ok((
             ProxyServer {
                 listener: Some(listener),
-                stubbed: true,
+                bridge: None,
             },
             local_addr,
         ))
@@ -334,6 +354,7 @@ impl ProxyServer {
     /// A `Result` indicating success or an error.
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let listener = self.listener.take().ok_or("Listener not initialized")?;
+        let stubbed = self.bridge.is_none();
 
         println!("Server listening on {}", listener.local_addr()?);
 
@@ -341,8 +362,8 @@ impl ProxyServer {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    handle_client(stream, self.stubbed)?; // Handle each client
-                    if self.stubbed {
+                    handle_client(stream, self.bridge.as_deref())?;
+                    if stubbed {
                         break; // Exit after handling one client in stubbed mode
                     }
                 }
@@ -360,18 +381,18 @@ impl ProxyServer {
 ///
 /// # Arguments
 /// * `stream` - The TCP stream for the client.
-/// * `stubbed` - Whether to run in stubbed mode.
+/// * `bridge` - Optional bridge for simulator communication (None for stubbed mode).
 ///
 /// # Returns
 /// A `Result` indicating success or an error.
-fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>> {
-    // Initialize bridge if not in stubbed mode
-    let bridge = if stubbed {
+fn handle_client(
+    stream: TcpStream,
+    bridge: Option<&(dyn RealFlightBridge + Send)>,
+) -> Result<(), Box<dyn Error>> {
+    let stubbed = bridge.is_none();
+    if stubbed {
         info!("Running in stubbed mode");
-        None
-    } else {
-        Some(RealFlightLocalBridge::new()?)
-    };
+    }
 
     info!("New client connected: {}", stream.peer_addr()?);
 
@@ -383,7 +404,6 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
     let mut length_buffer = [0u8; 4]; // Buffer for message length
 
     // Process requests until client disconnects
-
     while reader.read_exact(&mut length_buffer).is_ok() {
         let msg_length = u32::from_be_bytes(length_buffer) as usize;
 
@@ -401,14 +421,15 @@ fn handle_client(stream: TcpStream, stubbed: bool) -> Result<(), Box<dyn Error>>
         };
 
         // Process request based on mode
-        if stubbed {
-            let response = process_request_stubbed(request);
-            send_response(&mut writer, response)?;
-            break;
-        } else if let Some(bridge) = &bridge {
-            let response = process_request(request, bridge);
-            send_response(&mut writer, response)?;
+        let response = match bridge {
+            Some(bridge) => process_request(request, bridge),
+            None => {
+                let response = process_request_stubbed(request);
+                send_response(&mut writer, response)?;
+                break; // Exit after one request in stubbed mode
+            }
         };
+        send_response(&mut writer, response)?;
     }
 
     info!("Client disconnected: {}", stream.peer_addr()?);
@@ -445,7 +466,7 @@ fn send_response(
 ///
 /// # Returns
 /// The response to send back to the client.
-fn process_request(request: Request, bridge: &RealFlightLocalBridge) -> Response {
+fn process_request(request: Request, bridge: &dyn RealFlightBridge) -> Response {
     match request.request_type {
         RequestType::EnableRC => Response::from_result(bridge.enable_rc(), "enabling RC"),
         RequestType::DisableRC => Response::from_result(bridge.disable_rc(), "disabling RC"),
