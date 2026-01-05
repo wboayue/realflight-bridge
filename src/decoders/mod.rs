@@ -1,31 +1,119 @@
 use std::error::Error;
 
 use log::debug;
-#[cfg(feature = "uom")]
-use uom::si::acceleration::meter_per_second_squared;
-#[cfg(feature = "uom")]
-use uom::si::angle::degree;
-#[cfg(feature = "uom")]
-use uom::si::electric_charge::milliampere_hour;
-#[cfg(feature = "uom")]
-use uom::si::electric_current::ampere;
-#[cfg(feature = "uom")]
-use uom::si::electric_potential::volt;
-#[cfg(feature = "uom")]
-use uom::si::length::meter;
-#[cfg(feature = "uom")]
-use uom::si::time::second;
-#[cfg(feature = "uom")]
-use uom::si::velocity::meter_per_second;
-#[cfg(feature = "uom")]
-use uom::si::volume::liter;
-#[cfg(feature = "uom")]
-use uom::si::{angular_velocity::degree_per_second, f32::*};
 
-use super::SimulatorState;
+use crate::unit_types::*;
+use crate::SimulatorState;
+
+#[cfg(feature = "uom")]
+use uom::si::{
+    acceleration::meter_per_second_squared, angle::degree, angular_velocity::degree_per_second,
+    electric_charge::milliampere_hour, electric_current::ampere, electric_potential::volt,
+    length::meter, time::second, velocity::meter_per_second, volume::liter,
+};
 
 #[cfg(feature = "uom")]
 pub const OUNCES_PER_LITER: f32 = 33.814;
+
+// Converter functions: wrap f32 into appropriate types based on feature flag
+
+#[cfg(feature = "uom")]
+fn to_velocity(v: f32) -> Velocity {
+    Velocity::new::<meter_per_second>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_velocity(v: f32) -> Velocity {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_length(v: f32) -> Length {
+    Length::new::<meter>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_length(v: f32) -> Length {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_angular_velocity(v: f32) -> AngularVelocity {
+    AngularVelocity::new::<degree_per_second>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_angular_velocity(v: f32) -> AngularVelocity {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_angle(v: f32) -> Angle {
+    Angle::new::<degree>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_angle(v: f32) -> Angle {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_acceleration(v: f32) -> Acceleration {
+    Acceleration::new::<meter_per_second_squared>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_acceleration(v: f32) -> Acceleration {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_electric_potential(v: f32) -> ElectricPotential {
+    ElectricPotential::new::<volt>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_electric_potential(v: f32) -> ElectricPotential {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_electric_current(v: f32) -> ElectricCurrent {
+    ElectricCurrent::new::<ampere>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_electric_current(v: f32) -> ElectricCurrent {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_electric_charge(v: f32) -> ElectricCharge {
+    ElectricCharge::new::<milliampere_hour>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_electric_charge(v: f32) -> ElectricCharge {
+    v
+}
+
+#[cfg(feature = "uom")]
+fn to_volume(v: f32) -> Volume {
+    Volume::new::<liter>(v)
+}
+
+#[cfg(feature = "uom")]
+fn to_time(v: f32) -> Time {
+    Time::new::<second>(v)
+}
+#[cfg(not(feature = "uom"))]
+fn to_time(v: f32) -> Time {
+    v
+}
+
+/// Parse string to f32 and convert using provided function
+fn parse_with<T, F: Fn(f32) -> T>(
+    name: &str,
+    value: &str,
+    convert: F,
+) -> Result<T, Box<dyn Error>> {
+    let v: f32 = value
+        .parse()
+        .map_err(|e| format!("Failed to parse {}: {}. {}", name, value, e))?;
+    Ok(convert(v))
+}
 
 pub fn extract_element(name: &str, xml: &str) -> Option<String> {
     let start_tag = &format!("<{}>", name);
@@ -120,7 +208,6 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, Box<dyn Error
     Ok(result)
 }
 
-#[cfg(feature = "uom")]
 fn decode_state_field(
     state: &mut SimulatorState,
     name: &str,
@@ -128,142 +215,142 @@ fn decode_state_field(
 ) -> Result<(), Box<dyn Error>> {
     match name {
         "m-currentPhysicsTime-SEC" => {
-            state.current_physics_time = as_time(name, value)?;
+            state.current_physics_time = parse_with(name, value, to_time)?;
         }
         "m-currentPhysicsSpeedMultiplier" => {
-            state.current_physics_speed_multiplier = as_f32(name, value)?;
+            state.current_physics_speed_multiplier = parse_f32(name, value)?;
         }
         "m-airspeed-MPS" => {
-            state.airspeed = as_velocity(name, value)?;
+            state.airspeed = parse_with(name, value, to_velocity)?;
         }
         "m-altitudeASL-MTR" => {
-            state.altitude_asl = as_length(name, value)?;
+            state.altitude_asl = parse_with(name, value, to_length)?;
         }
         "m-altitudeAGL-MTR" => {
-            state.altitude_agl = as_length(name, value)?;
+            state.altitude_agl = parse_with(name, value, to_length)?;
         }
         "m-groundspeed-MPS" => {
-            state.groundspeed = as_velocity(name, value)?;
+            state.groundspeed = parse_with(name, value, to_velocity)?;
         }
         "m-pitchRate-DEGpSEC" => {
-            state.pitch_rate = as_angular_velocity(name, value)?;
+            state.pitch_rate = parse_with(name, value, to_angular_velocity)?;
         }
         "m-rollRate-DEGpSEC" => {
-            state.roll_rate = as_angular_velocity(name, value)?;
+            state.roll_rate = parse_with(name, value, to_angular_velocity)?;
         }
         "m-yawRate-DEGpSEC" => {
-            state.yaw_rate = as_angular_velocity(name, value)?;
+            state.yaw_rate = parse_with(name, value, to_angular_velocity)?;
         }
         "m-azimuth-DEG" => {
-            state.azimuth = as_angle(name, value)?;
+            state.azimuth = parse_with(name, value, to_angle)?;
         }
         "m-inclination-DEG" => {
-            state.inclination = as_angle(name, value)?;
+            state.inclination = parse_with(name, value, to_angle)?;
         }
         "m-roll-DEG" => {
-            state.roll = as_angle(name, value)?;
+            state.roll = parse_with(name, value, to_angle)?;
         }
         "m-orientationQuaternion-X" => {
-            state.orientation_quaternion_x = as_f32(name, value)?;
+            state.orientation_quaternion_x = parse_f32(name, value)?;
         }
         "m-orientationQuaternion-Y" => {
-            state.orientation_quaternion_y = as_f32(name, value)?;
+            state.orientation_quaternion_y = parse_f32(name, value)?;
         }
         "m-orientationQuaternion-Z" => {
-            state.orientation_quaternion_z = as_f32(name, value)?;
+            state.orientation_quaternion_z = parse_f32(name, value)?;
         }
         "m-orientationQuaternion-W" => {
-            state.orientation_quaternion_w = as_f32(name, value)?;
+            state.orientation_quaternion_w = parse_f32(name, value)?;
         }
         "m-aircraftPositionX-MTR" => {
-            state.aircraft_position_x = as_length(name, value)?;
+            state.aircraft_position_x = parse_with(name, value, to_length)?;
         }
         "m-aircraftPositionY-MTR" => {
-            state.aircraft_position_y = as_length(name, value)?;
+            state.aircraft_position_y = parse_with(name, value, to_length)?;
         }
         "m-velocityWorldU-MPS" => {
-            state.velocity_world_u = as_velocity(name, value)?;
+            state.velocity_world_u = parse_with(name, value, to_velocity)?;
         }
         "m-velocityWorldV-MPS" => {
-            state.velocity_world_v = as_velocity(name, value)?;
+            state.velocity_world_v = parse_with(name, value, to_velocity)?;
         }
         "m-velocityWorldW-MPS" => {
-            state.velocity_world_w = as_velocity(name, value)?;
+            state.velocity_world_w = parse_with(name, value, to_velocity)?;
         }
         "m-velocityBodyU-MPS" => {
-            state.velocity_body_u = as_velocity(name, value)?;
+            state.velocity_body_u = parse_with(name, value, to_velocity)?;
         }
         "m-velocityBodyV-MPS" => {
-            state.velocity_body_v = as_velocity(name, value)?;
+            state.velocity_body_v = parse_with(name, value, to_velocity)?;
         }
         "m-velocityBodyW-MPS" => {
-            state.velocity_body_w = as_velocity(name, value)?;
+            state.velocity_body_w = parse_with(name, value, to_velocity)?;
         }
         "m-accelerationWorldAX-MPS2" => {
-            state.acceleration_world_ax = as_acceleration(name, value)?;
+            state.acceleration_world_ax = parse_with(name, value, to_acceleration)?;
         }
         "m-accelerationWorldAY-MPS2" => {
-            state.acceleration_world_ay = as_acceleration(name, value)?;
+            state.acceleration_world_ay = parse_with(name, value, to_acceleration)?;
         }
         "m-accelerationWorldAZ-MPS2" => {
-            state.acceleration_world_az = as_acceleration(name, value)?;
+            state.acceleration_world_az = parse_with(name, value, to_acceleration)?;
         }
         "m-accelerationBodyAX-MPS2" => {
-            state.acceleration_body_ax = as_acceleration(name, value)?;
+            state.acceleration_body_ax = parse_with(name, value, to_acceleration)?;
         }
         "m-accelerationBodyAY-MPS2" => {
-            state.acceleration_body_ay = as_acceleration(name, value)?;
+            state.acceleration_body_ay = parse_with(name, value, to_acceleration)?;
         }
         "m-accelerationBodyAZ-MPS2" => {
-            state.acceleration_body_az = as_acceleration(name, value)?;
+            state.acceleration_body_az = parse_with(name, value, to_acceleration)?;
         }
         "m-windX-MPS" => {
-            state.wind_x = as_velocity(name, value)?;
+            state.wind_x = parse_with(name, value, to_velocity)?;
         }
         "m-windY-MPS" => {
-            state.wind_y = as_velocity(name, value)?;
+            state.wind_y = parse_with(name, value, to_velocity)?;
         }
         "m-windZ-MPS" => {
-            state.wind_z = as_velocity(name, value)?;
+            state.wind_z = parse_with(name, value, to_velocity)?;
         }
         "m-propRPM" => {
-            state.prop_rpm = as_f32(name, value)?;
+            state.prop_rpm = parse_f32(name, value)?;
         }
         "m-heliMainRotorRPM" => {
-            state.heli_main_rotor_rpm = as_f32(name, value)?;
+            state.heli_main_rotor_rpm = parse_f32(name, value)?;
         }
         "m-batteryVoltage-VOLTS" => {
-            state.battery_voltage = as_electrical_potential(name, value)?;
+            state.battery_voltage = parse_with(name, value, to_electric_potential)?;
         }
         "m-batteryCurrentDraw-AMPS" => {
-            state.battery_current_draw = as_electrical_current(name, value)?;
+            state.battery_current_draw = parse_with(name, value, to_electric_current)?;
         }
         "m-batteryRemainingCapacity-MAH" => {
-            state.battery_remaining_capacity = as_electrical_charge(name, value)?;
+            state.battery_remaining_capacity = parse_with(name, value, to_electric_charge)?;
         }
         "m-fuelRemaining-OZ" => {
-            state.fuel_remaining = as_volume(name, value, Some(1.0 / OUNCES_PER_LITER))?;
+            state.fuel_remaining = parse_fuel(name, value)?;
         }
         "m-isLocked" => {
-            state.is_locked = as_bool(name, value)?;
+            state.is_locked = parse_bool(name, value)?;
         }
         "m-hasLostComponents" => {
-            state.has_lost_components = as_bool(name, value)?;
+            state.has_lost_components = parse_bool(name, value)?;
         }
         "m-anEngineIsRunning" => {
-            state.an_engine_is_running = as_bool(name, value)?;
+            state.an_engine_is_running = parse_bool(name, value)?;
         }
         "m-isTouchingGround" => {
-            state.is_touching_ground = as_bool(name, value)?;
+            state.is_touching_ground = parse_bool(name, value)?;
         }
         "m-flightAxisControllerIsActive" => {
-            state.flight_axis_controller_is_active = as_bool(name, value)?;
+            state.flight_axis_controller_is_active = parse_bool(name, value)?;
         }
         "m-currentAircraftStatus" => {
             state.current_aircraft_status = value.to_string();
         }
         "m-resetButtonHasBeenPressed" => {
-            state.reset_button_has_been_pressed = as_bool(name, value)?;
+            state.reset_button_has_been_pressed = parse_bool(name, value)?;
         }
         _ => {
             debug!("Unexpected attribute {}: {}", name, value);
@@ -272,268 +359,28 @@ fn decode_state_field(
     Ok(())
 }
 
+fn parse_f32(name: &str, value: &str) -> Result<f32, Box<dyn Error>> {
+    value
+        .parse()
+        .map_err(|e| format!("Failed to parse {}: {}. {}", name, value, e).into())
+}
+
+/// Parse fuel: convert ounces to liters with uom, keep raw value without
+#[cfg(feature = "uom")]
+fn parse_fuel(name: &str, value: &str) -> Result<Volume, Box<dyn Error>> {
+    parse_with(name, value, |v| to_volume(v / OUNCES_PER_LITER))
+}
+
+/// Parse fuel: keep raw ounces value without uom
 #[cfg(not(feature = "uom"))]
-fn decode_state_field(
-    state: &mut SimulatorState,
-    name: &str,
-    value: &str,
-) -> Result<(), Box<dyn Error>> {
-    match name {
-        "m-currentPhysicsTime-SEC" => {
-            state.current_physics_time = as_f32(name, value)?;
-        }
-        "m-currentPhysicsSpeedMultiplier" => {
-            state.current_physics_speed_multiplier = as_f32(name, value)?;
-        }
-        "m-airspeed-MPS" => {
-            state.airspeed = as_f32(name, value)?;
-        }
-        "m-altitudeASL-MTR" => {
-            state.altitude_asl = as_f32(name, value)?;
-        }
-        "m-altitudeAGL-MTR" => {
-            state.altitude_agl = as_f32(name, value)?;
-        }
-        "m-groundspeed-MPS" => {
-            state.groundspeed = as_f32(name, value)?;
-        }
-        "m-pitchRate-DEGpSEC" => {
-            state.pitch_rate = as_f32(name, value)?;
-        }
-        "m-rollRate-DEGpSEC" => {
-            state.roll_rate = as_f32(name, value)?;
-        }
-        "m-yawRate-DEGpSEC" => {
-            state.yaw_rate = as_f32(name, value)?;
-        }
-        "m-azimuth-DEG" => {
-            state.azimuth = as_f32(name, value)?;
-        }
-        "m-inclination-DEG" => {
-            state.inclination = as_f32(name, value)?;
-        }
-        "m-roll-DEG" => {
-            state.roll = as_f32(name, value)?;
-        }
-        "m-orientationQuaternion-X" => {
-            state.orientation_quaternion_x = as_f32(name, value)?;
-        }
-        "m-orientationQuaternion-Y" => {
-            state.orientation_quaternion_y = as_f32(name, value)?;
-        }
-        "m-orientationQuaternion-Z" => {
-            state.orientation_quaternion_z = as_f32(name, value)?;
-        }
-        "m-orientationQuaternion-W" => {
-            state.orientation_quaternion_w = as_f32(name, value)?;
-        }
-        "m-aircraftPositionX-MTR" => {
-            state.aircraft_position_x = as_f32(name, value)?;
-        }
-        "m-aircraftPositionY-MTR" => {
-            state.aircraft_position_y = as_f32(name, value)?;
-        }
-        "m-velocityWorldU-MPS" => {
-            state.velocity_world_u = as_f32(name, value)?;
-        }
-        "m-velocityWorldV-MPS" => {
-            state.velocity_world_v = as_f32(name, value)?;
-        }
-        "m-velocityWorldW-MPS" => {
-            state.velocity_world_w = as_f32(name, value)?;
-        }
-        "m-velocityBodyU-MPS" => {
-            state.velocity_body_u = as_f32(name, value)?;
-        }
-        "m-velocityBodyV-MPS" => {
-            state.velocity_body_v = as_f32(name, value)?;
-        }
-        "m-velocityBodyW-MPS" => {
-            state.velocity_body_w = as_f32(name, value)?;
-        }
-        "m-accelerationWorldAX-MPS2" => {
-            state.acceleration_world_ax = as_f32(name, value)?;
-        }
-        "m-accelerationWorldAY-MPS2" => {
-            state.acceleration_world_ay = as_f32(name, value)?;
-        }
-        "m-accelerationWorldAZ-MPS2" => {
-            state.acceleration_world_az = as_f32(name, value)?;
-        }
-        "m-accelerationBodyAX-MPS2" => {
-            state.acceleration_body_ax = as_f32(name, value)?;
-        }
-        "m-accelerationBodyAY-MPS2" => {
-            state.acceleration_body_ay = as_f32(name, value)?;
-        }
-        "m-accelerationBodyAZ-MPS2" => {
-            state.acceleration_body_az = as_f32(name, value)?;
-        }
-        "m-windX-MPS" => {
-            state.wind_x = as_f32(name, value)?;
-        }
-        "m-windY-MPS" => {
-            state.wind_y = as_f32(name, value)?;
-        }
-        "m-windZ-MPS" => {
-            state.wind_z = as_f32(name, value)?;
-        }
-        "m-propRPM" => {
-            state.prop_rpm = as_f32(name, value)?;
-        }
-        "m-heliMainRotorRPM" => {
-            state.heli_main_rotor_rpm = as_f32(name, value)?;
-        }
-        "m-batteryVoltage-VOLTS" => {
-            state.battery_voltage = as_f32(name, value)?;
-        }
-        "m-batteryCurrentDraw-AMPS" => {
-            state.battery_current_draw = as_f32(name, value)?;
-        }
-        "m-batteryRemainingCapacity-MAH" => {
-            state.battery_remaining_capacity = as_f32(name, value)?;
-        }
-        "m-fuelRemaining-OZ" => {
-            state.fuel_remaining = as_f32(name, value)?;
-        }
-        "m-isLocked" => {
-            state.is_locked = as_bool(name, value)?;
-        }
-        "m-hasLostComponents" => {
-            state.has_lost_components = as_bool(name, value)?;
-        }
-        "m-anEngineIsRunning" => {
-            state.an_engine_is_running = as_bool(name, value)?;
-        }
-        "m-isTouchingGround" => {
-            state.is_touching_ground = as_bool(name, value)?;
-        }
-        "m-flightAxisControllerIsActive" => {
-            state.flight_axis_controller_is_active = as_bool(name, value)?;
-        }
-        "m-currentAircraftStatus" => {
-            state.current_aircraft_status = value.to_string();
-        }
-        "m-resetButtonHasBeenPressed" => {
-            state.reset_button_has_been_pressed = as_bool(name, value)?;
-        }
-        _ => {
-            debug!("Unexpected attribute {}: {}", name, value);
-        }
-    }
-    Ok(())
+fn parse_fuel(name: &str, value: &str) -> Result<Volume, Box<dyn Error>> {
+    parse_f32(name, value)
 }
 
-#[cfg(feature = "uom")]
-fn as_time(name: &str, value: &str) -> Result<Time, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(Time::new::<second>(value)),
-        Err(e) => Err(format!("Failed to parse time {}: {}. {}", name, value, e).into()),
-    }
-}
-
-fn as_f32(name: &str, value: &str) -> Result<f32, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(value),
-        Err(e) => Err(format!("Failed to parse f32 {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_velocity(name: &str, value: &str) -> Result<Velocity, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(Velocity::new::<meter_per_second>(value)),
-        Err(e) => Err(format!("Failed to parse Velocity {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_angular_velocity(name: &str, value: &str) -> Result<AngularVelocity, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(AngularVelocity::new::<degree_per_second>(value)),
-        Err(e) => Err(format!("Failed to parse AngularVelocity {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_length(name: &str, value: &str) -> Result<Length, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(Length::new::<meter>(value)),
-        Err(e) => Err(format!("Failed to parse Length {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_angle(name: &str, value: &str) -> Result<Angle, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(Angle::new::<degree>(value)),
-        Err(e) => Err(format!("Failed to parse Angle {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_acceleration(name: &str, value: &str) -> Result<Acceleration, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(Acceleration::new::<meter_per_second_squared>(value)),
-        Err(e) => Err(format!("Failed to parse Acceleration {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_electrical_potential(name: &str, value: &str) -> Result<ElectricPotential, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(ElectricPotential::new::<volt>(value)),
-        Err(e) => Err(format!(
-            "Failed to parse ElectricPotential {}: {}. {}",
-            name, value, e
-        )
-        .into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_electrical_current(name: &str, value: &str) -> Result<ElectricCurrent, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(ElectricCurrent::new::<ampere>(value)),
-        Err(e) => Err(format!("Failed to parse ElectricCurrent {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_electrical_charge(name: &str, value: &str) -> Result<ElectricCharge, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => Ok(ElectricCharge::new::<milliampere_hour>(value)),
-        Err(e) => Err(format!("Failed to parse ElectricCharge {}: {}. {}", name, value, e).into()),
-    }
-}
-
-#[cfg(feature = "uom")]
-fn as_volume(name: &str, value: &str, factor: Option<f32>) -> Result<Volume, Box<dyn Error>> {
-    let result = value.parse();
-    match result {
-        Ok(value) => match factor {
-            Some(factor) => Ok(Volume::new::<liter>(value * factor)),
-            None => Ok(Volume::new::<liter>(value)),
-        },
-        Err(e) => Err(format!("Failed to parse Volume {}: {}. {}", name, value, e).into()),
-    }
-}
-
-fn as_bool(name: &str, value: &str) -> Result<bool, Box<dyn Error>> {
-    let value = value
-        .parse::<bool>()
-        .map_err(|e| format!("Failed to parse bool {}: {}. {}", name, value, e))?;
-    Ok(value)
+fn parse_bool(name: &str, value: &str) -> Result<bool, Box<dyn Error>> {
+    value
+        .parse()
+        .map_err(|e| format!("Failed to parse {}: {}. {}", name, value, e).into())
 }
 
 #[cfg(test)]
