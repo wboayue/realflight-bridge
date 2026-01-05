@@ -1,3 +1,24 @@
+//! TCP stub server for integration testing.
+//!
+//! This module provides a mock TCP server that simulates RealFlight's SOAP interface.
+//! It loads canned responses from `testdata/responses/` and returns them based on
+//! response keys passed during construction.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! let server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
+//! // Server is now listening and will return the response from
+//! // testdata/responses/reset-aircraft-200.xml
+//! ```
+//!
+//! # Response Key Format
+//!
+//! Response keys follow the pattern `{action}-{status_code}`:
+//! - `reset-aircraft-200` - Successful reset aircraft response
+//! - `inject-uav-controller-interface-500` - Failed disable RC response
+//! - `return-data-200` - Successful exchange data response
+
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -12,6 +33,7 @@ use std::{
     thread,
 };
 
+/// A mock TCP server for testing SOAP client interactions.
 pub struct Server {
     port: u16,
     responses: Vec<String>,
