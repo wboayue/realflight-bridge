@@ -23,6 +23,7 @@ use crate::BridgeError;
 use crate::bridge::local::{Configuration, RealFlightLocalBridge};
 #[cfg(feature = "uom")]
 use crate::decoders::OUNCES_PER_LITER;
+use crate::soap_client::stub::StubSoapClient;
 
 use approx::assert_relative_eq;
 

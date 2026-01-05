@@ -37,7 +37,6 @@ pub enum BridgeError {
     Parse { field: String, message: String },
 }
 
-use soap_client::tcp::TcpSoapClient;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -68,14 +67,8 @@ mod unit_types {
 
 use unit_types::*;
 
-#[cfg(test)]
-use soap_client::stub::StubSoapClient;
-
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::decode_simulator_state;
-
-#[cfg(not(any(test, feature = "bench-internals")))]
-use decoders::extract_element;
 
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::extract_element;
@@ -98,21 +91,6 @@ pub use bridge::local::RealFlightLocalBridge;
 pub use bridge::remote::ProxyServer;
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
-
-#[derive(Debug)]
-struct SoapResponse {
-    status_code: u32,
-    body: String,
-}
-
-impl From<SoapResponse> for Result<(), BridgeError> {
-    fn from(val: SoapResponse) -> Self {
-        match val.status_code {
-            200 => Ok(()),
-            _ => Err(BridgeError::SoapFault(decode_fault(&val))),
-        }
-    }
-}
 
 /// Control inputs for the RealFlight simulator using the standard RC channel mapping.
 /// Each channel value should be between 0.0 (minimum) and 1.0 (maximum).
@@ -353,13 +331,6 @@ impl StatisticsEngine {
 impl Default for StatisticsEngine {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn decode_fault(response: &SoapResponse) -> String {
-    match extract_element("detail", &response.body) {
-        Some(message) => message,
-        None => "Failed to extract error message".into(),
     }
 }
 
