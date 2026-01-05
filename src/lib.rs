@@ -1,4 +1,4 @@
-//! [![github]](https://github.com/wboayue/realflight-link)&ensp;[![crates-io]](https://crates.io/crates/realflight-link)&ensp;[![license]](https://opensource.org/licenses/MIT)
+//! [![github]](https://github.com/wboayue/realflight-bridge)&ensp;[![crates-io]](https://crates.io/crates/realflight-bridge)&ensp;[![license]](https://opensource.org/licenses/MIT)
 //!
 //! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
 //! [crates-io]: https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&labelColor=555555&logo=rust
@@ -12,7 +12,7 @@
 //! * Receive real-time simulated flight data for state estimation and control.
 //! * Test stabilization and autonomy algorithms in a controlled environment.
 //!
-//! See [README](https://github.com/wboayue/realflight-link) for examples and usage.
+//! See [README](https://github.com/wboayue/realflight-bridge) for examples and usage.
 
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
@@ -137,7 +137,7 @@ pub use bridge::remote::RealFlightRemoteBridge;
 ///     - Landing gear
 ///     - Camera gimbal
 ///     - Lights
-///     - Custom functions#[derive(Default, Debug)]
+///     - Custom functions
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ControlInputs {
     /// Array of 12 channel values, each between 0.0 and 1.0
@@ -182,19 +182,19 @@ pub struct SimulatorState {
     pub velocity_world_w: Velocity,
     /// Forward velocity in body frame [meters/second]
     pub velocity_body_u: Velocity,
-    // Lateral velocity in body frame [meters/second]
+    /// Lateral velocity in body frame [meters/second]
     pub velocity_body_v: Velocity,
-    // Vertical velocity in body frame [meters/second]
+    /// Vertical velocity in body frame [meters/second]
     pub velocity_body_w: Velocity,
-    // Acceleration along world X axis (North) [meters/second²]
+    /// Acceleration along world X axis (North) [meters/second²]
     pub acceleration_world_ax: Acceleration,
-    // Acceleration along world Y axis (East) [meters/second²]
+    /// Acceleration along world Y axis (East) [meters/second²]
     pub acceleration_world_ay: Acceleration,
-    // Acceleration along world Z axis (Down) [meters/second²]
+    /// Acceleration along world Z axis (Down) [meters/second²]
     pub acceleration_world_az: Acceleration,
-    // Acceleration along body X axis (Forward) [meters/second²]
+    /// Acceleration along body X axis (Forward) [meters/second²]
     pub acceleration_body_ax: Acceleration,
-    // Acceleration along body Y axis (Right) [meters/second²]
+    /// Acceleration along body Y axis (Right) [meters/second²]
     pub acceleration_body_ay: Acceleration,
     /// Acceleration along body Z axis (Down) [meters/second²]
     pub acceleration_body_az: Acceleration,
@@ -254,7 +254,7 @@ pub struct SimulatorState {
 ///
 /// - `runtime`: The total elapsed time since the `RealFlightBridge` instance was created.
 /// - `error_count`: The number of errors (e.g., connection errors, SOAP faults) encountered so far.
-/// - `frame_rate`: An approximate request rate, calculated as `(request_count / runtime)`.
+/// - `frequency`: An approximate request rate, calculated as `(request_count / runtime)`.
 /// - `request_count`: The total number of SOAP requests sent to the simulator. Loops back to 0 after `u32::MAX`.
 ///
 /// ```no_run
