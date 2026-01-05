@@ -44,10 +44,11 @@
 
 use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
+use std::time::Duration;
 use std::{
     error::Error,
     io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpStream, ToSocketAddrs},
 };
 
 use log::{error, info};
@@ -180,6 +181,9 @@ impl RealFlightBridge for RealFlightRemoteBridge {
 }
 
 impl RealFlightRemoteBridge {
+    /// Default connection timeout (5 seconds)
+    const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+
     /// Creates a new client instance connected to the specified address.
     ///
     /// # Arguments
@@ -188,7 +192,23 @@ impl RealFlightRemoteBridge {
     /// # Returns
     /// A `Result` containing the new client instance or an I/O error.
     pub fn new(address: &str) -> std::io::Result<Self> {
-        let stream = TcpStream::connect(address)?;
+        Self::with_timeout(address, Self::DEFAULT_TIMEOUT)
+    }
+
+    /// Creates a new client instance with a custom timeout.
+    ///
+    /// # Arguments
+    /// * `address` - The server address (e.g., "127.0.0.1:18083").
+    /// * `timeout` - Connection timeout duration.
+    ///
+    /// # Returns
+    /// A `Result` containing the new client instance or an I/O error.
+    pub fn with_timeout(address: &str, timeout: Duration) -> std::io::Result<Self> {
+        let addr = address.to_socket_addrs()?.next().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid address")
+        })?;
+
+        let stream = TcpStream::connect_timeout(&addr, timeout)?;
         stream.set_nodelay(true)?;
 
         Ok(RealFlightRemoteBridge {
