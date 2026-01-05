@@ -1,4 +1,4 @@
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{error::Error, fmt::Write, sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
 use crate::soap_client::{SoapClient, tcp::TcpSoapClient};
@@ -369,7 +369,7 @@ fn encode_control_inputs(inputs: &ControlInputs) -> String {
     //message.push_str("<m-selectedChannels>0</m-selectedChannels>");
     message.push_str("<m-channelValues-0to1>");
     for num in inputs.channels.iter() {
-        message.push_str(&format!("<item>{}</item>", num));
+        let _ = write!(message, "<item>{}</item>", num);
     }
     message.push_str("</m-channelValues-0to1>");
     message.push_str("</pControlInputs>");
