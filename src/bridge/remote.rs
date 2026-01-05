@@ -102,6 +102,31 @@ pub enum ResponseStatus {
     Error,
 }
 
+impl Response {
+    fn success() -> Self {
+        Self { status: ResponseStatus::Success, payload: None }
+    }
+
+    fn success_with(state: SimulatorState) -> Self {
+        Self { status: ResponseStatus::Success, payload: Some(state) }
+    }
+
+    fn error() -> Self {
+        Self { status: ResponseStatus::Error, payload: None }
+    }
+
+    /// Convert a Result into a Response, logging errors with context
+    fn from_result<E: std::fmt::Display>(result: Result<(), E>, context: &str) -> Self {
+        match result {
+            Ok(()) => Self::success(),
+            Err(e) => {
+                error!("Error {}: {}", context, e);
+                Self::error()
+            }
+        }
+    }
+}
+
 /// Client struct for managing TCP communication with the simulator server.
 pub struct RealFlightRemoteBridge {
     reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
@@ -397,70 +422,19 @@ fn send_response(
 /// The response to send back to the client.
 fn process_request(request: Request, bridge: &RealFlightLocalBridge) -> Response {
     match request.request_type {
-        RequestType::EnableRC => {
-            if let Err(e) = bridge.enable_rc() {
-                error!("Error enabling RC: {}", e);
-                Response {
-                    status: ResponseStatus::Error,
-                    payload: None,
+        RequestType::EnableRC => Response::from_result(bridge.enable_rc(), "enabling RC"),
+        RequestType::DisableRC => Response::from_result(bridge.disable_rc(), "disabling RC"),
+        RequestType::ResetAircraft => Response::from_result(bridge.reset_aircraft(), "resetting aircraft"),
+        RequestType::ExchangeData => match request.payload {
+            Some(payload) => match bridge.exchange_data(&payload) {
+                Ok(state) => Response::success_with(state),
+                Err(e) => {
+                    error!("Error exchanging data: {}", e);
+                    Response::error()
                 }
-            } else {
-                Response {
-                    status: ResponseStatus::Success,
-                    payload: None,
-                }
-            }
-        }
-        RequestType::DisableRC => {
-            if let Err(e) = bridge.disable_rc() {
-                error!("Error disabling RC: {}", e);
-                Response {
-                    status: ResponseStatus::Error,
-                    payload: None,
-                }
-            } else {
-                Response {
-                    status: ResponseStatus::Success,
-                    payload: None,
-                }
-            }
-        }
-        RequestType::ResetAircraft => {
-            if let Err(e) = bridge.reset_aircraft() {
-                error!("Error resetting aircraft: {}", e);
-                Response {
-                    status: ResponseStatus::Error,
-                    payload: None,
-                }
-            } else {
-                Response {
-                    status: ResponseStatus::Success,
-                    payload: None,
-                }
-            }
-        }
-        RequestType::ExchangeData => {
-            if let Some(payload) = request.payload {
-                match bridge.exchange_data(&payload) {
-                    Ok(state) => Response {
-                        status: ResponseStatus::Success,
-                        payload: Some(state),
-                    },
-                    Err(e) => {
-                        error!("Error exchanging data: {}", e);
-                        Response {
-                            status: ResponseStatus::Error,
-                            payload: None,
-                        }
-                    }
-                }
-            } else {
-                Response {
-                    status: ResponseStatus::Error,
-                    payload: None,
-                }
-            }
-        }
+            },
+            None => Response::error(),
+        },
     }
 }
 
@@ -473,21 +447,9 @@ fn process_request(request: Request, bridge: &RealFlightLocalBridge) -> Response
 /// A mocked response for testing purposes.
 fn process_request_stubbed(request: Request) -> Response {
     match request.request_type {
-        RequestType::EnableRC => Response {
-            status: ResponseStatus::Success,
-            payload: None,
-        },
-        RequestType::DisableRC => Response {
-            status: ResponseStatus::Success,
-            payload: None,
-        },
-        RequestType::ResetAircraft => Response {
-            status: ResponseStatus::Success,
-            payload: None,
-        },
-        RequestType::ExchangeData => Response {
-            status: ResponseStatus::Success,
-            payload: Some(SimulatorState::default()),
-        },
+        RequestType::EnableRC | RequestType::DisableRC | RequestType::ResetAircraft => {
+            Response::success()
+        }
+        RequestType::ExchangeData => Response::success_with(SimulatorState::default()),
     }
 }
