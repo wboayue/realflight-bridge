@@ -96,13 +96,17 @@ impl TcpSoapClient {
         stream.read_line(&mut status_line)?;
 
         if status_line.is_empty() {
-            return Err(BridgeError::SoapFault("Empty response from simulator".into()));
+            return Err(BridgeError::SoapFault(
+                "Empty response from simulator".into(),
+            ));
         }
 
         let status_code: u32 = status_line
             .split_whitespace()
             .nth(1)
-            .ok_or_else(|| BridgeError::SoapFault("Malformed HTTP status line: missing status code".into()))?
+            .ok_or_else(|| {
+                BridgeError::SoapFault("Malformed HTTP status line: missing status code".into())
+            })?
             .parse()
             .map_err(|e| BridgeError::SoapFault(format!("Invalid HTTP status code: {}", e)))?;
 
@@ -122,7 +126,8 @@ impl TcpSoapClient {
         }
 
         // Read the body based on Content-Length
-        let length = content_length.ok_or_else(|| BridgeError::SoapFault("Missing Content-Length header".into()))?;
+        let length = content_length
+            .ok_or_else(|| BridgeError::SoapFault("Missing Content-Length header".into()))?;
         let mut body = vec![0; length];
         stream.read_exact(&mut body)?;
         let body = String::from_utf8_lossy(&body).to_string();
@@ -268,17 +273,17 @@ impl ConnectionPool {
             }
         });
 
-        self.creator_thread = Some(
-            handle.map_err(|e| BridgeError::Initialization(format!("Failed to spawn connection pool thread: {}", e)))?,
-        );
+        self.creator_thread = Some(handle.map_err(|e| {
+            BridgeError::Initialization(format!("Failed to spawn connection pool thread: {}", e))
+        })?);
         Ok(())
     }
 
     // Get a new connection, consuming it
     pub fn get_connection(&self) -> Result<TcpStream, BridgeError> {
-        self.next_socket
-            .recv()
-            .map_err(|e| BridgeError::Initialization(format!("Failed to get connection from pool: {}", e)))
+        self.next_socket.recv().map_err(|e| {
+            BridgeError::Initialization(format!("Failed to get connection from pool: {}", e))
+        })
     }
 }
 

@@ -283,7 +283,7 @@ impl RealFlightRemoteBridge {
 /// }
 /// ```
 pub struct ProxyServer {
-    listener: Option<TcpListener>,                 // TCP listener for incoming connections
+    listener: Option<TcpListener>, // TCP listener for incoming connections
     bridge: Option<Box<dyn RealFlightBridge + Send>>, // Bridge to simulator (None for stubbed mode)
 }
 
@@ -443,7 +443,10 @@ fn handle_client(
 ///
 /// # Returns
 /// A `Result` indicating success or an error.
-fn send_response(writer: &mut BufWriter<&TcpStream>, response: Response) -> Result<(), BridgeError> {
+fn send_response(
+    writer: &mut BufWriter<&TcpStream>,
+    response: Response,
+) -> Result<(), BridgeError> {
     let response_bytes = to_stdvec(&response)
         .map_err(|e| BridgeError::SoapFault(format!("Failed to serialize response: {}", e)))?;
     let length_bytes = (response_bytes.len() as u32).to_be_bytes();
