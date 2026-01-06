@@ -55,7 +55,8 @@ pub(crate) fn parse_status_line(status_line: &str) -> Result<u32, BridgeError> {
 
 /// Extract Content-Length from a header line if present
 pub(crate) fn parse_content_length(line: &str) -> Option<usize> {
-    if line.to_lowercase().starts_with("content-length:") {
+    const PREFIX: &str = "content-length:";
+    if line.len() >= PREFIX.len() && line[..PREFIX.len()].eq_ignore_ascii_case(PREFIX) {
         line.split_whitespace()
             .nth(1)
             .and_then(|s| s.trim().parse().ok())

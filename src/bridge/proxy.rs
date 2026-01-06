@@ -34,7 +34,7 @@ use crate::{BridgeError, SimulatorState};
 
 use super::RealFlightBridge;
 use super::local::RealFlightLocalBridge;
-use super::remote::{Request, RequestType, Response, ResponseStatus};
+use super::remote::{Request, RequestType, Response};
 
 #[cfg(test)]
 mod tests;
@@ -143,40 +143,6 @@ impl ProxyServer {
         }
 
         Ok(())
-    }
-}
-
-impl Response {
-    fn success() -> Self {
-        Self {
-            status: ResponseStatus::Success,
-            payload: None,
-        }
-    }
-
-    fn success_with(state: SimulatorState) -> Self {
-        Self {
-            status: ResponseStatus::Success,
-            payload: Some(state),
-        }
-    }
-
-    fn error() -> Self {
-        Self {
-            status: ResponseStatus::Error,
-            payload: None,
-        }
-    }
-
-    /// Convert a Result into a Response, logging errors with context
-    fn from_result<E: std::fmt::Display>(result: Result<(), E>, context: &str) -> Self {
-        match result {
-            Ok(()) => Self::success(),
-            Err(e) => {
-                error!("Error {}: {}", context, e);
-                Self::error()
-            }
-        }
     }
 }
 

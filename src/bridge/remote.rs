@@ -81,6 +81,40 @@ pub enum ResponseStatus {
     Error,
 }
 
+impl Response {
+    pub(crate) fn success() -> Self {
+        Self {
+            status: ResponseStatus::Success,
+            payload: None,
+        }
+    }
+
+    pub(crate) fn success_with(state: SimulatorState) -> Self {
+        Self {
+            status: ResponseStatus::Success,
+            payload: Some(state),
+        }
+    }
+
+    pub(crate) fn error() -> Self {
+        Self {
+            status: ResponseStatus::Error,
+            payload: None,
+        }
+    }
+
+    /// Convert a Result into a Response, logging errors with context
+    pub(crate) fn from_result<E: std::fmt::Display>(result: Result<(), E>, context: &str) -> Self {
+        match result {
+            Ok(()) => Self::success(),
+            Err(e) => {
+                error!("Error {}: {}", context, e);
+                Self::error()
+            }
+        }
+    }
+}
+
 /// Client struct for managing TCP communication with the simulator server.
 pub struct RealFlightRemoteBridge {
     reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
