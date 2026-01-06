@@ -3,26 +3,16 @@
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
-    time::{Duration, Instant},
+    sync::Arc,
 };
-
-use crossbeam_channel::{Receiver, Sender, bounded};
-use log::{debug, error};
 
 use crate::BridgeError;
 use crate::StatisticsEngine;
 use crate::bridge::local::Configuration;
 
 use super::{SoapClient, SoapResponse, encode_envelope};
-
-/// Size of header for request body
-const HEADER_LEN: usize = 120;
-const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(5);
+use super::pool::ConnectionPool;
+use super::xml::{build_http_request, parse_status_line, parse_content_length, create_response};
 
 /// Implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct TcpSoapClient {
@@ -73,15 +63,7 @@ impl TcpSoapClient {
         action: &str,
         envelope: &str,
     ) -> Result<(), BridgeError> {
-        let mut request = String::with_capacity(HEADER_LEN + envelope.len() + action.len());
-
-        request.push_str("POST / HTTP/1.1\r\n");
-        request.push_str(&format!("Soapaction: '{}'\r\n", action));
-        request.push_str(&format!("Content-Length: {}\r\n", envelope.len()));
-        request.push_str("Content-Type: text/xml;charset=utf-8\r\n");
-        request.push_str("\r\n");
-        request.push_str(envelope);
-
+        let request = build_http_request(action, envelope);
         stream.write_all(request.as_bytes())?;
         stream.flush()?;
         Ok(())
@@ -95,20 +77,7 @@ impl TcpSoapClient {
         let mut status_line = String::new();
         stream.read_line(&mut status_line)?;
 
-        if status_line.is_empty() {
-            return Err(BridgeError::SoapFault(
-                "Empty response from simulator".into(),
-            ));
-        }
-
-        let status_code: u32 = status_line
-            .split_whitespace()
-            .nth(1)
-            .ok_or_else(|| {
-                BridgeError::SoapFault("Malformed HTTP status line: missing status code".into())
-            })?
-            .parse()
-            .map_err(|e| BridgeError::SoapFault(format!("Invalid HTTP status code: {}", e)))?;
+        let status_code = parse_status_line(&status_line)?;
 
         // Read headers
         let mut content_length: Option<usize> = None;
@@ -118,10 +87,8 @@ impl TcpSoapClient {
             if line == "\r\n" {
                 break; // End of headers
             }
-            if line.to_lowercase().starts_with("content-length:")
-                && let Some(length) = line.split_whitespace().nth(1)
-            {
-                content_length = length.trim().parse().ok();
+            if let Some(length) = parse_content_length(&line) {
+                content_length = Some(length);
             }
         }
 
@@ -130,171 +97,7 @@ impl TcpSoapClient {
             .ok_or_else(|| BridgeError::SoapFault("Missing Content-Length header".into()))?;
         let mut body = vec![0; length];
         stream.read_exact(&mut body)?;
-        let body = String::from_utf8_lossy(&body).to_string();
 
-        Ok(SoapResponse { status_code, body })
-    }
-}
-
-/// The RealFlight SoapServer requires a new connection for each request.
-/// The idea for the pool is to create the next connection
-/// in the background while the current request is being processed.
-pub(crate) struct ConnectionPool {
-    config: Configuration,
-    next_socket: Receiver<TcpStream>,
-    creator_thread: Option<thread::JoinHandle<()>>,
-    running: Arc<AtomicBool>,
-    initialized: Arc<AtomicBool>,
-    init_error: Arc<Mutex<Option<String>>>,
-    statistics: Arc<StatisticsEngine>,
-}
-
-impl ConnectionPool {
-    pub fn new(
-        config: Configuration,
-        statistics: Arc<StatisticsEngine>,
-    ) -> Result<Self, BridgeError> {
-        let (sender, receiver) = bounded(config.pool_size);
-
-        let mut pool = ConnectionPool {
-            config,
-            next_socket: receiver,
-            creator_thread: None,
-            running: Arc::new(AtomicBool::new(true)),
-            initialized: Arc::new(AtomicBool::new(false)),
-            init_error: Arc::new(Mutex::new(None)),
-            statistics,
-        };
-
-        pool.initialize_pool(sender)?;
-
-        Ok(pool)
-    }
-
-    pub(crate) fn ensure_pool_initialized(&self) -> Result<(), BridgeError> {
-        let now = Instant::now();
-        while !self.initialized.load(Ordering::Relaxed) {
-            // Check for initialization error
-            if let Some(err) = self
-                .init_error
-                .lock()
-                .ok()
-                .and_then(|g| g.as_ref().cloned())
-            {
-                return Err(BridgeError::Initialization(format!(
-                    "Connection pool initialization failed: {}",
-                    err
-                )));
-            }
-            if now.elapsed() > INITIALIZATION_TIMEOUT {
-                return Err(BridgeError::Initialization(format!(
-                    "Connection pool did not initialize. Waited for {:?}.",
-                    INITIALIZATION_TIMEOUT
-                )));
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-        Ok(())
-    }
-
-    // Start the background thread that creates new connections
-    fn initialize_pool(&mut self, sender: Sender<TcpStream>) -> Result<(), BridgeError> {
-        let config = self.config.clone();
-        let running = Arc::clone(&self.running);
-        let initialized = Arc::clone(&self.initialized);
-        let init_error = Arc::clone(&self.init_error);
-        let statistics = Arc::clone(&self.statistics);
-
-        let worker = thread::Builder::new().name("connection-pool".to_string());
-        let handle = worker.spawn(move || {
-            debug!("Creating {} connections in pool.", config.pool_size);
-
-            let simulator_address = match config.simulator_host.parse() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    let msg = format!("Invalid simulator host '{}': {}", config.simulator_host, e);
-                    error!("{}", msg);
-                    if let Ok(mut guard) = init_error.lock() {
-                        *guard = Some(msg);
-                    }
-                    return;
-                }
-            };
-
-            // Create initial connections
-            for i in 0..config.pool_size {
-                match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
-                    Ok(stream) => {
-                        if let Err(e) = sender.send(stream) {
-                            let msg = format!("Failed to queue initial connection {}: {}", i, e);
-                            error!("{}", msg);
-                            if let Ok(mut guard) = init_error.lock() {
-                                *guard = Some(msg);
-                            }
-                            return;
-                        }
-                    }
-                    Err(e) => {
-                        let msg = format!(
-                            "Failed to connect to simulator at {}: {}",
-                            config.simulator_host, e
-                        );
-                        error!("{}", msg);
-                        if let Ok(mut guard) = init_error.lock() {
-                            *guard = Some(msg);
-                        }
-                        return;
-                    }
-                }
-            }
-
-            initialized.store(true, Ordering::Relaxed);
-
-            // Continue creating connections as needed
-            while running.load(Ordering::Relaxed) {
-                if sender.is_full() {
-                    thread::sleep(config.connect_timeout / 2);
-                    continue;
-                }
-
-                match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
-                    Ok(stream) => {
-                        if let Err(e) = sender.send(stream) {
-                            error!("Error sending connection: {}", e);
-                            statistics.increment_error_count();
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error creating connection: {}", e);
-                        statistics.increment_error_count();
-                        thread::sleep(config.connect_timeout);
-                    }
-                }
-            }
-        });
-
-        self.creator_thread = Some(handle.map_err(|e| {
-            BridgeError::Initialization(format!("Failed to spawn connection pool thread: {}", e))
-        })?);
-        Ok(())
-    }
-
-    // Get a new connection, consuming it
-    pub fn get_connection(&self) -> Result<TcpStream, BridgeError> {
-        self.next_socket.recv().map_err(|e| {
-            BridgeError::Initialization(format!("Failed to get connection from pool: {}", e))
-        })
-    }
-}
-
-impl Drop for ConnectionPool {
-    fn drop(&mut self) {
-        // Signal the creator thread to stop
-        self.running.store(false, Ordering::Relaxed);
-
-        // Wait for the creator thread to finish
-        if let Some(handle) = self.creator_thread.take() {
-            let _ = handle.join();
-        }
+        Ok(create_response(status_code, body))
     }
 }

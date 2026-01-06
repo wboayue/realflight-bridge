@@ -3,7 +3,11 @@ use crate::decoders::extract_element;
 
 #[cfg(test)]
 pub(crate) mod stub;
+pub(crate) mod pool;
 pub(crate) mod tcp;
+pub(crate) mod xml;
+
+pub(crate) use xml::encode_envelope;
 
 /// Response from a SOAP request to the RealFlight simulator
 #[derive(Debug)]
@@ -40,91 +44,9 @@ pub(crate) trait SoapClient: Send {
     }
 }
 
-/// Encode a SOAP envelope for RealFlight
-pub(crate) fn encode_envelope(action: &str, body: &str) -> String {
-    let mut envelope = String::with_capacity(200 + body.len());
-
-    envelope.push_str("<?xml version='1.0' encoding='UTF-8'?>");
-    envelope.push_str("<soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>");
-    envelope.push_str("<soap:Body>");
-    envelope.push_str(&format!("<{}>{}</{}>", action, body, action));
-    envelope.push_str("</soap:Body>");
-    envelope.push_str("</soap:Envelope>");
-
-    envelope
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod encode_envelope_tests {
-        use super::*;
-
-        #[test]
-        fn encodes_empty_body() {
-            let result = encode_envelope("TestAction", "");
-
-            assert!(result.contains("<?xml version='1.0' encoding='UTF-8'?>"));
-            assert!(result.contains("<TestAction></TestAction>"));
-            assert!(result.contains("<soap:Body>"));
-            assert!(result.contains("</soap:Body>"));
-        }
-
-        #[test]
-        fn encodes_action_with_body() {
-            let body = "<param>value</param>";
-            let result = encode_envelope("MyAction", body);
-
-            assert!(result.contains("<MyAction><param>value</param></MyAction>"));
-        }
-
-        #[test]
-        fn includes_soap_namespaces() {
-            let result = encode_envelope("Test", "");
-
-            assert!(result.contains("xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/'"));
-            assert!(result.contains("xmlns:xsd='http://www.w3.org/2001/XMLSchema'"));
-            assert!(result.contains("xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'"));
-        }
-
-        #[test]
-        fn starts_with_xml_declaration() {
-            let result = encode_envelope("Test", "");
-            assert!(result.starts_with("<?xml version='1.0' encoding='UTF-8'?>"));
-        }
-
-        #[test]
-        fn ends_with_envelope_close() {
-            let result = encode_envelope("Test", "");
-            assert!(result.ends_with("</soap:Envelope>"));
-        }
-
-        #[test]
-        fn encodes_real_actions() {
-            // Test actual action names used in the crate
-            let actions = [
-                ("ResetAircraft", ""),
-                ("InjectUAVControllerInterface", ""),
-                ("RestoreOriginalControllerDevice", ""),
-                ("ExchangeData", "<pControlInputs></pControlInputs>"),
-            ];
-
-            for (action, body) in actions {
-                let result = encode_envelope(action, body);
-                assert!(
-                    result.contains(&format!("<{}>", action)),
-                    "Missing open tag for {}",
-                    action
-                );
-                assert!(
-                    result.contains(&format!("</{}>", action)),
-                    "Missing close tag for {}",
-                    action
-                );
-            }
-        }
-    }
 
     mod soap_response_tests {
         use super::*;
