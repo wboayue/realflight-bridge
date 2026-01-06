@@ -6,15 +6,15 @@
 //! - `error_handling`: Tests for error conditions and edge cases
 
 use std::{
-    io::ErrorKind,
+    io::{ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
     thread,
     time::Duration,
 };
 
-use crate::{BridgeError, ControlInputs, RealFlightBridge, SimulatorState};
+use crate::{BridgeError, ControlInputs, ProxyServer, RealFlightBridge, SimulatorState};
 
-use super::*;
+use super::{RealFlightRemoteBridge, Response, ResponseStatus};
 
 // ============================================================================
 // Connection Tests

@@ -92,7 +92,7 @@ pub use bridge::local::Configuration;
 #[doc(inline)]
 pub use bridge::local::RealFlightLocalBridge;
 #[doc(inline)]
-pub use bridge::remote::ProxyServer;
+pub use bridge::proxy::ProxyServer;
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
 

@@ -1,6 +1,7 @@
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
 pub mod local;
+pub mod proxy;
 pub mod remote;
 
 pub trait RealFlightBridge {
