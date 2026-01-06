@@ -61,9 +61,9 @@ impl AsyncRemoteBridgeBuilder {
             })?
             .map_err(|e| BridgeError::Initialization(format!("Connection failed: {}", e)))?;
 
-        stream.set_nodelay(true).map_err(|e| {
-            BridgeError::Initialization(format!("Failed to set nodelay: {}", e))
-        })?;
+        stream
+            .set_nodelay(true)
+            .map_err(|e| BridgeError::Initialization(format!("Failed to set nodelay: {}", e)))?;
 
         let (read_half, write_half) = stream.into_split();
 
@@ -224,8 +224,8 @@ mod tests {
 
     #[tokio::test]
     async fn builder_sets_timeout() {
-        let builder = AsyncRemoteBridgeBuilder::new("127.0.0.1:12345")
-            .timeout(Duration::from_millis(100));
+        let builder =
+            AsyncRemoteBridgeBuilder::new("127.0.0.1:12345").timeout(Duration::from_millis(100));
 
         assert_eq!(builder.connect_timeout, Duration::from_millis(100));
     }

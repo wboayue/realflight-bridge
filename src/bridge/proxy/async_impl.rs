@@ -8,13 +8,16 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
 
-use crate::bridge::local::AsyncLocalBridge;
-use crate::bridge::AsyncBridge;
 use crate::BridgeError;
+use crate::bridge::AsyncBridge;
+use crate::bridge::local::AsyncLocalBridge;
 
 use super::super::remote::{Request, RequestType, Response};
 
-/// Async server struct for handling incoming client connections.
+/// Async server for forwarding requests to the RealFlight simulator.
+///
+/// Currently handles one client at a time (serial). Future versions may support
+/// concurrent clients for multiplayer scenarios.
 ///
 /// # Examples
 ///
@@ -211,7 +214,6 @@ async fn process_request(request: Request, bridge: &AsyncLocalBridge) -> Respons
         },
     }
 }
-
 
 #[cfg(test)]
 mod tests {

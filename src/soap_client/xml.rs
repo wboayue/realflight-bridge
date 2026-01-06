@@ -1,8 +1,8 @@
 //! Pure functions for SOAP/HTTP request building and response parsing.
 //! This module is runtime-agnostic (no I/O).
 
-use crate::BridgeError;
 use super::SoapResponse;
+use crate::BridgeError;
 
 /// Size of header for request body
 const HEADER_LEN: usize = 120;

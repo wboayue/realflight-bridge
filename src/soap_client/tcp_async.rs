@@ -75,10 +75,7 @@ impl AsyncTcpSoapClient {
     }
 
     /// Ensures the connection pool is initialized.
-    pub async fn ensure_pool_initialized(
-        &self,
-        init_timeout: Duration,
-    ) -> Result<(), BridgeError> {
+    pub async fn ensure_pool_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
         self.connection_pool.ensure_initialized(init_timeout).await
     }
 

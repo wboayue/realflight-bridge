@@ -10,9 +10,9 @@ use crate::BridgeError;
 use crate::StatisticsEngine;
 use crate::bridge::local::Configuration;
 
-use super::{SoapClient, SoapResponse, encode_envelope};
 use super::pool::ConnectionPool;
-use super::xml::{build_http_request, parse_status_line, parse_content_length, create_response};
+use super::xml::{build_http_request, create_response, parse_content_length, parse_status_line};
+use super::{SoapClient, SoapResponse, encode_envelope};
 
 /// Implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct TcpSoapClient {

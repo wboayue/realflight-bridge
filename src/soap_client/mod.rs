@@ -4,18 +4,18 @@ use crate::decoders::extract_element;
 #[cfg(feature = "rt-tokio")]
 use std::future::Future;
 
+pub(crate) mod pool;
 #[cfg(test)]
 pub(crate) mod stub;
-pub(crate) mod pool;
 pub(crate) mod tcp;
 pub(crate) mod xml;
 
 #[cfg(feature = "rt-tokio")]
 pub(crate) mod pool_async;
-#[cfg(feature = "rt-tokio")]
-pub(crate) mod tcp_async;
 #[cfg(all(test, feature = "rt-tokio"))]
 pub(crate) mod stub_async;
+#[cfg(feature = "rt-tokio")]
+pub(crate) mod tcp_async;
 
 pub(crate) use xml::encode_envelope;
 

@@ -105,10 +105,10 @@ pub use bridge::AsyncBridge;
 pub use bridge::local::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
 #[cfg(feature = "rt-tokio")]
 #[doc(inline)]
-pub use bridge::remote::{AsyncRemoteBridge, AsyncRemoteBridgeBuilder};
+pub use bridge::proxy::AsyncProxyServer;
 #[cfg(feature = "rt-tokio")]
 #[doc(inline)]
-pub use bridge::proxy::AsyncProxyServer;
+pub use bridge::remote::{AsyncRemoteBridge, AsyncRemoteBridgeBuilder};
 
 /// Control inputs for the RealFlight simulator using the standard RC channel mapping.
 /// Each channel value should be between 0.0 (minimum) and 1.0 (maximum).
@@ -159,7 +159,7 @@ pub struct ControlInputs {
 }
 
 /// Represents the complete state of the simulated aircraft in RealFlight.
-/// Physical quantities use SI units (strongly-typed with `uom` feature, raw f32 otherwise).
+/// Physical quantities use metric units (strongly-typed with `uom` feature, raw f32 otherwise).
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state

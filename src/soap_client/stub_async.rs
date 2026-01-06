@@ -33,9 +33,9 @@ impl AsyncStubSoapClient {
 impl AsyncSoapClient for AsyncStubSoapClient {
     async fn send_action(&self, _action: &str, _body: &str) -> Result<SoapResponse, BridgeError> {
         let mut responses = self.responses.lock().unwrap();
-        responses.pop_front().ok_or_else(|| {
-            BridgeError::SoapFault("No more stubbed responses available".into())
-        })
+        responses
+            .pop_front()
+            .ok_or_else(|| BridgeError::SoapFault("No more stubbed responses available".into()))
     }
 }
 

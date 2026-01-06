@@ -145,9 +145,9 @@ impl AsyncConnectionPool {
     /// Gets a connection from the pool.
     pub async fn get_connection(&self) -> Result<TcpStream, BridgeError> {
         let mut rx = self.connections.lock().await;
-        rx.recv().await.ok_or_else(|| {
-            BridgeError::Initialization("Connection pool closed".into())
-        })
+        rx.recv()
+            .await
+            .ok_or_else(|| BridgeError::Initialization("Connection pool closed".into()))
     }
 
     /// Returns a reference to the statistics engine.
@@ -180,16 +180,13 @@ mod tests {
             }
         });
 
-        let pool = AsyncConnectionPool::new(
-            addr,
-            Duration::from_secs(1),
-            2,
-            stats,
-        )
-        .await
-        .unwrap();
+        let pool = AsyncConnectionPool::new(addr, Duration::from_secs(1), 2, stats)
+            .await
+            .unwrap();
 
-        pool.ensure_initialized(Duration::from_secs(5)).await.unwrap();
+        pool.ensure_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         let conn = pool.get_connection().await;
         assert!(conn.is_ok());
@@ -205,14 +202,9 @@ mod tests {
         // Use a port that's unlikely to be listening
         let addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
 
-        let pool = AsyncConnectionPool::new(
-            addr,
-            Duration::from_millis(100),
-            1,
-            stats,
-        )
-        .await
-        .unwrap();
+        let pool = AsyncConnectionPool::new(addr, Duration::from_millis(100), 1, stats)
+            .await
+            .unwrap();
 
         // Should timeout waiting for initialization
         let result = pool.ensure_initialized(Duration::from_millis(500)).await;
