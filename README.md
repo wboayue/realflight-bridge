@@ -131,6 +131,88 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
+## Async Support
+
+Async versions of the bridge are available via the `rt-tokio` feature flag:
+
+```bash
+cargo add realflight-bridge --features rt-tokio
+```
+
+### Async Local Connection
+
+```rust
+use std::error::Error;
+use realflight_bridge::{AsyncBridge, AsyncLocalBridge, ControlInputs};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Creates bridge with default configuration
+    let bridge = AsyncLocalBridge::new().await?;
+
+    // Or with custom configuration
+    // let bridge = AsyncLocalBridge::builder()
+    //     .connect_timeout(Duration::from_millis(10))
+    //     .build()
+    //     .await?;
+
+    bridge.reset_aircraft().await?;
+    bridge.disable_rc().await?;
+
+    let mut controls = ControlInputs::default();
+
+    loop {
+        let state = bridge.exchange_data(&controls).await?;
+        controls.channels[0] = 0.5;
+        // ...
+    }
+}
+```
+
+### Async Remote Connection
+
+```rust
+use std::error::Error;
+use realflight_bridge::{AsyncBridge, AsyncRemoteBridge, ControlInputs};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let client = AsyncRemoteBridge::new("192.168.12.253:8080").await?;
+
+    client.disable_rc().await?;
+
+    let control = ControlInputs::default();
+    let state = client.exchange_data(&control).await?;
+
+    Ok(())
+}
+```
+
+### Async Proxy Server
+
+```rust
+use std::error::Error;
+use realflight_bridge::AsyncProxyServer;
+use tokio_util::sync::CancellationToken;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let server = AsyncProxyServer::new("0.0.0.0:8080").await?;
+    let cancel = CancellationToken::new();
+
+    let server_cancel = cancel.clone();
+    let handle = tokio::spawn(async move {
+        server.run(server_cancel).await
+    });
+
+    // Later, trigger graceful shutdown
+    cancel.cancel();
+    handle.await??;
+
+    Ok(())
+}
+```
+
 ## Control Channels
 
 The ControlInputs struct provides 12 channels for aircraft control. Each channel value should be set between 0.0 and 1.0, where:
