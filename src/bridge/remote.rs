@@ -22,6 +22,11 @@
 //! }
 //! ```
 
+#[cfg(feature = "rt-tokio")]
+mod async_impl;
+#[cfg(feature = "rt-tokio")]
+pub use async_impl::{AsyncRemoteBridge, AsyncRemoteBridgeBuilder};
+
 use std::cell::RefCell;
 use std::io::{BufReader, BufWriter};
 use std::time::Duration;

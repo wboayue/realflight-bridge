@@ -7,6 +7,11 @@ use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEn
 #[cfg(test)]
 use crate::soap_client::stub::StubSoapClient;
 
+#[cfg(feature = "rt-tokio")]
+mod async_impl;
+#[cfg(feature = "rt-tokio")]
+pub use async_impl::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
+
 const EMPTY_BODY: &str = "";
 
 /// A high-level client for interacting with RealFlight simulators via RealFlight Link.

@@ -1,11 +1,21 @@
 use crate::BridgeError;
 use crate::decoders::extract_element;
 
+#[cfg(feature = "rt-tokio")]
+use std::future::Future;
+
 #[cfg(test)]
 pub(crate) mod stub;
 pub(crate) mod pool;
 pub(crate) mod tcp;
 pub(crate) mod xml;
+
+#[cfg(feature = "rt-tokio")]
+pub(crate) mod pool_async;
+#[cfg(feature = "rt-tokio")]
+pub(crate) mod tcp_async;
+#[cfg(all(test, feature = "rt-tokio"))]
+pub(crate) mod stub_async;
 
 pub(crate) use xml::encode_envelope;
 
@@ -42,6 +52,16 @@ pub(crate) trait SoapClient: Send {
     fn requests(&self) -> Vec<String> {
         Vec::new()
     }
+}
+
+/// Async trait for sending SOAP requests to the RealFlight simulator
+#[cfg(feature = "rt-tokio")]
+pub(crate) trait AsyncSoapClient: Send + Sync {
+    fn send_action(
+        &self,
+        action: &str,
+        body: &str,
+    ) -> impl Future<Output = Result<SoapResponse, BridgeError>> + Send;
 }
 
 #[cfg(test)]

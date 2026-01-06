@@ -96,6 +96,20 @@ pub use bridge::proxy::ProxyServer;
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
 
+// Async exports (requires rt-tokio feature)
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::AsyncBridge;
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::local::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::remote::{AsyncRemoteBridge, AsyncRemoteBridgeBuilder};
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::proxy::AsyncProxyServer;
+
 /// Control inputs for the RealFlight simulator using the standard RC channel mapping.
 /// Each channel value should be between 0.0 (minimum) and 1.0 (maximum).
 ///

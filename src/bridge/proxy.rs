@@ -24,6 +24,11 @@
 //!
 //! - **Synchronous Operation**: The server processes one client at a time, blocking until the client disconnects.
 
+#[cfg(feature = "rt-tokio")]
+mod async_impl;
+#[cfg(feature = "rt-tokio")]
+pub use async_impl::AsyncProxyServer;
+
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::{TcpListener, TcpStream};
 
