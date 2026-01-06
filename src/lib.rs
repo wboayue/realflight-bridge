@@ -77,6 +77,9 @@ pub use decoders::decode_simulator_state;
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::extract_element;
 
+#[cfg(any(test, feature = "bench-internals"))]
+pub use bridge::local::encode_control_inputs;
+
 pub mod bridge;
 mod decoders;
 

@@ -356,7 +356,17 @@ impl RealFlightLocalBridge {
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
 
+#[cfg(any(test, feature = "bench-internals"))]
+pub fn encode_control_inputs(inputs: &ControlInputs) -> String {
+    encode_control_inputs_inner(inputs)
+}
+
+#[cfg(not(any(test, feature = "bench-internals")))]
 pub(crate) fn encode_control_inputs(inputs: &ControlInputs) -> String {
+    encode_control_inputs_inner(inputs)
+}
+
+fn encode_control_inputs_inner(inputs: &ControlInputs) -> String {
     let mut message = String::with_capacity(CONTROL_INPUTS_CAPACITY);
 
     message.push_str("<pControlInputs>");
