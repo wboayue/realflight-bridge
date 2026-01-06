@@ -92,12 +92,17 @@ mod tests {
     use std::io::Write;
     use std::net::TcpListener;
 
-    fn create_mock_response(body: &str) -> String {
+    fn create_mock_response_with_status(status_code: u32, body: &str) -> String {
         format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 {} OK\r\nContent-Length: {}\r\n\r\n{}",
+            status_code,
             body.len(),
             body
         )
+    }
+
+    fn create_mock_response(body: &str) -> String {
+        create_mock_response_with_status(200, body)
     }
 
     #[tokio::test]
@@ -133,5 +138,159 @@ mod tests {
         assert!(response.body.contains("TestResponse"));
 
         server_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn parses_200_response_correctly() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+
+        let server_handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+
+            let response = create_mock_response_with_status(200, "<Success/>");
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
+            .await
+            .unwrap();
+
+        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+
+        let response = client.send_action("TestAction", "").await.unwrap();
+        assert_eq!(response.status_code, 200);
+
+        server_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn parses_500_response_correctly() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+
+        let server_handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+
+            let response = create_mock_response_with_status(500, "<Fault>Error</Fault>");
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
+            .await
+            .unwrap();
+
+        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+
+        let response = client.send_action("TestAction", "").await.unwrap();
+        assert_eq!(response.status_code, 500);
+        assert!(response.body.contains("Fault"));
+
+        server_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_content_length_returns_error() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+
+        let server_handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+
+            // Send response without Content-Length header
+            let response = "HTTP/1.1 200 OK\r\n\r\n<Body/>";
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
+            .await
+            .unwrap();
+
+        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+
+        let result = client.send_action("TestAction", "").await;
+        match result {
+            Err(BridgeError::SoapFault(msg)) => {
+                assert!(msg.contains("Content-Length"));
+            }
+            other => panic!("expected SoapFault, got {:?}", other),
+        }
+
+        server_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn increments_request_count_on_success() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+        let stats_clone = stats.clone();
+
+        let server_handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+
+            let response = create_mock_response("<OK/>");
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
+            .await
+            .unwrap();
+
+        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+
+        assert_eq!(stats_clone.snapshot().request_count, 0);
+
+        let _ = client.send_action("TestAction", "").await.unwrap();
+
+        assert_eq!(stats_clone.snapshot().request_count, 1);
+
+        server_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn statistics_returns_reference() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+        let stats_clone = stats.clone();
+
+        // Accept connections with timeout
+        listener.set_nonblocking(true).unwrap();
+        let accept_handle = std::thread::spawn(move || {
+            for _ in 0..10 {
+                match listener.accept() {
+                    Ok(_) => break,
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
+            .await
+            .unwrap();
+
+        assert!(Arc::ptr_eq(client.statistics(), &stats_clone));
+
+        drop(client);
+        let _ = accept_handle.join();
     }
 }

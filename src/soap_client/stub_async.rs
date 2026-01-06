@@ -11,6 +11,7 @@ use super::{AsyncSoapClient, SoapResponse};
 /// Async stub SOAP client for testing.
 pub(crate) struct AsyncStubSoapClient {
     responses: Mutex<VecDeque<SoapResponse>>,
+    requests: Mutex<Vec<String>>,
 }
 
 impl AsyncStubSoapClient {
@@ -19,7 +20,14 @@ impl AsyncStubSoapClient {
     pub fn new() -> Self {
         AsyncStubSoapClient {
             responses: Mutex::new(VecDeque::new()),
+            requests: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Returns recorded requests (action and body).
+    #[allow(dead_code)]
+    pub fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
     }
 
     /// Queues a response to be returned by the next call to `send_action`.
@@ -31,7 +39,11 @@ impl AsyncStubSoapClient {
 }
 
 impl AsyncSoapClient for AsyncStubSoapClient {
-    async fn send_action(&self, _action: &str, _body: &str) -> Result<SoapResponse, BridgeError> {
+    async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
+        // Record the request
+        let request = format!("{}:{}", action, body);
+        self.requests.lock().unwrap().push(request);
+
         let mut responses = self.responses.lock().unwrap();
         responses
             .pop_front()
@@ -80,5 +92,20 @@ mod tests {
 
         assert_eq!(first.body, "first");
         assert_eq!(second.body, "second");
+    }
+
+    #[tokio::test]
+    async fn records_requests() {
+        let stub = AsyncStubSoapClient::new();
+        stub.queue_response(SoapResponse {
+            status_code: 200,
+            body: "response".to_string(),
+        });
+
+        let _ = stub.send_action("TestAction", "test body").await;
+
+        let requests = stub.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0], "TestAction:test body");
     }
 }
