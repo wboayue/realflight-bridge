@@ -1,0 +1,6 @@
+[default]
+# Include async feature for full coverage
+features = "rt-tokio"
+
+# Exclude binary from coverage (CLI glue code)
+exclude-files = ["src/bin/*"]

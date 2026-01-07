@@ -374,4 +374,66 @@ mod tests {
         drop(pool);
         let _ = accept_handle.await;
     }
+
+    #[tokio::test]
+    async fn background_task_increments_error_on_connection_failure() {
+        let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+
+        // Accept initial connection then drop listener
+        let accept_handle = tokio::spawn(async move {
+            let _ = listener.accept().await;
+            // Listener dropped here - subsequent connections will fail
+        });
+
+        let pool =
+            AsyncConnectionPool::new(addr, Duration::from_millis(50), 1, stats.clone()).await.unwrap();
+
+        pool.ensure_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        // Consume the initial connection
+        let _conn = pool.get_connection().await.unwrap();
+
+        // Wait for accept_handle to finish (listener dropped)
+        let _ = accept_handle.await;
+
+        // Wait for background task to try creating connections and fail
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Error count should have increased
+        let snapshot = stats.snapshot();
+        assert!(
+            snapshot.error_count >= 1,
+            "expected error_count >= 1, got {}",
+            snapshot.error_count
+        );
+    }
+
+    #[tokio::test]
+    async fn init_fails_on_connection_timeout() {
+        // Use an address that will timeout (non-routable IP)
+        let addr: SocketAddr = "10.255.255.1:18083".parse().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+
+        let pool =
+            AsyncConnectionPool::new(addr, Duration::from_millis(100), 1, stats).await.unwrap();
+
+        // Should fail due to timeout during initialization
+        let result = pool.ensure_initialized(Duration::from_millis(500)).await;
+        assert!(result.is_err());
+
+        match result {
+            Err(BridgeError::Initialization(msg)) => {
+                // Either timeout or connection failure message
+                assert!(
+                    msg.contains("timeout") || msg.contains("Connection") || msg.contains("did not initialize"),
+                    "unexpected error message: {}", msg
+                );
+            }
+            other => panic!("expected Initialization error, got {:?}", other),
+        }
+    }
 }
