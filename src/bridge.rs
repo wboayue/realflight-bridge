@@ -36,7 +36,7 @@ pub trait RealFlightBridge {
     /// An `Err`` is returned if RealFlight cannot locate or restore the original controller device.
     fn enable_rc(&self) -> Result<(), BridgeError>;
 
-    /// Switches the RealFlight simulator’s input to the external RealFlight Link controller,
+    /// Switches the RealFlight simulator's input to the external RealFlight Link controller,
     /// effectively disabling any native Spektrum (or other built-in) RC device.
     ///
     /// Once [RealFlightBridge::disable_rc] is called, RealFlight listens exclusively for commands sent
