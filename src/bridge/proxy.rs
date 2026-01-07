@@ -517,4 +517,194 @@ mod tests {
         let result = handle.await.unwrap();
         assert!(result.is_ok());
     }
+
+    // ========================================================================
+    // Error Path Tests
+    // ========================================================================
+
+    /// Bridge that always returns errors for testing error paths.
+    struct FailingBridge;
+
+    impl AsyncBridge for FailingBridge {
+        async fn exchange_data(
+            &self,
+            _control: &ControlInputs,
+        ) -> Result<crate::SimulatorState, BridgeError> {
+            Err(BridgeError::SoapFault("Exchange data failed".into()))
+        }
+
+        async fn enable_rc(&self) -> Result<(), BridgeError> {
+            Err(BridgeError::SoapFault("Enable RC failed".into()))
+        }
+
+        async fn disable_rc(&self) -> Result<(), BridgeError> {
+            Err(BridgeError::SoapFault("Disable RC failed".into()))
+        }
+
+        async fn reset_aircraft(&self) -> Result<(), BridgeError> {
+            Err(BridgeError::SoapFault("Reset failed".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn enable_rc_error_returns_error_response() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr().to_string();
+        let cancel = CancellationToken::new();
+        let bridge = FailingBridge;
+
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let request = Request {
+            request_type: RequestType::EnableRC,
+            payload: None,
+        };
+        let response = send_request_async(addr, request).await;
+
+        assert!(matches!(response.status, ResponseStatus::Error));
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn disable_rc_error_returns_error_response() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr().to_string();
+        let cancel = CancellationToken::new();
+        let bridge = FailingBridge;
+
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let request = Request {
+            request_type: RequestType::DisableRC,
+            payload: None,
+        };
+        let response = send_request_async(addr, request).await;
+
+        assert!(matches!(response.status, ResponseStatus::Error));
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn reset_aircraft_error_returns_error_response() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr().to_string();
+        let cancel = CancellationToken::new();
+        let bridge = FailingBridge;
+
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let request = Request {
+            request_type: RequestType::ResetAircraft,
+            payload: None,
+        };
+        let response = send_request_async(addr, request).await;
+
+        assert!(matches!(response.status, ResponseStatus::Error));
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn exchange_data_error_returns_error_response() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr().to_string();
+        let cancel = CancellationToken::new();
+        let bridge = FailingBridge;
+
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let request = Request {
+            request_type: RequestType::ExchangeData,
+            payload: Some(ControlInputs::default()),
+        };
+        let response = send_request_async(addr, request).await;
+
+        assert!(matches!(response.status, ResponseStatus::Error));
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn malformed_request_continues_handling() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr().to_string();
+        let cancel = CancellationToken::new();
+        let bridge = StubBridge::new();
+        let enable_count = bridge.enable_rc_count.clone();
+
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Send malformed data, then a valid request
+        tokio::task::spawn_blocking({
+            let addr = addr.clone();
+            move || {
+                let mut stream = std::net::TcpStream::connect(&addr).unwrap();
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+
+                // Send malformed data
+                let garbage = vec![0xFF, 0xFF, 0xFF, 0xFF];
+                let length_bytes = (garbage.len() as u32).to_be_bytes();
+                stream.write_all(&length_bytes).unwrap();
+                stream.write_all(&garbage).unwrap();
+                stream.flush().unwrap();
+
+                // Now send a valid request
+                let request = Request {
+                    request_type: RequestType::EnableRC,
+                    payload: None,
+                };
+                let request_bytes = to_stdvec(&request).unwrap();
+                let length_bytes = (request_bytes.len() as u32).to_be_bytes();
+                stream.write_all(&length_bytes).unwrap();
+                stream.write_all(&request_bytes).unwrap();
+                stream.flush().unwrap();
+
+                // Read response
+                let mut length_buffer = [0u8; 4];
+                stream.read_exact(&mut length_buffer).unwrap();
+                let response_length = u32::from_be_bytes(length_buffer) as usize;
+                let mut response_buffer = vec![0u8; response_length];
+                stream.read_exact(&mut response_buffer).unwrap();
+
+                let response: Response = from_bytes(&response_buffer).unwrap();
+                response
+            }
+        })
+        .await
+        .unwrap();
+
+        // The valid request should have been processed
+        assert_eq!(enable_count.load(Ordering::SeqCst), 1);
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
 }

@@ -205,6 +205,18 @@ mod tests {
             let result = parse_status_line("INVALID");
             assert!(result.is_err());
         }
+
+        #[test]
+        fn errors_on_invalid_status_code() {
+            let result = parse_status_line("HTTP/1.1 NOT_A_NUMBER OK");
+            assert!(result.is_err());
+            match result {
+                Err(BridgeError::SoapFault(msg)) => {
+                    assert!(msg.contains("Invalid HTTP status code"));
+                }
+                other => panic!("expected SoapFault, got {:?}", other),
+            }
+        }
     }
 
     mod parse_content_length_tests {
