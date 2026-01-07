@@ -160,7 +160,10 @@ mod tests {
             .await
             .unwrap();
 
-        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+        client
+            .ensure_pool_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         let response = client.send_action("TestAction", "").await.unwrap();
         assert_eq!(response.status_code, 200);
@@ -188,7 +191,10 @@ mod tests {
             .await
             .unwrap();
 
-        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+        client
+            .ensure_pool_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         let response = client.send_action("TestAction", "").await.unwrap();
         assert_eq!(response.status_code, 500);
@@ -218,7 +224,10 @@ mod tests {
             .await
             .unwrap();
 
-        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+        client
+            .ensure_pool_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         let result = client.send_action("TestAction", "").await;
         match result {
@@ -252,7 +261,10 @@ mod tests {
             .await
             .unwrap();
 
-        client.ensure_pool_initialized(Duration::from_secs(5)).await.unwrap();
+        client
+            .ensure_pool_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         assert_eq!(stats_clone.snapshot().request_count, 0);
 

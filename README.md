@@ -102,7 +102,7 @@ For example, you may be developing on a Mac while RealFlight runs only on Window
 On the same machine running the RealFlight simulator, install the proxy using the following command.
 
 ```bash
-cargo install realflight-bridge
+cargo install realflight-bridge --features rt-tokio
 ```
 
 You can then run it using the following command.

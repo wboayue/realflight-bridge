@@ -161,13 +161,13 @@ impl AsyncConnectionPool {
                 Ok(Err(_)) => {
                     return Err(BridgeError::Initialization(
                         "Initialization channel closed unexpectedly".into(),
-                    ))
+                    ));
                 }
                 Err(_) => {
                     return Err(BridgeError::Initialization(format!(
                         "Connection pool did not initialize. Waited for {:?}.",
                         init_timeout
-                    )))
+                    )));
                 }
             }
         }
@@ -268,14 +268,18 @@ mod tests {
             .await
             .unwrap();
 
-        pool.ensure_initialized(Duration::from_secs(5)).await.unwrap();
+        pool.ensure_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         let mut conn = pool.get_connection().await.unwrap();
 
         // Verify we can write and read from the connection
         conn.write_all(b"hello").await.unwrap();
         let mut buf = [0u8; 5];
-        tokio::io::AsyncReadExt::read_exact(&mut conn, &mut buf).await.unwrap();
+        tokio::io::AsyncReadExt::read_exact(&mut conn, &mut buf)
+            .await
+            .unwrap();
         assert_eq!(&buf, b"hello");
 
         let _ = accept_handle.await;
@@ -291,10 +295,7 @@ mod tests {
         let accept_handle = tokio::spawn(async move {
             for _ in 0..5 {
                 // Use timeout to avoid blocking forever
-                let _ = tokio::time::timeout(
-                    Duration::from_secs(2),
-                    listener.accept()
-                ).await;
+                let _ = tokio::time::timeout(Duration::from_secs(2), listener.accept()).await;
             }
         });
 
@@ -303,7 +304,9 @@ mod tests {
             .await
             .unwrap();
 
-        pool.ensure_initialized(Duration::from_secs(5)).await.unwrap();
+        pool.ensure_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         // Get first connection
         let conn1 = pool.get_connection().await;
@@ -335,7 +338,9 @@ mod tests {
             .await
             .unwrap();
 
-        pool.ensure_initialized(Duration::from_secs(5)).await.unwrap();
+        pool.ensure_initialized(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         // Drop the pool - this should cancel the background task
         drop(pool);

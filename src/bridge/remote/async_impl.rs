@@ -201,10 +201,10 @@ impl AsyncRemoteBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
     use crate::bridge::AsyncBridge;
     use crate::bridge::remote::Response;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
 
     // ========================================================================
     // Connection Tests

@@ -21,8 +21,8 @@ Use `just` for common tasks: `just build`, `just test`, `just bench`, `just cove
 ### Proxy Binary
 
 ```bash
-cargo install realflight-bridge          # Install proxy
-realflight_bridge_proxy                  # Run proxy (default: 0.0.0.0:8080)
+cargo install realflight-bridge --features rt-tokio  # Install proxy (requires rt-tokio)
+realflight_bridge_proxy                              # Run proxy (default: 0.0.0.0:8080)
 realflight_bridge_proxy --bind-address <addr>
 ```
 
@@ -39,7 +39,7 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 
 - **`RealFlightLocalBridge`**: Direct SOAP/TCP connection to simulator. Uses connection pooling. Default: `127.0.0.1:18083`
 - **`RealFlightRemoteBridge`**: Connects to proxy using postcard-serialized binary protocol
-- **`ProxyServer`**: Forwards remote requests to local simulator
+- **Proxy Server** (internal): Async server that forwards remote requests to local simulator. Used by `realflight_bridge_proxy` binary
 
 **Why proxy exists**: SOAP requires new TCP connection per request, causing significant overhead on non-local connections. The proxy runs locally with the simulator and exposes an efficient binary protocol for remote clients.
 
@@ -60,5 +60,5 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 
 - Tests in `mod tests` within source files or `<module>/tests.rs`
 - Use `#[serial_test::serial]` for tests requiring exclusive simulator access
-- Async implementations mirror sync API in `async_impl.rs` files
+- Async implementations in `async_impl.rs` files alongside sync versions (local, remote bridges)
 - Test stubs: `StubSoapClient` and `new_stubbed()` methods enable testing without real simulator

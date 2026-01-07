@@ -1,4 +1,4 @@
-//! Tests for RealFlightRemoteBridge and ProxyServer.
+//! Tests for RealFlightRemoteBridge.
 //!
 //! Organized into submodules:
 //! - `connection_tests`: Connection establishment and timeout tests
@@ -12,9 +12,11 @@ use std::{
     time::Duration,
 };
 
-use crate::{BridgeError, ControlInputs, ProxyServer, RealFlightBridge, SimulatorState};
+use postcard::{from_bytes, to_stdvec};
 
-use super::{RealFlightRemoteBridge, Response, ResponseStatus};
+use crate::{BridgeError, ControlInputs, RealFlightBridge, SimulatorState};
+
+use super::{RealFlightRemoteBridge, Request, RequestType, Response, ResponseStatus};
 
 // ============================================================================
 // Connection Tests
@@ -55,20 +57,21 @@ fn test_invalid_address() {
 // Operation Tests
 // ============================================================================
 
-/// Tests enable_rc functionality with stubbed server
+/// Tests enable_rc functionality with mock server
 #[test]
 fn test_enable_rc() {
-    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
 
-    // Start a server in a separate thread
     let server_thread = thread::spawn(move || {
-        let _ = server.run(); // Run until error or client disconnect
+        if let Ok((stream, _)) = listener.accept() {
+            handle_mock_success(stream);
+        }
     });
 
-    // Connect client
-    let client = RealFlightRemoteBridge::new(&server_address).unwrap();
+    thread::sleep(Duration::from_millis(50));
 
-    // Call enable_rc and verify success
+    let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
     let result = client.enable_rc();
 
     assert!(result.is_ok(), "Enable RC failed: {:?}", result);
@@ -76,19 +79,21 @@ fn test_enable_rc() {
     let _ = server_thread.join();
 }
 
-/// Tests disable_rc functionality with stubbed server
+/// Tests disable_rc functionality with mock server
 #[test]
 fn test_disable_rc() {
-    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
 
-    // Start a server in a separate thread
     let server_thread = thread::spawn(move || {
-        let _ = server.run(); // Run until error or client disconnect
+        if let Ok((stream, _)) = listener.accept() {
+            handle_mock_success(stream);
+        }
     });
 
-    // Connect client
-    let client = RealFlightRemoteBridge::new(&server_address).unwrap();
+    thread::sleep(Duration::from_millis(50));
 
+    let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
     let result = client.disable_rc();
 
     assert!(result.is_ok(), "Disable RC failed: {:?}", result);
@@ -96,19 +101,21 @@ fn test_disable_rc() {
     let _ = server_thread.join();
 }
 
-/// Tests reset_aircraft functionality with stubbed server
+/// Tests reset_aircraft functionality with mock server
 #[test]
 fn test_reset_aircraft() {
-    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
 
-    // Start a server in a separate thread
     let server_thread = thread::spawn(move || {
-        let _ = server.run(); // Run until error or client disconnect
+        if let Ok((stream, _)) = listener.accept() {
+            handle_mock_success(stream);
+        }
     });
 
-    // Connect client
-    let client = RealFlightRemoteBridge::new(&server_address).unwrap();
+    thread::sleep(Duration::from_millis(50));
 
+    let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
     let result = client.reset_aircraft();
 
     assert!(result.is_ok(), "Reset aircraft failed: {:?}", result);
@@ -116,46 +123,40 @@ fn test_reset_aircraft() {
     let _ = server_thread.join();
 }
 
-/// Tests exchange_data functionality with stubbed server
-/// Should return a default SimulatorState when in stubbed mode
+/// Tests exchange_data functionality with mock server
 #[test]
 fn test_exchange_data() {
-    let (mut server, server_address) = ProxyServer::new_stubbed().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
 
-    // Start a server in a separate thread
     let server_thread = thread::spawn(move || {
-        let _ = server.run(); // Run until error or client disconnect
+        if let Ok((stream, _)) = listener.accept() {
+            handle_mock_exchange_data(stream);
+        }
     });
 
-    // Connect client
-    let client = RealFlightRemoteBridge::new(&server_address).unwrap();
+    thread::sleep(Duration::from_millis(50));
 
-    // Create control inputs to send
+    let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
     let control = ControlInputs::default();
 
-    // Exchange data and verify we get a simulator state back
     let result = client.exchange_data(&control);
 
     assert!(result.is_ok(), "Exchange data failed: {:?}", result);
 
-    // In stubbed mode, we should get back a default SimulatorState
     let state = result.unwrap();
-
     assert_eq!(state, SimulatorState::default());
 
     let _ = server_thread.join();
 }
 
 /// Tests error handling when exchange_data doesn't return a payload
-/// This requires a modified stubbed server that returns a response with no payload
 #[test]
 fn test_exchange_data_no_payload() {
-    // Start a mock server that returns Success but no payload
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let server_thread = thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
-            // Set up a mock server that returns Success but no payload for ExchangeData
             handle_mock_exchange_no_payload(stream);
         }
     });
@@ -165,7 +166,6 @@ fn test_exchange_data_no_payload() {
     let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
     let control = ControlInputs::default();
 
-    // Should return an error if no payload
     let result = client.exchange_data(&control);
     assert!(result.is_err());
 
@@ -176,12 +176,10 @@ fn test_exchange_data_no_payload() {
 /// Tests handling of malformed responses
 #[test]
 fn test_malformed_response() {
-    // Start a mock server that returns invalid data
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let server_thread = thread::spawn(move || {
         if let Ok((stream, _)) = listener.accept() {
-            // Set up a mock that returns invalid data
             handle_mock_malformed_response(stream);
         }
     });
@@ -190,11 +188,9 @@ fn test_malformed_response() {
 
     let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
 
-    // Any request should fail with invalid data error
     let result = client.enable_rc();
     assert!(result.is_err());
     if let Err(e) = result {
-        // Should be a Connection error with InvalidData kind
         match e {
             BridgeError::Connection(io_err) => {
                 assert_eq!(io_err.kind(), ErrorKind::InvalidData);
@@ -210,12 +206,10 @@ fn test_malformed_response() {
 /// Tests behavior when server unexpectedly disconnects
 #[test]
 fn test_server_disconnect() {
-    // Start a server that will disconnect after accepting connection
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let server_thread = thread::spawn(move || {
         if let Ok((_, _)) = listener.accept() {
-            // Immediately return to close the connection
             return;
         }
     });
@@ -224,10 +218,8 @@ fn test_server_disconnect() {
 
     let client = RealFlightRemoteBridge::new(&address.to_string()).unwrap();
 
-    // Allow time for the server to disconnect
     thread::sleep(Duration::from_millis(50));
 
-    // Any request should fail with connection reset or similar error
     let result = client.enable_rc();
 
     assert!(result.is_err());
@@ -235,21 +227,17 @@ fn test_server_disconnect() {
     let _ = server_thread.join();
 }
 
-// Helper functions for tests
+// ============================================================================
+// Helper functions
+// ============================================================================
 
 /// Forces termination of a running server by connecting to it
-/// and then immediately closing the connection
 fn terminate_server(address: &str) {
-    // Connect and immediately disconnect to make the server stop accepting
-    if let Ok(_) = TcpStream::connect(address) {
-        // Connection successful, will drop at end of scope causing server to exit
-    }
+    if let Ok(_) = TcpStream::connect(address) {}
 }
 
-/// Mock handler that returns a success response with no payload for ExchangeData
-fn handle_mock_exchange_no_payload(mut stream: TcpStream) {
-    use postcard::to_stdvec;
-
+/// Mock handler that returns a success response
+fn handle_mock_success(mut stream: TcpStream) {
     stream.set_nodelay(true).unwrap();
 
     let mut length_buffer = [0u8; 4];
@@ -259,7 +247,58 @@ fn handle_mock_exchange_no_payload(mut stream: TcpStream) {
     let mut buffer = vec![0u8; msg_length];
     let _ = stream.read_exact(&mut buffer);
 
-    // Create a success response with no payload
+    let response = Response {
+        status: ResponseStatus::Success,
+        payload: None,
+    };
+
+    let response_bytes = to_stdvec(&response).unwrap();
+    let length_bytes = (response_bytes.len() as u32).to_be_bytes();
+
+    let _ = stream.write_all(&length_bytes);
+    let _ = stream.write_all(&response_bytes);
+    let _ = stream.flush();
+}
+
+/// Mock handler that returns a success response with SimulatorState payload
+fn handle_mock_exchange_data(mut stream: TcpStream) {
+    stream.set_nodelay(true).unwrap();
+
+    let mut length_buffer = [0u8; 4];
+    let _ = stream.read_exact(&mut length_buffer);
+
+    let msg_length = u32::from_be_bytes(length_buffer) as usize;
+    let mut buffer = vec![0u8; msg_length];
+    let _ = stream.read_exact(&mut buffer);
+
+    // Verify request type
+    let request: Request = from_bytes(&buffer).unwrap();
+    assert_eq!(request.request_type, RequestType::ExchangeData);
+
+    let response = Response {
+        status: ResponseStatus::Success,
+        payload: Some(SimulatorState::default()),
+    };
+
+    let response_bytes = to_stdvec(&response).unwrap();
+    let length_bytes = (response_bytes.len() as u32).to_be_bytes();
+
+    let _ = stream.write_all(&length_bytes);
+    let _ = stream.write_all(&response_bytes);
+    let _ = stream.flush();
+}
+
+/// Mock handler that returns a success response with no payload for ExchangeData
+fn handle_mock_exchange_no_payload(mut stream: TcpStream) {
+    stream.set_nodelay(true).unwrap();
+
+    let mut length_buffer = [0u8; 4];
+    let _ = stream.read_exact(&mut length_buffer);
+
+    let msg_length = u32::from_be_bytes(length_buffer) as usize;
+    let mut buffer = vec![0u8; msg_length];
+    let _ = stream.read_exact(&mut buffer);
+
     let response = Response {
         status: ResponseStatus::Success,
         payload: None,
@@ -284,7 +323,6 @@ fn handle_mock_malformed_response(mut stream: TcpStream) {
     let mut buffer = vec![0u8; msg_length];
     let _ = stream.read_exact(&mut buffer);
 
-    // Send invalid data
     let malformed_data = vec![0, 1, 2, 3, 4];
     let length_bytes = (malformed_data.len() as u32).to_be_bytes();
 

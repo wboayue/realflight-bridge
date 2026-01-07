@@ -183,10 +183,10 @@ impl AsyncLocalBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::TcpListener;
-    use approx::assert_relative_eq;
     use crate::bridge::AsyncBridge;
     use crate::tests::soap_stub::Server;
+    use approx::assert_relative_eq;
+    use std::net::TcpListener;
 
     fn get_available_port() -> u16 {
         TcpListener::bind("127.0.0.1:0")
@@ -233,15 +233,14 @@ mod tests {
 
         #[test]
         fn builder_connect_timeout_sets_value() {
-            let builder = AsyncLocalBridgeBuilder::new()
-                .connect_timeout(Duration::from_millis(100));
+            let builder =
+                AsyncLocalBridgeBuilder::new().connect_timeout(Duration::from_millis(100));
             assert_eq!(builder.connect_timeout, Duration::from_millis(100));
         }
 
         #[test]
         fn builder_init_timeout_sets_value() {
-            let builder = AsyncLocalBridgeBuilder::new()
-                .init_timeout(Duration::from_secs(10));
+            let builder = AsyncLocalBridgeBuilder::new().init_timeout(Duration::from_secs(10));
             assert_eq!(builder.init_timeout, Duration::from_secs(10));
         }
 
@@ -301,7 +300,10 @@ mod tests {
         #[tokio::test]
         async fn enable_rc_succeeds() {
             let port = get_available_port();
-            let _server = Server::new(port, vec!["restore-original-controller-device-200".to_string()]);
+            let _server = Server::new(
+                port,
+                vec!["restore-original-controller-device-200".to_string()],
+            );
             let bridge = create_bridge(port).await.unwrap();
 
             let result = bridge.enable_rc().await;
@@ -311,7 +313,10 @@ mod tests {
         #[tokio::test]
         async fn enable_rc_returns_soap_fault_on_500() {
             let port = get_available_port();
-            let _server = Server::new(port, vec!["restore-original-controller-device-500".to_string()]);
+            let _server = Server::new(
+                port,
+                vec!["restore-original-controller-device-500".to_string()],
+            );
             let bridge = create_bridge(port).await.unwrap();
 
             let result = bridge.enable_rc().await;
@@ -326,7 +331,10 @@ mod tests {
         #[tokio::test]
         async fn disable_rc_succeeds() {
             let port = get_available_port();
-            let _server = Server::new(port, vec!["inject-uav-controller-interface-200".to_string()]);
+            let _server = Server::new(
+                port,
+                vec!["inject-uav-controller-interface-200".to_string()],
+            );
             let bridge = create_bridge(port).await.unwrap();
 
             let result = bridge.disable_rc().await;
@@ -336,7 +344,10 @@ mod tests {
         #[tokio::test]
         async fn disable_rc_returns_soap_fault_on_500() {
             let port = get_available_port();
-            let _server = Server::new(port, vec!["inject-uav-controller-interface-500".to_string()]);
+            let _server = Server::new(
+                port,
+                vec!["inject-uav-controller-interface-500".to_string()],
+            );
             let bridge = create_bridge(port).await.unwrap();
 
             let result = bridge.disable_rc().await;
@@ -393,7 +404,10 @@ mod tests {
             let _server = Server::new(port, vec!["return-data-200".to_string()]);
             let bridge = create_bridge(port).await.unwrap();
 
-            let state = bridge.exchange_data(&ControlInputs::default()).await.unwrap();
+            let state = bridge
+                .exchange_data(&ControlInputs::default())
+                .await
+                .unwrap();
 
             assert!(!state.is_locked);
             assert!(!state.has_lost_components);
@@ -409,7 +423,10 @@ mod tests {
             let _server = Server::new(port, vec!["return-data-200".to_string()]);
             let bridge = create_bridge(port).await.unwrap();
 
-            let state = bridge.exchange_data(&ControlInputs::default()).await.unwrap();
+            let state = bridge
+                .exchange_data(&ControlInputs::default())
+                .await
+                .unwrap();
 
             assert_relative_eq!(state.airspeed, 0.040872246);
             assert_relative_eq!(state.groundspeed, 4.643444754E-06);
@@ -426,10 +443,13 @@ mod tests {
         #[tokio::test]
         async fn statistics_returns_snapshot() {
             let port = get_available_port();
-            let _server = Server::new(port, vec![
-                "reset-aircraft-200".to_string(),
-                "reset-aircraft-200".to_string(),
-            ]);
+            let _server = Server::new(
+                port,
+                vec![
+                    "reset-aircraft-200".to_string(),
+                    "reset-aircraft-200".to_string(),
+                ],
+            );
             let bridge = create_bridge(port).await.unwrap();
 
             bridge.reset_aircraft().await.unwrap();
