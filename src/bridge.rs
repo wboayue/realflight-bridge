@@ -33,7 +33,7 @@ pub trait RealFlightBridge {
     /// # Returns
     ///
     /// `Ok(())` if the simulator successfully reverts to using the original RC controller.
-    /// An `Err`` is returned if RealFlight cannot locate or restore the original controller device.
+    /// An `Err` is returned if RealFlight cannot locate or restore the original controller device.
     fn enable_rc(&self) -> Result<(), BridgeError>;
 
     /// Switches the RealFlight simulator's input to the external RealFlight Link controller,

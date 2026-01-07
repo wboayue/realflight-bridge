@@ -2,7 +2,8 @@
 //! Useful for testing.
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
+
+use tokio::sync::Mutex;
 
 use crate::BridgeError;
 
@@ -26,14 +27,14 @@ impl AsyncStubSoapClient {
 
     /// Returns recorded requests (action and body).
     #[allow(dead_code)]
-    pub fn requests(&self) -> Vec<String> {
-        self.requests.lock().unwrap().clone()
+    pub async fn requests(&self) -> Vec<String> {
+        self.requests.lock().await.clone()
     }
 
     /// Queues a response to be returned by the next call to `send_action`.
     #[allow(dead_code)]
-    pub fn queue_response(&self, response: SoapResponse) {
-        let mut responses = self.responses.lock().unwrap();
+    pub async fn queue_response(&self, response: SoapResponse) {
+        let mut responses = self.responses.lock().await;
         responses.push_back(response);
     }
 }
@@ -42,9 +43,9 @@ impl AsyncSoapClient for AsyncStubSoapClient {
     async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         // Record the request
         let request = format!("{}:{}", action, body);
-        self.requests.lock().unwrap().push(request);
+        self.requests.lock().await.push(request);
 
-        let mut responses = self.responses.lock().unwrap();
+        let mut responses = self.responses.lock().await;
         responses
             .pop_front()
             .ok_or_else(|| BridgeError::SoapFault("No more stubbed responses available".into()))
@@ -61,7 +62,8 @@ mod tests {
         stub.queue_response(SoapResponse {
             status_code: 200,
             body: "test response".to_string(),
-        });
+        })
+        .await;
 
         let response = stub.send_action("TestAction", "").await.unwrap();
         assert_eq!(response.status_code, 200);
@@ -81,11 +83,13 @@ mod tests {
         stub.queue_response(SoapResponse {
             status_code: 200,
             body: "first".to_string(),
-        });
+        })
+        .await;
         stub.queue_response(SoapResponse {
             status_code: 201,
             body: "second".to_string(),
-        });
+        })
+        .await;
 
         let first = stub.send_action("Action1", "").await.unwrap();
         let second = stub.send_action("Action2", "").await.unwrap();
@@ -100,11 +104,12 @@ mod tests {
         stub.queue_response(SoapResponse {
             status_code: 200,
             body: "response".to_string(),
-        });
+        })
+        .await;
 
         let _ = stub.send_action("TestAction", "test body").await;
 
-        let requests = stub.requests();
+        let requests = stub.requests().await;
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0], "TestAction:test body");
     }

@@ -113,7 +113,7 @@ pub struct AsyncRemoteBridge {
 impl AsyncBridge for AsyncRemoteBridge {
     async fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
         let response = self
-            .send_request(RequestType::ExchangeData, Some(control.clone()))
+            .send_request(RequestType::ExchangeData, Some(control))
             .await?;
         if let Some(state) = response.payload {
             Ok(state)
@@ -154,11 +154,11 @@ impl AsyncRemoteBridge {
     async fn send_request(
         &self,
         request_type: RequestType,
-        payload: Option<ControlInputs>,
+        payload: Option<&ControlInputs>,
     ) -> Result<Response, BridgeError> {
         let request = Request {
             request_type,
-            payload,
+            payload: payload.cloned(),
         };
 
         // Serialize the request to a byte vector

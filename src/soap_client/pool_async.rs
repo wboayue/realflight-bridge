@@ -5,12 +5,11 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use log::{debug, error};
 use tokio::net::TcpStream;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, watch};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
@@ -37,7 +36,7 @@ use crate::StatisticsEngine;
 pub(crate) struct AsyncConnectionPool {
     connections: Mutex<mpsc::Receiver<TcpStream>>,
     cancel: CancellationToken,
-    initialized: Arc<AtomicBool>,
+    init_result: watch::Receiver<Option<Result<(), String>>>,
     statistics: Arc<StatisticsEngine>,
 }
 
@@ -58,8 +57,8 @@ impl AsyncConnectionPool {
         let cancel = CancellationToken::new();
         let (tx, rx) = mpsc::channel(pool_size);
 
-        let initialized = Arc::new(AtomicBool::new(false));
-        let init_clone = Arc::clone(&initialized);
+        // Channel for communicating initialization result
+        let (init_tx, init_rx) = watch::channel(None);
         let stats_clone = Arc::clone(&statistics);
         let task_cancel = cancel.clone();
 
@@ -72,22 +71,28 @@ impl AsyncConnectionPool {
                 match timeout(connect_timeout, TcpStream::connect(addr)).await {
                     Ok(Ok(stream)) => {
                         if tx.send(stream).await.is_err() {
-                            error!("Failed to queue initial connection {}", i);
+                            let msg = format!("Failed to queue initial connection {}", i);
+                            error!("{}", msg);
+                            let _ = init_tx.send(Some(Err(msg)));
                             return;
                         }
                     }
                     Ok(Err(e)) => {
-                        error!("Failed to connect to simulator at {}: {}", addr, e);
+                        let msg = format!("Failed to connect to simulator at {}: {}", addr, e);
+                        error!("{}", msg);
+                        let _ = init_tx.send(Some(Err(msg)));
                         return;
                     }
                     Err(_) => {
-                        error!("Connection timeout to simulator at {}", addr);
+                        let msg = format!("Connection timeout to simulator at {}", addr);
+                        error!("{}", msg);
+                        let _ = init_tx.send(Some(Err(msg)));
                         return;
                     }
                 }
             }
 
-            init_clone.store(true, Ordering::Release);
+            let _ = init_tx.send(Some(Ok(())));
 
             // Continue creating connections as needed
             loop {
@@ -122,24 +127,50 @@ impl AsyncConnectionPool {
         Ok(Self {
             connections: Mutex::new(rx),
             cancel,
-            initialized,
+            init_result: init_rx,
             statistics,
         })
     }
 
     /// Waits for the pool to be initialized with initial connections.
     pub async fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
+        let mut rx = self.init_result.clone();
         let start = std::time::Instant::now();
-        while !self.initialized.load(Ordering::Acquire) {
-            if start.elapsed() > init_timeout {
+
+        loop {
+            // Check current value
+            if let Some(result) = rx.borrow().as_ref() {
+                return match result {
+                    Ok(()) => Ok(()),
+                    Err(msg) => Err(BridgeError::Initialization(msg.clone())),
+                };
+            }
+
+            // Check timeout
+            let remaining = init_timeout.saturating_sub(start.elapsed());
+            if remaining.is_zero() {
                 return Err(BridgeError::Initialization(format!(
                     "Connection pool did not initialize. Waited for {:?}.",
                     init_timeout
                 )));
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+
+            // Wait for change with timeout
+            match timeout(remaining, rx.changed()).await {
+                Ok(Ok(())) => continue, // Value changed, check again
+                Ok(Err(_)) => {
+                    return Err(BridgeError::Initialization(
+                        "Initialization channel closed unexpectedly".into(),
+                    ))
+                }
+                Err(_) => {
+                    return Err(BridgeError::Initialization(format!(
+                        "Connection pool did not initialize. Waited for {:?}.",
+                        init_timeout
+                    )))
+                }
+            }
         }
-        Ok(())
     }
 
     /// Gets a connection from the pool.
@@ -176,8 +207,14 @@ mod tests {
 
         // Accept connections in background using async listener
         let accept_handle = tokio::spawn(async move {
-            for _ in 0..3 {
-                let _ = listener.accept().await;
+            // Accept enough for initial pool + some extra
+            for _ in 0..5 {
+                if tokio::time::timeout(Duration::from_secs(2), listener.accept())
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
             }
         });
 
@@ -193,7 +230,7 @@ mod tests {
         assert!(conn.is_ok());
 
         drop(pool);
-        let _ = accept_handle.await;
+        accept_handle.abort();
     }
 
     #[tokio::test]
