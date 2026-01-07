@@ -15,20 +15,25 @@ env:
 
 jobs:
   coverage:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      # Cache cargo registry, index, and build directories
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo
-          key: cargo-${{ hashFiles('**/Cargo.toml') }}
+            ~/.cargo/bin/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            target/
+          key: ${{ runner.os }}-cargo-tarpaulin-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tarpaulin-
 
       - name: install tarpaulin
-        run: cargo install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --locked
       - name: coverage
         run: cargo tarpaulin --engine llvm --follow-exec --post-test-delay 10 --coveralls ${{ secrets.COVERALLS_REPO_TOKEN }} --exclude-files src/main.rs src/bin/*

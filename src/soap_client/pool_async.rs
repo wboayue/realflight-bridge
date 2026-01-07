@@ -387,8 +387,9 @@ mod tests {
             // Listener dropped here - subsequent connections will fail
         });
 
-        let pool =
-            AsyncConnectionPool::new(addr, Duration::from_millis(50), 1, stats.clone()).await.unwrap();
+        let pool = AsyncConnectionPool::new(addr, Duration::from_millis(50), 1, stats.clone())
+            .await
+            .unwrap();
 
         pool.ensure_initialized(Duration::from_secs(5))
             .await
@@ -418,8 +419,9 @@ mod tests {
         let addr: SocketAddr = "10.255.255.1:18083".parse().unwrap();
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool =
-            AsyncConnectionPool::new(addr, Duration::from_millis(100), 1, stats).await.unwrap();
+        let pool = AsyncConnectionPool::new(addr, Duration::from_millis(100), 1, stats)
+            .await
+            .unwrap();
 
         // Should fail due to timeout during initialization
         let result = pool.ensure_initialized(Duration::from_millis(500)).await;
@@ -429,8 +431,11 @@ mod tests {
             Err(BridgeError::Initialization(msg)) => {
                 // Either timeout or connection failure message
                 assert!(
-                    msg.contains("timeout") || msg.contains("Connection") || msg.contains("did not initialize"),
-                    "unexpected error message: {}", msg
+                    msg.contains("timeout")
+                        || msg.contains("Connection")
+                        || msg.contains("did not initialize"),
+                    "unexpected error message: {}",
+                    msg
                 );
             }
             other => panic!("expected Initialization error, got {:?}", other),

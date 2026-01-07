@@ -86,6 +86,7 @@ pub enum ResponseStatus {
     Error,
 }
 
+#[cfg(feature = "rt-tokio")]
 impl Response {
     pub(crate) fn success() -> Self {
         Self {
