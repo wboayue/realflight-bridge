@@ -47,7 +47,7 @@ use super::RealFlightBridge;
 mod tests;
 
 /// Defines the types of requests that can be sent to the server.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum RequestType {
     /// Enable remote control
     EnableRC,
@@ -105,17 +105,6 @@ impl Response {
         Self {
             status: ResponseStatus::Error,
             payload: None,
-        }
-    }
-
-    /// Convert a Result into a Response, logging errors with context
-    pub(crate) fn from_result<E: std::fmt::Display>(result: Result<(), E>, context: &str) -> Self {
-        match result {
-            Ok(()) => Self::success(),
-            Err(e) => {
-                error!("Error {}: {}", context, e);
-                Self::error()
-            }
         }
     }
 }

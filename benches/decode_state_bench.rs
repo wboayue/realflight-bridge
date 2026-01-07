@@ -2,7 +2,9 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use realflight_bridge::{ControlInputs, decode_simulator_state, encode_control_inputs, extract_element};
+use realflight_bridge::{
+    ControlInputs, decode_simulator_state, encode_control_inputs, extract_element,
+};
 
 static SIM_STATE_RESPONSE: &str = include_str!("../testdata/responses/return-data-200.xml");
 
