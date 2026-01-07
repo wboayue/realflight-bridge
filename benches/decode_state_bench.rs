@@ -1,6 +1,8 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
 
-use realflight_bridge::{decode_simulator_state, extract_element};
+use criterion::{Criterion, criterion_group, criterion_main};
+
+use realflight_bridge::{ControlInputs, decode_simulator_state, encode_control_inputs, extract_element};
 
 static SIM_STATE_RESPONSE: &str = include_str!("../testdata/responses/return-data-200.xml");
 
@@ -28,5 +30,22 @@ fn bench_extract_element(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_decode_state, bench_extract_element,);
+fn bench_encode_control_inputs(c: &mut Criterion) {
+    let inputs = ControlInputs {
+        channels: [0.5, 0.5, 1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    };
+    c.bench_function("bench_encode_control_inputs", |b| {
+        b.iter(|| {
+            let encoded = encode_control_inputs(black_box(&inputs));
+            black_box(encoded)
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_decode_state,
+    bench_extract_element,
+    bench_encode_control_inputs,
+);
 criterion_main!(benches);

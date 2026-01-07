@@ -7,6 +7,11 @@ use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEn
 #[cfg(test)]
 use crate::soap_client::stub::StubSoapClient;
 
+#[cfg(feature = "rt-tokio")]
+mod async_impl;
+#[cfg(feature = "rt-tokio")]
+pub use async_impl::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
+
 const EMPTY_BODY: &str = "";
 
 /// A high-level client for interacting with RealFlight simulators via RealFlight Link.
@@ -351,7 +356,17 @@ impl RealFlightLocalBridge {
 
 const CONTROL_INPUTS_CAPACITY: usize = 291;
 
+#[cfg(any(test, feature = "bench-internals"))]
+pub fn encode_control_inputs(inputs: &ControlInputs) -> String {
+    encode_control_inputs_inner(inputs)
+}
+
+#[cfg(not(any(test, feature = "bench-internals")))]
 pub(crate) fn encode_control_inputs(inputs: &ControlInputs) -> String {
+    encode_control_inputs_inner(inputs)
+}
+
+fn encode_control_inputs_inner(inputs: &ControlInputs) -> String {
     let mut message = String::with_capacity(CONTROL_INPUTS_CAPACITY);
 
     message.push_str("<pControlInputs>");

@@ -77,6 +77,9 @@ pub use decoders::decode_simulator_state;
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::extract_element;
 
+#[cfg(any(test, feature = "bench-internals"))]
+pub use bridge::local::encode_control_inputs;
+
 pub mod bridge;
 mod decoders;
 
@@ -95,6 +98,20 @@ pub use bridge::local::RealFlightLocalBridge;
 pub use bridge::proxy::ProxyServer;
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
+
+// Async exports (requires rt-tokio feature)
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::AsyncBridge;
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::local::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::proxy::AsyncProxyServer;
+#[cfg(feature = "rt-tokio")]
+#[doc(inline)]
+pub use bridge::remote::{AsyncRemoteBridge, AsyncRemoteBridgeBuilder};
 
 /// Control inputs for the RealFlight simulator using the standard RC channel mapping.
 /// Each channel value should be between 0.0 (minimum) and 1.0 (maximum).
@@ -145,7 +162,7 @@ pub struct ControlInputs {
 }
 
 /// Represents the complete state of the simulated aircraft in RealFlight.
-/// Physical quantities use SI units (strongly-typed with `uom` feature, raw f32 otherwise).
+/// Physical quantities use metric units (strongly-typed with `uom` feature, raw f32 otherwise).
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state

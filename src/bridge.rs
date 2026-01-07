@@ -1,5 +1,8 @@
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
+#[cfg(feature = "rt-tokio")]
+use std::future::Future;
+
 pub mod local;
 pub mod proxy;
 pub mod remote;
@@ -30,10 +33,10 @@ pub trait RealFlightBridge {
     /// # Returns
     ///
     /// `Ok(())` if the simulator successfully reverts to using the original RC controller.
-    /// An `Err`` is returned if RealFlight cannot locate or restore the original controller device.
+    /// An `Err` is returned if RealFlight cannot locate or restore the original controller device.
     fn enable_rc(&self) -> Result<(), BridgeError>;
 
-    /// Switches the RealFlight simulator’s input to the external RealFlight Link controller,
+    /// Switches the RealFlight simulator's input to the external RealFlight Link controller,
     /// effectively disabling any native Spektrum (or other built-in) RC device.
     ///
     /// Once [RealFlightBridge::disable_rc] is called, RealFlight listens exclusively for commands sent
@@ -47,10 +50,10 @@ pub trait RealFlightBridge {
     fn disable_rc(&self) -> Result<(), BridgeError>;
 
     /// Resets the currently loaded aircraft in the RealFlight simulator, analogous
-    /// to pressing the spacebar in the simulator’s interface.
+    /// to pressing the spacebar in the simulator's interface.
     ///
     /// This call repositions the aircraft back to its initial state and orientation,
-    /// clearing any damage or off-runway positioning. It’s useful for rapid iteration
+    /// clearing any damage or off-runway positioning. It's useful for rapid iteration
     /// when testing control loops or flight maneuvers.
     ///
     /// # Returns
@@ -58,4 +61,36 @@ pub trait RealFlightBridge {
     /// `Ok(())` upon a successful reset. Returns an error if RealFlight rejects the command
     /// or if a network issue prevents delivery.
     fn reset_aircraft(&self) -> Result<(), BridgeError>;
+}
+
+/// Async version of the RealFlight bridge interface.
+///
+/// # Object Safety
+///
+/// This trait is **not object-safe** due to RPITIT (return-position impl trait).
+/// You cannot use `dyn AsyncBridge`. If dynamic dispatch is required, either:
+/// - Use an enum over concrete types
+/// - Enable a future `async-trait` feature flag (not yet implemented)
+///
+/// For most use cases, generic `impl AsyncBridge` works well.
+#[cfg(feature = "rt-tokio")]
+pub trait AsyncBridge: Send + Sync {
+    /// Exchanges flight control data with the RealFlight simulator.
+    ///
+    /// This method transmits the provided [ControlInputs] (e.g., RC channel values)
+    /// to the RealFlight simulator and retrieves an updated [SimulatorState] in return,
+    /// including position, orientation, velocities, and more.
+    fn exchange_data(
+        &self,
+        control: &ControlInputs,
+    ) -> impl Future<Output = Result<SimulatorState, BridgeError>> + Send;
+
+    /// Reverts the RealFlight simulator to use its original Spektrum (or built-in) RC input.
+    fn enable_rc(&self) -> impl Future<Output = Result<(), BridgeError>> + Send;
+
+    /// Switches the RealFlight simulator's input to the external RealFlight Link controller.
+    fn disable_rc(&self) -> impl Future<Output = Result<(), BridgeError>> + Send;
+
+    /// Resets the currently loaded aircraft in the RealFlight simulator.
+    fn reset_aircraft(&self) -> impl Future<Output = Result<(), BridgeError>> + Send;
 }
