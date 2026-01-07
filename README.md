@@ -194,31 +194,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-### Async Proxy Server
-
-```rust
-use std::error::Error;
-use realflight_bridge::AsyncProxyServer;
-use tokio_util::sync::CancellationToken;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let server = AsyncProxyServer::new("0.0.0.0:8080").await?;
-    let cancel = CancellationToken::new();
-
-    let server_cancel = cancel.clone();
-    let handle = tokio::spawn(async move {
-        server.run(server_cancel).await
-    });
-
-    // Later, trigger graceful shutdown
-    cancel.cancel();
-    handle.await??;
-
-    Ok(())
-}
-```
-
 ## Control Channels
 
 The ControlInputs struct provides 12 channels for aircraft control. Each channel value should be set between 0.0 and 1.0, where:
