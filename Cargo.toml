@@ -2,6 +2,7 @@
 name = "realflight-bridge"
 version = "1.0.0"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Wil Boayue <wil@wsbsolutions.com>"]
 readme = "README.md"
 description = "RealFlightBridge is a Rust library that interfaces with RealFlight Link, enabling external flight controllers to interact with the simulator."

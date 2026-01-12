@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 /// Represents a snapshot of performance metrics for a running `RealFlightBridge`.
 ///
-/// The `Statistics` struct is returned by [`RealFlightBridge::statistics`](crate::RealFlightBridge::statistics)
+/// The `Statistics` struct is returned by [`RealFlightLocalBridge::statistics`](crate::RealFlightLocalBridge::statistics)
 /// and captures various counters and timings that can help diagnose performance issues
 /// or monitor real-time operation.
 ///
