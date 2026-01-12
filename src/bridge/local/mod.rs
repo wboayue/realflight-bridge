@@ -376,7 +376,7 @@ impl RealFlightLocalBridge {
 ///
 /// let default_config = Configuration {
 ///     simulator_host: "127.0.0.1:18083".to_string(),
-///     connect_timeout: Duration::from_millis(50),
+///     connect_timeout: Duration::from_millis(5),
 ///     pool_size: 1,
 /// };
 /// ```

@@ -122,7 +122,7 @@ use std::error::Error;
 use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, ControlInputs};
 
 fn main() -> Result<(), Box<dyn Error>> {
-  let mut client = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
+  let client = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
 
   // Disable RC input and enable external control
   client.disable_rc()?;

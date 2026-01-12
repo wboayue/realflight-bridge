@@ -14,7 +14,7 @@
 //! use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, BridgeError, ControlInputs};
 //!
 //! fn main() -> Result<(), BridgeError> {
-//!     let mut client = RealFlightRemoteBridge::new("127.0.0.1:18083")?;
+//!     let client = RealFlightRemoteBridge::new("127.0.0.1:18083")?;
 //!     client.disable_rc()?; // Allow control via RealFlight link
 //!     let control = ControlInputs::default(); // Initialize control inputs
 //!     let state = client.exchange_data(&control)?; // Exchange data
