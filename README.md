@@ -153,6 +153,7 @@ cargo add realflight-bridge --features rt-tokio
 
 ```rust
 use std::error::Error;
+use std::time::Duration;
 use realflight_bridge::{AsyncBridge, AsyncLocalBridge, ControlInputs};
 
 #[tokio::main]
@@ -230,7 +231,9 @@ The SimulatorState struct provides comprehensive flight data including:
   - Engine state
   - Aircraft status messages
 
-Physical quantities primarily use metric units (meters, m/s, degrees). Some values use domain-standard units: fuel remaining is in ounces (as reported by the simulator) and battery capacity is in milliamp-hours. Enable the `uom` feature for type-safe unit handling.
+Physical quantities primarily use metric units (meters, m/s, degrees). Some values use domain-standard units: fuel remaining is in ounces without `uom` or liters with `uom` enabled, and battery capacity is in milliamp-hours. Enable the `uom` feature for type-safe unit handling.
+
+All bridge implementations provide a `statistics()` method for performance monitoring (request count, error count, frame rate).
 
 ## Sources
 
