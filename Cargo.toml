@@ -12,9 +12,10 @@ documentation = "https://docs.rs/realflight-bridge/latest/realflight_bridge/inde
 license = "MIT"
 keywords = ["realflight", "flight-simulator", "robotics", "control-systems"]
 categories = ["aerospace::simulation", "aerospace::drones", "game-development"]
-exclude = [
-    "justfile",
-]
+include = ["src/", "README.md", "LICENSE", "examples/", "benches/", "testdata/", "!**/.DS_Store"]
+
+[package.metadata.docs.rs]
+features = ["rt-tokio"]
 
 [features]
 default = []
