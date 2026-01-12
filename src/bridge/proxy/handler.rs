@@ -1,6 +1,6 @@
 //! Request handling for the proxy server.
 
-use log::error;
+use log::{error, info};
 use postcard::{from_bytes, to_stdvec};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
@@ -55,7 +55,7 @@ pub(super) async fn handle_client<B: AsyncBridge>(
         }
     }
 
-    log::info!("Client disconnected");
+    info!("Client disconnected");
     Ok(())
 }
 
