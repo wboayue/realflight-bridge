@@ -167,9 +167,9 @@ pub struct SimulatorState {
     pub previous_inputs: ControlInputs,
     /// Velocity relative to the air mass [meters/second]
     pub airspeed: Velocity,
-    /// Altitude above sea level [meters]
+    /// Altitude above sea level (m)
     pub altitude_asl: Length,
-    /// Altitude above ground level [meters]
+    /// Altitude above ground level (m)
     pub altitude_agl: Length,
     /// Velocity relative to the ground [meters/second]
     pub groundspeed: Velocity,
@@ -179,15 +179,15 @@ pub struct SimulatorState {
     pub roll_rate: AngularVelocity,
     /// Yaw rate around body Z axis [degrees/second]
     pub yaw_rate: AngularVelocity,
-    /// Heading angle (true north reference) [degrees]
+    /// Heading angle (true north reference) (deg)
     pub azimuth: Angle,
-    /// Pitch angle (nose up reference) [degrees]
+    /// Pitch angle (nose up reference) (deg)
     pub inclination: Angle,
-    /// Roll angle (right wing down reference) [degrees]
+    /// Roll angle (right wing down reference) (deg)
     pub roll: Angle,
-    /// Aircraft position along world X axis (North) [meters]
+    /// Aircraft position along world X axis (North) (m)
     pub aircraft_position_x: Length,
-    /// Aircraft position along world Y axis (East) [meters]
+    /// Aircraft position along world Y axis (East) (m)
     pub aircraft_position_y: Length,
     /// Velocity component along world X axis (North) [meters/second]
     pub velocity_world_u: Velocity,
@@ -223,13 +223,13 @@ pub struct SimulatorState {
     pub prop_rpm: f32,
     /// Main rotor RPM for helicopters [revolutions/minute]
     pub heli_main_rotor_rpm: f32,
-    /// Battery voltage [volts]
+    /// Battery voltage (V)
     pub battery_voltage: ElectricPotential,
-    /// Current draw from battery [amperes]
+    /// Current draw from battery (A)
     pub battery_current_draw: ElectricCurrent,
     /// Remaining battery capacity [milliamperes-hour]
     pub battery_remaining_capacity: ElectricCharge,
-    /// Remaining fuel volume [ounces]
+    /// Remaining fuel volume (oz)
     pub fuel_remaining: Volume,
     /// True if aircraft is in a frozen/paused state
     pub is_locked: bool,
