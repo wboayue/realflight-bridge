@@ -34,6 +34,6 @@ jobs:
             ${{ runner.os }}-cargo-tarpaulin-
 
       - name: install tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+        run: command -v cargo-tarpaulin || cargo install cargo-tarpaulin --locked
       - name: coverage
         run: cargo tarpaulin --engine llvm --follow-exec --post-test-delay 10 --coveralls ${{ secrets.COVERALLS_REPO_TOKEN }} --exclude-files src/main.rs src/bin/*
