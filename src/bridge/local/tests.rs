@@ -3,7 +3,6 @@
 //! Organized into submodules:
 //! - `bridge_operations`: Tests for enable_rc, disable_rc, reset_aircraft, exchange_data
 //! - `configuration`: Tests for Configuration defaults and validation
-//! - `encoding`: Tests for encode_control_inputs
 //! - `tcp_integration`: Integration tests using TCP stub server
 
 use std::net::TcpListener;
@@ -15,7 +14,7 @@ use crate::bridge::RealFlightBridge;
 use crate::soap_client::stub::StubSoapClient;
 use crate::{BridgeError, ControlInputs, DEFAULT_SIMULATOR_HOST};
 
-use super::{Configuration, RealFlightLocalBridge, encode_control_inputs};
+use super::{Configuration, RealFlightLocalBridge};
 
 // ============================================================================
 // Test Fixtures
@@ -401,71 +400,6 @@ mod exchange_data {
 
             assert_relative_eq!(state.current_physics_time.get::<second>(), 72263.411813672);
         }
-    }
-}
-
-// ============================================================================
-// Encoding Tests
-// ============================================================================
-
-mod encoding_tests {
-    use super::*;
-
-    #[test]
-    fn encode_default_inputs() {
-        let inputs = ControlInputs::default();
-        let encoded = encode_control_inputs(&inputs);
-
-        assert!(encoded.contains("<m-selectedChannels>4095</m-selectedChannels>"));
-        assert!(encoded.contains("<m-channelValues-0to1>"));
-        // All channels should be 0
-        assert!(encoded.contains("<item>0</item>"));
-    }
-
-    #[test]
-    fn encode_sequential_inputs() {
-        let mut inputs = ControlInputs::default();
-        for i in 0..12 {
-            inputs.channels[i] = i as f32 / 12.0;
-        }
-        let encoded = encode_control_inputs(&inputs);
-
-        assert!(encoded.contains("<item>0</item>"));
-        assert!(encoded.contains("<item>0.5</item>"));
-        assert!(encoded.contains("<item>0.9166667</item>"));
-    }
-
-    #[test]
-    fn encode_boundary_values() {
-        let mut inputs = ControlInputs::default();
-        inputs.channels[0] = 0.0;
-        inputs.channels[1] = 1.0;
-        inputs.channels[2] = 0.5;
-
-        let encoded = encode_control_inputs(&inputs);
-
-        assert!(encoded.contains("<item>0</item>"));
-        assert!(encoded.contains("<item>1</item>"));
-        assert!(encoded.contains("<item>0.5</item>"));
-    }
-
-    #[test]
-    fn encode_has_correct_structure() {
-        let inputs = ControlInputs::default();
-        let encoded = encode_control_inputs(&inputs);
-
-        assert!(encoded.starts_with("<pControlInputs>"));
-        assert!(encoded.ends_with("</pControlInputs>"));
-        assert!(encoded.contains("</m-channelValues-0to1>"));
-    }
-
-    #[test]
-    fn encode_all_twelve_channels() {
-        let inputs = ControlInputs::default();
-        let encoded = encode_control_inputs(&inputs);
-
-        let item_count = encoded.matches("<item>").count();
-        assert_eq!(item_count, 12);
     }
 }
 

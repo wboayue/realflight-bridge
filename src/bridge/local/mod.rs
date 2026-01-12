@@ -1,6 +1,7 @@
-use std::{fmt::Write, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
+use crate::encoders::encode_control_inputs;
 use crate::soap_client::{SoapClient, tcp::TcpSoapClient};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 
@@ -352,34 +353,6 @@ impl RealFlightLocalBridge {
     pub fn statistics(&self) -> Statistics {
         self.statistics.snapshot()
     }
-}
-
-const CONTROL_INPUTS_CAPACITY: usize = 291;
-
-#[cfg(any(test, feature = "bench-internals"))]
-pub fn encode_control_inputs(inputs: &ControlInputs) -> String {
-    encode_control_inputs_inner(inputs)
-}
-
-#[cfg(not(any(test, feature = "bench-internals")))]
-pub(crate) fn encode_control_inputs(inputs: &ControlInputs) -> String {
-    encode_control_inputs_inner(inputs)
-}
-
-fn encode_control_inputs_inner(inputs: &ControlInputs) -> String {
-    let mut message = String::with_capacity(CONTROL_INPUTS_CAPACITY);
-
-    message.push_str("<pControlInputs>");
-    message.push_str("<m-selectedChannels>4095</m-selectedChannels>");
-    //message.push_str("<m-selectedChannels>0</m-selectedChannels>");
-    message.push_str("<m-channelValues-0to1>");
-    for num in inputs.channels.iter() {
-        let _ = write!(message, "<item>{}</item>", num);
-    }
-    message.push_str("</m-channelValues-0to1>");
-    message.push_str("</pControlInputs>");
-
-    message
 }
 
 /// Configuration settings for the RealFlight Link bridge.
