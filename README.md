@@ -28,6 +28,10 @@
 
 The simulator requires a restart after enabling RealFlight Link.
 
+## Requirements
+
+- Rust 1.85 or later (2024 edition)
+
 ## Install
 
 Use the latest version directly from crates.io:
@@ -226,7 +230,7 @@ The SimulatorState struct provides comprehensive flight data including:
   - Engine state
   - Aircraft status messages
 
-Physical quantities use metric units (meters, m/s, degrees). Enable the `uom` feature for type-safe unit handling.
+Physical quantities primarily use metric units (meters, m/s, degrees). Some values use domain-standard units: fuel remaining is in ounces (as reported by the simulator) and battery capacity is in milliamp-hours. Enable the `uom` feature for type-safe unit handling.
 
 ## Sources
 
