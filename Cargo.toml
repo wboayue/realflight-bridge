@@ -24,7 +24,7 @@ bench-internals = []
 rt-tokio = ["dep:tokio", "dep:tokio-util"]
 
 [dependencies]
-uom = { version = "0.37.0", features = ["serde"], optional = true }
+uom = { version = "0.38.0", features = ["serde"], optional = true }
 env_logger = "0.11.8"
 log = "0.4.29"
 crossbeam-channel = "0.5"
