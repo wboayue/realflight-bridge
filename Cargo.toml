@@ -39,7 +39,7 @@ tokio-util = { version = "0.7", features = ["io"], optional = true }
 clap = "4.5.54"
 rand = "0.10"
 criterion = { version = "0.8", features = ["html_reports"] }
-serial_test = "3.3.1"
+serial_test = "4.0.1"
 approx = "0.5.1"
 
 [[bin]]
