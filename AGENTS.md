@@ -56,7 +56,35 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 
 ## Conventions
 
-- Tests in `mod tests` within source files or `<module>/tests.rs`
-- Use `#[serial_test::serial]` for tests requiring exclusive simulator access
 - Async implementations in `async_impl.rs` files alongside sync versions (local, remote bridges)
-- Test stubs: `StubSoapClient` and `new_stubbed()` methods enable testing without real simulator
+
+## Testing Guidelines
+
+### Layout
+
+- Tests always live in a separate file, never inline. Declare with `#[cfg(test)] mod tests;`
+  - `foo/mod.rs` -> `foo/tests.rs`
+  - `foo.rs` -> `foo/tests.rs` (e.g. `bridge/local/async_impl.rs` -> `bridge/local/async_impl/tests.rs`)
+  - Crate-root (`lib.rs`) tests -> `src/tests.rs`
+- No `tests/` integration dir; all tests are unit tests inside the crate so they can reach `pub(crate)` items
+- Group related tests in submodules named after the unit under test (`mod parse_status_line { ... }`), no `_tests` suffix
+- Test fn names: descriptive snake_case behavior, no `test_` prefix (`returns_error_when_no_responses`)
+- Shared fixtures used within one test file go in a local `mod fixtures`
+
+### Helpers and stubs
+
+- Shared helpers go in a `#[cfg(test)] pub(crate) mod test_support;` of the owning component. Don't add helper modules elsewhere
+  - `soap_client::test_support::Server`: TCP server replaying canned SOAP responses
+  - `bridge::wire::test_support`: `MockProxy`, `send`/`recv`/`write_raw_frame` for remote/proxy protocol tests
+- `soap_client::stub::StubSoapClient` + `RealFlightLocalBridge::stub()`: sync local bridge without network
+- `soap_client::stub_async::AsyncStubSoapClient`: queued-response async SOAP stub
+- Test-only items in non-test modules use `#[cfg(test)]`; don't repeat it on items inside an already test-gated module
+- Canned simulator responses live in `testdata/responses/{action}-{status}.xml` (e.g. `return-data-200.xml`). Stubs pick the file by key; reference from tests via `include_str!` relative path or `env!("CARGO_MANIFEST_DIR")`
+
+### Writing tests
+
+- Never require a running simulator; use stubs or `test_support::Server`
+- Bind test servers to `127.0.0.1:0` to get a free port; never hardcode ports
+- Sync and async bridges share behavior; keep their tests in sync but avoid duplicating coverage that the shared code (`ops`, `wire`) already tests
+- Async tests use `#[tokio::test]` and are compiled only with `rt-tokio`; run `cargo test` and `cargo test --features rt-tokio` before committing
+- Float comparisons use `approx::assert_relative_eq!`

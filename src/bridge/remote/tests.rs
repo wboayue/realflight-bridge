@@ -18,7 +18,7 @@ use crate::bridge::wire::test_support::MockProxy;
 
 /// Tests connecting to a non-existent server - should fail with connection refused
 #[test]
-fn test_connection_failure() {
+fn connection_failure() {
     // Attempt to connect to a port where no server is running
     let result = RealFlightRemoteBridge::new("127.0.0.1:1");
 
@@ -30,7 +30,7 @@ fn test_connection_failure() {
 
 /// Tests custom timeout functionality
 #[test]
-fn test_with_timeout_connection_failure() {
+fn with_timeout_connection_failure() {
     let start = std::time::Instant::now();
     let result = RealFlightRemoteBridge::with_timeout("127.0.0.1:1", Duration::from_millis(100));
     let elapsed = start.elapsed();
@@ -42,7 +42,7 @@ fn test_with_timeout_connection_failure() {
 
 /// Tests invalid address handling
 #[test]
-fn test_invalid_address() {
+fn invalid_address() {
     let result = RealFlightRemoteBridge::new("not-a-valid-address");
     assert!(result.is_err());
 }
@@ -141,7 +141,7 @@ fn server_disconnect_returns_error() {
 // Address resolution (no I/O)
 // ============================================================================
 
-mod resolve_tests {
+mod resolve {
     use super::super::resolve;
 
     #[test]

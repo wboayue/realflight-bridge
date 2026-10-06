@@ -1,6 +1,7 @@
-//! Provides and implementation of a SOAP client that returns stubbed responses.
+//! Provides an implementation of a SOAP client that returns stubbed responses.
 //! Useful for testing.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use crate::BridgeError;
@@ -8,14 +9,12 @@ use crate::StatisticsEngine;
 
 use super::{SoapClient, SoapResponse, encode_envelope};
 
-#[cfg(test)]
 pub(crate) struct StubSoapClient {
     responses: Vec<String>,
     pub(crate) statistics: Option<Arc<StatisticsEngine>>,
     requests: Mutex<Vec<String>>,
 }
 
-#[cfg(test)]
 impl StubSoapClient {
     pub fn new(responses: Vec<String>) -> Self {
         StubSoapClient {
@@ -35,7 +34,6 @@ impl StubSoapClient {
     }
 }
 
-#[cfg(test)]
 impl SoapClient for StubSoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         eprintln!("Sending action: {}", action);
@@ -61,10 +59,7 @@ impl SoapClient for StubSoapClient {
     }
 }
 
-#[cfg(test)]
 fn load_response(response_key: &str) -> String {
-    use std::path::PathBuf;
-
     let response_path: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "testdata",
