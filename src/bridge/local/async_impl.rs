@@ -6,11 +6,13 @@ use std::time::Duration;
 
 use crate::bridge::AsyncBridge;
 use crate::defaults;
+use crate::soap_client::pool_async::AsyncConnectionPool;
 use crate::soap_client::tcp_async::AsyncTcpSoapClient;
-use crate::soap_client::{AsyncSoapClient, Client, SoapResponse};
+use crate::soap_client::{AsyncSoapClient, SoapResponse};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 
 use super::ops::{Op, decode_exchange, decode_unit};
+use super::session::Session;
 
 /// Builder for AsyncLocalBridge.
 ///
@@ -71,21 +73,17 @@ impl AsyncLocalBridgeBuilder {
     /// Builds the AsyncLocalBridge, connecting to the simulator.
     pub async fn build(self) -> Result<AsyncLocalBridge, BridgeError> {
         let statistics = Arc::new(StatisticsEngine::new());
-        let soap_client = AsyncTcpSoapClient::new(
+        let pool = AsyncConnectionPool::new(
             self.addr,
             self.connect_timeout,
             self.pool_size,
             statistics.clone(),
         )
         .await?;
-
-        soap_client
-            .ensure_pool_initialized(self.init_timeout)
-            .await?;
+        pool.ensure_initialized(self.init_timeout).await?;
 
         Ok(AsyncLocalBridge {
-            statistics,
-            soap_client: Client::Tcp(soap_client),
+            session: Session::new(AsyncTcpSoapClient::new(pool), statistics),
         })
     }
 }
@@ -122,48 +120,49 @@ impl AsyncLocalBridgeBuilder {
 /// }
 /// ```
 pub struct AsyncLocalBridge {
-    statistics: Arc<StatisticsEngine>,
-    soap_client: Client<AsyncTcpSoapClient>,
+    session: Session<AsyncTcpSoapClient>,
 }
 
 impl AsyncBridge for AsyncLocalBridge {
     async fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
-        decode_exchange(self.call(Op::Exchange(control)).await?)
+        self.call(Op::Exchange(control), decode_exchange).await
     }
 
     async fn enable_rc(&self) -> Result<(), BridgeError> {
-        decode_unit(self.call(Op::EnableRc).await?)
+        self.call(Op::EnableRc, decode_unit).await
     }
 
     async fn disable_rc(&self) -> Result<(), BridgeError> {
-        decode_unit(self.call(Op::DisableRc).await?)
+        self.call(Op::DisableRc, decode_unit).await
     }
 
     async fn reset_aircraft(&self) -> Result<(), BridgeError> {
-        decode_unit(self.call(Op::Reset).await?)
+        self.call(Op::Reset, decode_unit).await
     }
 }
 
 impl AsyncLocalBridge {
-    /// Sends an operation to the simulator.
-    async fn call(&self, op: Op<'_>) -> Result<SoapResponse, BridgeError> {
-        self.statistics.increment_request_count();
-        self.soap_client.send_action(op.action(), &op.body()).await
+    /// Sends an operation to the simulator and decodes the response.
+    async fn call<R>(
+        &self,
+        op: Op<'_>,
+        decode: fn(SoapResponse) -> Result<R, BridgeError>,
+    ) -> Result<R, BridgeError> {
+        let result = self
+            .session
+            .client
+            .send_action(op.action(), &op.body())
+            .await
+            .and_then(decode);
+        self.session.record(result)
     }
 
     /// Creates a bridge backed by a stub SOAP client (no network).
     #[cfg(test)]
     pub(crate) fn stub(soap_client: crate::soap_client::stub::StubSoapClient) -> Self {
         AsyncLocalBridge {
-            statistics: Arc::new(StatisticsEngine::new()),
-            soap_client: Client::Stub(soap_client),
+            session: Session::stub(soap_client),
         }
-    }
-
-    /// Returns the SOAP envelopes received by the stub client.
-    #[cfg(test)]
-    pub(crate) fn requests(&self) -> Vec<String> {
-        self.soap_client.requests()
     }
 
     /// Creates a new AsyncLocalBridge with default settings.
@@ -178,7 +177,7 @@ impl AsyncLocalBridge {
 
     /// Returns a snapshot of current statistics.
     pub fn statistics(&self) -> Statistics {
-        self.statistics.snapshot()
+        self.session.statistics()
     }
 }
 

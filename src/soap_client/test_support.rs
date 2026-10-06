@@ -7,7 +7,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! let server = Server::new(vec!["reset-aircraft-200".to_string()]);
+//! let server = Server::new(&["reset-aircraft-200"]);
 //! // Server is listening on 127.0.0.1:{server.port()} and will return the response
 //! // from testdata/responses/reset-aircraft-200.xml
 //! ```
@@ -19,6 +19,7 @@
 //! - `inject-uav-controller-interface-500` - Failed disable RC response
 //! - `return-data-200` - Successful exchange data response
 
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -53,8 +54,9 @@ impl Drop for Server {
 }
 
 impl Server {
-    /// Binds to a free port on 127.0.0.1 and serves `responses` (popped from the end).
-    pub fn new(responses: Vec<String>) -> Self {
+    /// Binds to a free port on 127.0.0.1 and serves `responses` in order,
+    /// one per connection.
+    pub fn new(responses: &[&str]) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let running = Arc::new(AtomicBool::new(true));
@@ -62,7 +64,7 @@ impl Server {
 
         let handle = spawn_worker(
             listener,
-            responses,
+            responses.iter().map(|key| key.to_string()).collect(),
             Arc::clone(&running),
             Arc::clone(&requests),
         );
@@ -87,7 +89,7 @@ impl Server {
 
 fn spawn_worker(
     listener: TcpListener,
-    mut responses: Vec<String>,
+    mut responses: VecDeque<String>,
     running: Arc<AtomicBool>,
     requests: Arc<Mutex<Vec<String>>>,
 ) -> thread::JoinHandle<()> {
@@ -120,7 +122,7 @@ fn spawn_worker(
 
             requests.lock().unwrap().push(request_body);
 
-            if let Some(response_key) = responses.pop() {
+            if let Some(response_key) = responses.pop_front() {
                 send_response(&stream, &response_key);
             }
         }

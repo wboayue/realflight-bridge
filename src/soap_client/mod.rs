@@ -65,12 +65,12 @@ pub(crate) enum Client<T> {
 }
 
 impl<T> Client<T> {
-    /// Returns the envelopes received by a stub client.
+    /// Returns the stub client, if this is one.
     #[cfg(test)]
-    pub(crate) fn requests(&self) -> Vec<String> {
+    pub(crate) fn as_stub(&self) -> Option<&stub::StubSoapClient> {
         match self {
-            Client::Stub(stub) => stub.requests(),
-            Client::Tcp(_) => panic!("requests() needs a stub client"),
+            Client::Stub(stub) => Some(stub),
+            Client::Tcp(_) => None,
         }
     }
 }

@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use crate::bridge::RealFlightBridge;
+use crate::soap_client::encode_envelope;
 use crate::soap_client::stub::StubSoapClient;
 use crate::{
     BridgeError, ControlInputs, DEFAULT_SIMULATOR_HOST, SimulatorState, decode_simulator_state,
@@ -21,31 +22,13 @@ use super::{Configuration, RealFlightLocalBridge};
 
 const RETURN_DATA_200: &str = include_str!("../../../testdata/responses/return-data-200.xml");
 
-mod fixtures {
-    pub const RESET_AIRCRAFT_REQUEST: &str = "\
-        <?xml version='1.0' encoding='UTF-8'?>\
-        <soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' \
-        xmlns:xsd='http://www.w3.org/2001/XMLSchema' \
-        xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>\
-        <soap:Body><ResetAircraft></ResetAircraft></soap:Body></soap:Envelope>";
-
-    pub const DISABLE_RC_REQUEST: &str = "\
-        <?xml version='1.0' encoding='UTF-8'?>\
-        <soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' \
-        xmlns:xsd='http://www.w3.org/2001/XMLSchema' \
-        xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>\
-        <soap:Body><InjectUAVControllerInterface></InjectUAVControllerInterface></soap:Body></soap:Envelope>";
-
-    pub const ENABLE_RC_REQUEST: &str = "\
-        <?xml version='1.0' encoding='UTF-8'?>\
-        <soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' \
-        xmlns:xsd='http://www.w3.org/2001/XMLSchema' \
-        xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>\
-        <soap:Body><RestoreOriginalControllerDevice></RestoreOriginalControllerDevice></soap:Body></soap:Envelope>";
-}
-
 fn stub_bridge(responses: &[&str]) -> RealFlightLocalBridge {
     RealFlightLocalBridge::stub(StubSoapClient::new(responses))
+}
+
+/// SOAP envelopes received by a stub bridge.
+fn requests(bridge: &RealFlightLocalBridge) -> Vec<String> {
+    bridge.session.client.as_stub().unwrap().requests()
 }
 
 // ============================================================================
@@ -118,34 +101,38 @@ mod bridge_operations {
             (
                 RealFlightLocalBridge::enable_rc,
                 "restore-original-controller-device-200",
-                fixtures::ENABLE_RC_REQUEST,
+                "RestoreOriginalControllerDevice",
             ),
             (
                 RealFlightLocalBridge::disable_rc,
                 "inject-uav-controller-interface-200",
-                fixtures::DISABLE_RC_REQUEST,
+                "InjectUAVControllerInterface",
             ),
             (
                 RealFlightLocalBridge::reset_aircraft,
                 "reset-aircraft-200",
-                fixtures::RESET_AIRCRAFT_REQUEST,
+                "ResetAircraft",
             ),
         ];
 
-        for (op, response, expected_request) in cases {
+        for (op, response, action) in cases {
             let bridge = stub_bridge(&[response]);
             op(&bridge).unwrap();
-            assert_eq!(bridge.requests(), [expected_request]);
+            assert_eq!(requests(&bridge), [encode_envelope(action, "")]);
         }
     }
 
     #[test]
-    fn increments_request_count() {
-        let bridge = stub_bridge(&["reset-aircraft-200"]);
+    fn counts_requests_and_failures() {
+        let bridge = stub_bridge(&["reset-aircraft-200", "inject-uav-controller-interface-500"]);
         bridge.reset_aircraft().unwrap();
+        bridge.disable_rc().unwrap_err();
+        // Stub exhausted: send fails
+        bridge.enable_rc().unwrap_err();
 
         let stats = bridge.statistics();
-        assert_eq!(stats.request_count, 1);
+        assert_eq!(stats.request_count, 3);
+        assert_eq!(stats.error_count, 2);
     }
 
     #[test]
@@ -211,7 +198,7 @@ mod tcp_integration {
 
     #[test]
     fn tcp_client_sends_and_receives() {
-        let server = Server::new(vec!["reset-aircraft-200".to_string()]);
+        let server = Server::new(&["reset-aircraft-200"]);
         let bridge = create_bridge(server.port()).unwrap();
 
         let result = bridge.reset_aircraft();

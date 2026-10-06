@@ -1,14 +1,8 @@
 //! Provides and implementation of a SOAP client that uses the TCP protocol.
 
-use std::{
-    io::{BufRead, BufReader, Read, Write},
-    net::SocketAddr,
-    sync::Arc,
-    time::Duration,
-};
+use std::io::{BufRead, BufReader, Read, Write};
 
 use crate::BridgeError;
-use crate::StatisticsEngine;
 
 use super::http::{Next, ResponseParser};
 use super::pool::ConnectionPool;
@@ -48,19 +42,8 @@ impl SoapClient for TcpSoapClient {
 }
 
 impl TcpSoapClient {
-    /// Creates a new TCP SOAP client. `statistics` records connection errors.
-    pub fn new(
-        addr: SocketAddr,
-        connect_timeout: Duration,
-        pool_size: usize,
-        statistics: Arc<StatisticsEngine>,
-    ) -> Result<Self, BridgeError> {
-        let connection_pool = ConnectionPool::new(addr, connect_timeout, pool_size, statistics)?;
-        Ok(TcpSoapClient { connection_pool })
-    }
-
-    /// Ensures the connection pool is initialized.
-    pub fn ensure_pool_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
-        self.connection_pool.ensure_initialized(init_timeout)
+    /// Creates a TCP SOAP client sending over connections from `connection_pool`.
+    pub fn new(connection_pool: ConnectionPool) -> Self {
+        TcpSoapClient { connection_pool }
     }
 }

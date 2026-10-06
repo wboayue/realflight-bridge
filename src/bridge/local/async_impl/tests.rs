@@ -83,6 +83,11 @@ fn stub_bridge(responses: &[&str]) -> AsyncLocalBridge {
     AsyncLocalBridge::stub(StubSoapClient::new(responses))
 }
 
+/// SOAP envelopes received by a stub bridge.
+fn requests(bridge: &AsyncLocalBridge) -> Vec<String> {
+    bridge.session.client.as_stub().unwrap().requests()
+}
+
 mod bridge_operations {
     use super::*;
 
@@ -99,7 +104,7 @@ mod bridge_operations {
         bridge.reset_aircraft().await.unwrap();
 
         assert_eq!(
-            bridge.requests(),
+            requests(&bridge),
             [
                 encode_envelope("RestoreOriginalControllerDevice", ""),
                 encode_envelope("InjectUAVControllerInterface", ""),
@@ -109,11 +114,16 @@ mod bridge_operations {
     }
 
     #[tokio::test]
-    async fn increments_request_count() {
-        let bridge = stub_bridge(&["reset-aircraft-200"]);
+    async fn counts_requests_and_failures() {
+        let bridge = stub_bridge(&["reset-aircraft-200", "inject-uav-controller-interface-500"]);
         bridge.reset_aircraft().await.unwrap();
+        bridge.disable_rc().await.unwrap_err();
+        // Stub exhausted: send fails
+        bridge.enable_rc().await.unwrap_err();
 
-        assert_eq!(bridge.statistics().request_count, 1);
+        let stats = bridge.statistics();
+        assert_eq!(stats.request_count, 3);
+        assert_eq!(stats.error_count, 2);
     }
 
     #[tokio::test]
@@ -163,7 +173,7 @@ mod tcp_integration {
 
     #[tokio::test]
     async fn tcp_client_sends_and_receives() {
-        let server = Server::new(vec!["reset-aircraft-200".to_string()]);
+        let server = Server::new(&["reset-aircraft-200"]);
         let bridge = create_bridge(server.port()).await.unwrap();
 
         bridge.reset_aircraft().await.unwrap();
