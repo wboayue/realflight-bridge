@@ -1,14 +1,15 @@
 //! Request handling for the proxy server.
 
 use log::{error, info};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
 use crate::BridgeError;
 use crate::bridge::AsyncBridge;
-use crate::bridge::remote::frame::{FRAME_HEADER_LEN, decode_frame, encode_frame, frame_len};
-use crate::bridge::remote::{Request, RequestType, Response};
+use crate::bridge::wire::frame::{decode_frame, encode_frame};
+use crate::bridge::wire::frame_io::read_frame_async;
+use crate::bridge::wire::{Request, RequestType, Response};
 
 /// Handles a single client connection.
 pub(super) async fn handle_client<B: AsyncBridge>(
@@ -21,7 +22,6 @@ pub(super) async fn handle_client<B: AsyncBridge>(
     let (read_half, write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
     let mut writer = BufWriter::new(write_half);
-    let mut header = [0u8; FRAME_HEADER_LEN];
     let mut buffer = Vec::new();
 
     loop {
@@ -29,15 +29,10 @@ pub(super) async fn handle_client<B: AsyncBridge>(
             _ = cancel.cancelled() => {
                 break;
             }
-            result = reader.read_exact(&mut header) => {
+            result = read_frame_async(&mut reader, &mut buffer) => {
                 if result.is_err() {
                     break; // Client disconnected
                 }
-
-                // Read the request data into reusable buffer
-                buffer.clear();
-                buffer.resize(frame_len(header), 0);
-                reader.read_exact(&mut buffer).await?;
 
                 let request: Request = match decode_frame(&buffer) {
                     Ok(req) => req,
@@ -77,7 +72,10 @@ async fn process_request<B: AsyncBridge>(request: Request, bridge: &B) -> Respon
         RequestType::ResetAircraft => bridge.reset_aircraft().await.map(|()| None),
         RequestType::ExchangeData => match &request.payload {
             Some(control) => bridge.exchange_data(control).await.map(Some),
-            None => Err(BridgeError::SoapFault("Missing control inputs".into())),
+            None => {
+                error!("ExchangeData request missing control inputs");
+                return Response::error();
+            }
         },
     };
 
