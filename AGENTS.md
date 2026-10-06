@@ -9,6 +9,7 @@ cargo build                              # Build project
 cargo test                               # Run all tests
 cargo test <test_name>                   # Run single test
 cargo test --features rt-tokio           # Run tests with async support
+cargo test --features mint               # Run tests with mint conversions
 cargo bench --features bench-internals   # Run benchmarks
 cargo fmt                                # Format code
 cargo clippy                             # Run lints
@@ -53,6 +54,7 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 
 - `rt-tokio`: Async bridge implementations
 - `bench-internals`: Expose internal functions for benchmarking
+- `mint`: `Vector3`/`Quaternion` conversions to `mint` types (nalgebra, glam, etc. interop)
 
 ## Conventions
 

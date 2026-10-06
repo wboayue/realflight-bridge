@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `Vector3` and `Quaternion` types, with `[f32; 3]` / `[f32; 4]` conversions
+- `mint` feature: `Vector3` / `Quaternion` convert to and from `mint` types, for interop with nalgebra, glam, cgmath, etc. ([#53](https://github.com/wboayue/realflight-bridge/issues/53))
 - `Clone` for `SimulatorState`
 - Coordinate frame documentation for `SimulatorState` fields
 - `BridgeError::Protocol` for malformed or unexpected responses from the simulator or proxy ([#60](https://github.com/wboayue/realflight-bridge/issues/60))
