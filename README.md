@@ -2,10 +2,10 @@
 
 *A Rust library to interface external flight controllers with the RealFlight simulator.*
 
-[![Build](https://github.com/wboayue/realflight-bridge/workflows/build/badge.svg)](https://github.com/wboayue/realflight-bridge/actions/workflows/build.yaml)
+[![Build](https://github.com/wboayue/realflight-bridge/actions/workflows/build.yaml/badge.svg)](https://github.com/wboayue/realflight-bridge/actions/workflows/build.yaml)
 [![License:MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![crates.io](https://img.shields.io/crates/v/realflight-bridge.svg)](https://crates.io/crates/realflight-bridge)
-[![Documentation](https://img.shields.io/badge/Documentation-green.svg)](https://docs.rs/realflight-bridge/latest/realflight_bridge/index.html)
+[![Documentation](https://img.shields.io/docsrs/realflight-bridge)](https://docs.rs/realflight-bridge/latest/realflight_bridge/index.html)
 [![Coverage Status](https://coveralls.io/repos/github/wboayue/realflight-bridge/badge.svg?branch=main)](https://coveralls.io/github/wboayue/realflight-bridge?branch=main)
 
 ## Overview
@@ -18,49 +18,41 @@
 * Receive real-time simulated flight data for state estimation and control.
 * Test stabilization and autonomy algorithms in a controlled environment.
 
-## Prerequisites
-
-- [RealFlight simulator](https://www.realflight.com/) (tested with RealFlight Evolution)
-- RealFlight Link enabled in simulator settings
-  1. Open RealFlight
-  2. Go to Settings > Physics -> Quality -> RealFlight Link Enabled
-  3. Enable RealFlight Link
-
-The simulator requires a restart after enabling RealFlight Link.
-
 ## Requirements
 
+- [RealFlight simulator](https://www.realflight.com/) (tested with RealFlight Evolution)
+- RealFlight Link enabled: Settings → Physics → Quality → RealFlight Link Enabled. Restart the simulator afterwards.
 - Rust 1.85 or later (2024 edition)
 
 ## Install
-
-Use the latest version directly from crates.io:
 
 ```bash
 cargo add realflight-bridge
 ```
 
+Upgrading from 1.x? 2.0 renames `SimulatorState` fields and changes error variants; see the [CHANGELOG](CHANGELOG.md) migration notes.
+
 ## Architecture
 
-This library provides two main ways to connect to RealFlight:
+RealFlight Link is a SOAP API that requires a new TCP connection per request. Over loopback this is cheap; over a network it is not. The library offers two bridges, each with a sync and an async (`rt-tokio`) variant:
 
-1. **Local Bridge**: Connect directly to RealFlight running on the same machine
-2. **Remote Bridge**: Connect to RealFlight running on a different machine via a proxy server
+| Bridge | Sync | Async | Use when |
+|--------|------|-------|----------|
+| Local | `RealFlightLocalBridge` | `AsyncLocalBridge` | Your code runs on the simulator host (recommended) |
+| Remote | `RealFlightRemoteBridge` | `AsyncRemoteBridge` | Your code runs elsewhere; talks to `realflight_bridge_proxy` on the simulator host over a compact binary protocol |
 
-## Usage Examples
+## Usage
 
 ### Local Connection
 
-RealFlight Link implements a SOAP API that requires a new connection for each request, this introduces significant overhead with non-local connections. Since connecting via the loopback interface has minimal overhead, running the bridge on the same host as the simulator is the recommended approach.
-
-The following example demonstrates how to connect to RealFlight Link, set up the simulation, and send control inputs while receiving simulator state feedback.
+Connect to RealFlight Link, reset the aircraft, take over control, and run a control loop:
 
 ```rust
 use std::error::Error;
 
 use realflight_bridge::{ControlInputs, RealFlightBridge, RealFlightLocalBridge};
 
-pub fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Creates bridge with default configuration (connects to 127.0.0.1:18083)
     let bridge = RealFlightLocalBridge::new()?;
 
@@ -71,162 +63,132 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     bridge.disable_rc()?;
 
     // Initialize control inputs (12 channels available)
-    let mut controls: ControlInputs = ControlInputs::default();
-    // sim_complete is a placeholder condition; replace with your actual simulation completion logic.
-    let mut sim_complete = false;
+    let mut controls = ControlInputs::default();
 
-    loop {
+    for _ in 0..10_000 {
         // Send control inputs and receive simulator state
         let state = bridge.exchange_data(&controls)?;
 
         // Update control values based on state...
-        if state.altitude_agl_m < 10.0 {
-            controls.channels[2] = 1.0; // Example: full throttle below 10 m AGL
-        }
-
-        if sim_complete {
-            bridge.enable_rc()?;
-            break;
-        }
+        controls.channels[2] = if state.altitude_agl_m < 10.0 { 1.0 } else { 0.5 };
     }
+
+    // Hand control back to the RC transmitter
+    bridge.enable_rc()?;
 
     Ok(())
 }
 ```
 
+To use a non-default address, timeout, or pool size, pass a `Configuration`:
+
+```rust
+use std::time::Duration;
+
+use realflight_bridge::{Configuration, RealFlightLocalBridge};
+
+let config = Configuration {
+    simulator_host: "192.168.1.100:18083".to_string(),
+    connect_timeout: Duration::from_millis(50),
+    ..Default::default()
+};
+let bridge = RealFlightLocalBridge::with_configuration(&config)?;
+```
+
 ### Remote Connection
 
-There are some cases where we may want to run the bridge on a computer that is not running the RealFlight simulator.
-For example, you may be developing on a Mac while RealFlight runs only on Windows. To support this scenario, a proxy with an efficient communication protocol was created to forward messages from a remote computer to the simulator via RealFlightBridge. This still requires a low-latency connection. It works well on wired networks or when a Mac communicates with the simulator hosted in a Parallels VM; however, I could not achieve a high enough loop frequency (you want at least 200Hz) over WiFi.
+Use the remote bridge when your code cannot run on the simulator host, e.g. developing on a Mac while RealFlight runs on Windows. The proxy forwards requests to the simulator over loopback.
 
-#### Remote Connection (Server)
+A low-latency link is still required. Wired networks and a Mac talking to RealFlight in a Parallels VM work well; WiFi did not reach the 200 Hz loop rate a flight controller typically needs.
 
-On the same machine running the RealFlight simulator, install the proxy using the following command.
+#### Proxy (simulator host)
 
 ```bash
 cargo install realflight-bridge --features rt-tokio
+realflight_bridge_proxy                     # binds 0.0.0.0:8080
+realflight_bridge_proxy --bind-address 127.0.0.1:9000
 ```
 
-You can then run it using the following command.
-
-```bash
-realflight_bridge_proxy
-```
-
-By default, `realflight_bridge_proxy` binds to `0.0.0.0:8080`. This can be changed by passing the `--bind-address` argument to `realflight_bridge_proxy`.
+The proxy has no authentication; anyone who can reach the port can control the simulator. Run it only on trusted networks.
 
 The proxy and client must use the same major version of `realflight-bridge`; the wire protocol is not compatible across major versions.
 
-#### Remote Connection (Client)
-
-The following example shows how your application code connects to the simulator using the proxy.
+#### Client
 
 ```rust
 use std::error::Error;
-use realflight_bridge::{RealFlightBridge, RealFlightRemoteBridge, ControlInputs};
+
+use realflight_bridge::{ControlInputs, RealFlightBridge, RealFlightRemoteBridge};
 
 fn main() -> Result<(), Box<dyn Error>> {
-  let client = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
+    let client = RealFlightRemoteBridge::new("192.168.12.253:8080")?;
 
-  // Disable RC input and enable external control
-  client.disable_rc()?;
+    // Disable RC input and enable external control
+    client.disable_rc()?;
 
-  // Initialize control inputs
-  let control = ControlInputs::default();
+    // Send control inputs and receive simulator state
+    let controls = ControlInputs::default();
+    let state = client.exchange_data(&controls)?;
+    println!("AGL {:.1} m", state.altitude_agl_m);
 
-  // Send control inputs and receive update state.
-  let state = client.exchange_data(&control)?;
-
-  Ok(())
+    Ok(())
 }
 ```
 
-## Math Library Interop
+### Async
 
-The `mint` feature converts `Vector3` and `Quaternion` to and from [`mint`](https://crates.io/crates/mint) types, which nalgebra, glam, cgmath and others accept:
-
-```bash
-cargo add realflight-bridge --features mint
-```
-
-```rust
-let v: mint::Vector3<f32> = state.velocity_world_mps.into();
-let v: nalgebra::Vector3<f32> = v.into();
-
-// orientation is in RealFlight's convention; remap to body-to-NED first, as ArduPilot does
-let o = state.orientation;
-let ned = Quaternion { x: o.y, y: o.x, z: -o.z, w: o.w };
-let q: mint::Quaternion<f32> = ned.into();
-let attitude = nalgebra::UnitQuaternion::from_quaternion(q.into());
-```
-
-Conversions copy components only and never change frames (see `SimulatorState` docs).
-
-## Async Support
-
-Async versions of the bridge are available via the `rt-tokio` feature flag:
+Async bridges are available via the `rt-tokio` feature:
 
 ```bash
 cargo add realflight-bridge --features rt-tokio
 ```
 
-### Async Local Connection
-
 ```rust
 use std::error::Error;
 use std::time::Duration;
+
 use realflight_bridge::{AsyncBridge, AsyncLocalBridge, ControlInputs};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Creates bridge with default configuration
-    let bridge = AsyncLocalBridge::new().await?;
-
-    // Or with custom configuration
-    // let bridge = AsyncLocalBridge::builder()
-    //     .connect_timeout(Duration::from_millis(10))
-    //     .build()
-    //     .await?;
+    // Or AsyncLocalBridge::new().await? for defaults
+    let bridge = AsyncLocalBridge::builder()
+        .connect_timeout(Duration::from_millis(10))
+        .build()
+        .await?;
 
     bridge.reset_aircraft().await?;
     bridge.disable_rc().await?;
 
     let mut controls = ControlInputs::default();
-
-    loop {
+    for _ in 0..10_000 {
         let state = bridge.exchange_data(&controls).await?;
-        controls.channels[0] = 0.5;
-        // ...
+        controls.channels[2] = if state.altitude_agl_m < 10.0 { 1.0 } else { 0.5 };
     }
-}
-```
 
-### Async Remote Connection
-
-```rust
-use std::error::Error;
-use realflight_bridge::{AsyncBridge, AsyncRemoteBridge, ControlInputs};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let client = AsyncRemoteBridge::new("192.168.12.253:8080").await?;
-
-    client.disable_rc().await?;
-
-    let control = ControlInputs::default();
-    let state = client.exchange_data(&control).await?;
-
+    bridge.enable_rc().await?;
     Ok(())
 }
 ```
 
+`AsyncRemoteBridge::new("192.168.12.253:8080").await?` is the async counterpart of `RealFlightRemoteBridge`.
+
+### Examples
+
+```bash
+cargo run --example smoke_test -- --simulator_host 127.0.0.1:18083
+cargo run --example remote_bridge -- --proxy-host 192.168.12.253:8080
+```
+
 ## Control Channels
 
-The ControlInputs struct provides 12 channels for aircraft control. Each channel value should be set between 0.0 and 1.0, where:
+`ControlInputs` provides 12 channels. Each value ranges from 0.0 to 1.0:
 
-* 0.0 represents the minimum value
-* 0.5 represents the neutral/center position (for control surfaces)
-* 1.0 represents the maximum value
+* 0.0: minimum
+* 0.5: neutral/center (control surfaces)
+* 1.0: maximum
+
+Which function each channel drives (aileron, elevator, throttle, rudder, ...) depends on the aircraft's channel mapping in RealFlight. The examples assume throttle on channel 3 (`channels[2]`).
 
 ## SimulatorState
 
@@ -255,7 +217,30 @@ println!(
 );
 ```
 
-All bridge implementations provide a `statistics()` method for performance monitoring (request count, error count, frame rate).
+Local bridges (`RealFlightLocalBridge`, `AsyncLocalBridge`) provide a `statistics()` method for performance monitoring (request count, error count, frame rate).
+
+## Math Library Interop
+
+The `mint` feature converts `Vector3` and `Quaternion` to and from [`mint`](https://crates.io/crates/mint) types, which nalgebra, glam, cgmath and others accept:
+
+```bash
+cargo add realflight-bridge --features mint
+```
+
+```rust
+use realflight_bridge::Quaternion;
+
+let v: mint::Vector3<f32> = state.velocity_world_mps.into();
+let v: nalgebra::Vector3<f32> = v.into();
+
+// orientation is in RealFlight's convention; remap to body-to-NED first, as ArduPilot does
+let o = state.orientation;
+let ned = Quaternion { x: o.y, y: o.x, z: -o.z, w: o.w };
+let q: mint::Quaternion<f32> = ned.into();
+let attitude = nalgebra::UnitQuaternion::from_quaternion(q.into());
+```
+
+Conversions copy components only and never change frames (see `SimulatorState` docs).
 
 ## Sources
 
