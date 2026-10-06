@@ -1,8 +1,7 @@
 use super::*;
 use crate::ControlInputs;
+use crate::bridge::remote::test_support::{recv, send, write_raw_frame};
 use crate::bridge::remote::{Request, RequestType, Response, ResponseStatus};
-use postcard::{from_bytes, to_stdvec};
-use std::io::{Read, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -126,21 +125,8 @@ async fn send_request_async(addr: String, request: Request) -> Response {
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .unwrap();
 
-        // Send request
-        let request_bytes = to_stdvec(&request).unwrap();
-        let length_bytes = (request_bytes.len() as u32).to_be_bytes();
-        stream.write_all(&length_bytes).unwrap();
-        stream.write_all(&request_bytes).unwrap();
-        stream.flush().unwrap();
-
-        // Read response
-        let mut length_buffer = [0u8; 4];
-        stream.read_exact(&mut length_buffer).unwrap();
-        let response_length = u32::from_be_bytes(length_buffer) as usize;
-        let mut response_buffer = vec![0u8; response_length];
-        stream.read_exact(&mut response_buffer).unwrap();
-
-        from_bytes(&response_buffer).unwrap()
+        send(&mut stream, &request).unwrap();
+        recv(&mut stream).unwrap()
     })
     .await
     .unwrap()
@@ -452,32 +438,15 @@ async fn malformed_request_continues_handling() {
                 .unwrap();
 
             // Send malformed data
-            let garbage = vec![0xFF, 0xFF, 0xFF, 0xFF];
-            let length_bytes = (garbage.len() as u32).to_be_bytes();
-            stream.write_all(&length_bytes).unwrap();
-            stream.write_all(&garbage).unwrap();
-            stream.flush().unwrap();
+            write_raw_frame(&mut stream, &[0xFF, 0xFF, 0xFF, 0xFF]).unwrap();
 
             // Now send a valid request
             let request = Request {
                 request_type: RequestType::EnableRC,
                 payload: None,
             };
-            let request_bytes = to_stdvec(&request).unwrap();
-            let length_bytes = (request_bytes.len() as u32).to_be_bytes();
-            stream.write_all(&length_bytes).unwrap();
-            stream.write_all(&request_bytes).unwrap();
-            stream.flush().unwrap();
-
-            // Read response
-            let mut length_buffer = [0u8; 4];
-            stream.read_exact(&mut length_buffer).unwrap();
-            let response_length = u32::from_be_bytes(length_buffer) as usize;
-            let mut response_buffer = vec![0u8; response_length];
-            stream.read_exact(&mut response_buffer).unwrap();
-
-            let response: Response = from_bytes(&response_buffer).unwrap();
-            response
+            send(&mut stream, &request).unwrap();
+            recv::<Response>(&mut stream).unwrap()
         }
     })
     .await

@@ -46,6 +46,8 @@ use frame::{FRAME_HEADER_LEN, decode_frame, encode_frame, frame_len};
 
 pub(crate) mod frame;
 #[cfg(test)]
+pub(crate) mod test_support;
+#[cfg(test)]
 mod tests;
 
 /// Defines the types of requests that can be sent to the server.

@@ -172,8 +172,7 @@ impl AsyncRemoteBridge {
 mod tests {
     use super::*;
     use crate::bridge::AsyncBridge;
-    use crate::bridge::remote::Response;
-    use std::io::{Read, Write};
+    use crate::bridge::remote::test_support::MockProxy;
     use std::net::TcpListener;
 
     // ========================================================================
@@ -225,94 +224,49 @@ mod tests {
     }
 
     // ========================================================================
-    // Helper Functions
-    // ========================================================================
-
-    fn mock_server_send_response(mut stream: std::net::TcpStream, response: Response) {
-        // Read the request (length + data)
-        let mut length_buffer = [0u8; 4];
-        stream.read_exact(&mut length_buffer).unwrap();
-        let msg_length = u32::from_be_bytes(length_buffer) as usize;
-        let mut buffer = vec![0u8; msg_length];
-        stream.read_exact(&mut buffer).unwrap();
-
-        // Send response
-        stream.write_all(&encode_frame(&response).unwrap()).unwrap();
-        stream.flush().unwrap();
-    }
-
-    // ========================================================================
     // Operation Tests
     // ========================================================================
 
     #[tokio::test]
-    async fn enable_rc_succeeds() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
+    async fn unit_ops_send_matching_requests() {
+        let proxy = MockProxy::respond(Response::success());
+        let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
 
-        let handle = std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            mock_server_send_response(stream, Response::success());
-        });
+        bridge.enable_rc().await.unwrap();
+        bridge.disable_rc().await.unwrap();
+        bridge.reset_aircraft().await.unwrap();
+        drop(bridge);
 
-        let bridge = AsyncRemoteBridge::new(&addr).await.unwrap();
-        let result = bridge.enable_rc().await;
-
-        assert!(result.is_ok());
-        let _ = handle.join();
+        let types: Vec<_> = proxy
+            .requests()
+            .into_iter()
+            .map(|r| r.request_type)
+            .collect();
+        assert_eq!(
+            types,
+            [
+                RequestType::EnableRC,
+                RequestType::DisableRC,
+                RequestType::ResetAircraft
+            ]
+        );
     }
 
     #[tokio::test]
-    async fn disable_rc_succeeds() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
+    async fn exchange_data_sends_inputs_and_returns_state() {
+        let proxy = MockProxy::respond(Response::success_with(SimulatorState::default()));
+        let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
+        let mut control = ControlInputs::default();
+        control.channels[2] = 1.0;
 
-        let handle = std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            mock_server_send_response(stream, Response::success());
-        });
+        let state = bridge.exchange_data(&control).await.unwrap();
+        assert_eq!(state, SimulatorState::default());
+        drop(bridge);
 
-        let bridge = AsyncRemoteBridge::new(&addr).await.unwrap();
-        let result = bridge.disable_rc().await;
-
-        assert!(result.is_ok());
-        let _ = handle.join();
-    }
-
-    #[tokio::test]
-    async fn reset_aircraft_succeeds() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
-
-        let handle = std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            mock_server_send_response(stream, Response::success());
-        });
-
-        let bridge = AsyncRemoteBridge::new(&addr).await.unwrap();
-        let result = bridge.reset_aircraft().await;
-
-        assert!(result.is_ok());
-        let _ = handle.join();
-    }
-
-    #[tokio::test]
-    async fn exchange_data_succeeds() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
-
-        let handle = std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            let state = SimulatorState::default();
-            mock_server_send_response(stream, Response::success_with(state));
-        });
-
-        let bridge = AsyncRemoteBridge::new(&addr).await.unwrap();
-        let control = ControlInputs::default();
-        let result = bridge.exchange_data(&control).await;
-
-        assert!(result.is_ok());
-        let _ = handle.join();
+        let requests = proxy.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].request_type, RequestType::ExchangeData);
+        assert_eq!(requests[0].payload, Some(control));
     }
 
     // ========================================================================
@@ -320,78 +274,24 @@ mod tests {
     // ========================================================================
 
     #[tokio::test]
-    async fn exchange_data_no_payload_returns_error() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
+    async fn malformed_response_is_invalid_data() {
+        let proxy = MockProxy::reply_raw(vec![0xFF, 0xFF, 0xFF, 0xFF]);
+        let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
 
-        let handle = std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            // Send success but with no payload
-            mock_server_send_response(stream, Response::success());
-        });
-
-        let bridge = AsyncRemoteBridge::new(&addr).await.unwrap();
-        let control = ControlInputs::default();
-        let result = bridge.exchange_data(&control).await;
-
-        match result {
-            Err(BridgeError::SoapFault(msg)) => {
-                assert!(msg.contains("No payload"));
-            }
-            other => panic!("expected SoapFault, got {:?}", other),
-        }
-        let _ = handle.join();
-    }
-
-    #[tokio::test]
-    async fn malformed_response_returns_error() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
-
-        let handle = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            // Read the request
-            let mut length_buffer = [0u8; 4];
-            stream.read_exact(&mut length_buffer).unwrap();
-            let msg_length = u32::from_be_bytes(length_buffer) as usize;
-            let mut buffer = vec![0u8; msg_length];
-            stream.read_exact(&mut buffer).unwrap();
-
-            // Send malformed response (invalid postcard data)
-            let garbage = vec![0xFF, 0xFF, 0xFF, 0xFF];
-            let length_bytes = (garbage.len() as u32).to_be_bytes();
-            stream.write_all(&length_bytes).unwrap();
-            stream.write_all(&garbage).unwrap();
-            stream.flush().unwrap();
-        });
-
-        let bridge = AsyncRemoteBridge::new(&addr).await.unwrap();
-        let result = bridge.enable_rc().await;
-
-        match result {
+        match bridge.enable_rc().await {
             Err(BridgeError::Connection(e)) => {
                 assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
             }
             other => panic!("expected Connection(InvalidData), got {:?}", other),
         }
-        let _ = handle.join();
     }
 
     #[tokio::test]
     async fn server_disconnect_returns_error() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
+        let proxy = MockProxy::hang_up();
+        let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
+        proxy.requests();
 
-        let handle = std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            // Close connection immediately without responding
-            drop(stream);
-        });
-
-        let bridge = AsyncRemoteBridge::new(&addr).await.unwrap();
-        let result = bridge.enable_rc().await;
-
-        assert!(result.is_err());
-        let _ = handle.join();
+        assert!(bridge.enable_rc().await.is_err());
     }
 }

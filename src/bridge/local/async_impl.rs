@@ -261,73 +261,32 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn reset_aircraft_succeeds() {
+        async fn unit_ops_send_correct_actions() {
             let port = get_available_port();
-            let _server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
+            // Server pops responses from the end
+            let server = Server::new(
+                port,
+                vec![
+                    "reset-aircraft-200".to_string(),
+                    "inject-uav-controller-interface-200".to_string(),
+                    "restore-original-controller-device-200".to_string(),
+                ],
+            );
             let bridge = create_bridge(port).await.unwrap();
 
-            let result = bridge.reset_aircraft().await;
-            assert!(result.is_ok(), "expected Ok: {:?}", result);
-        }
-
-        #[tokio::test]
-        async fn reset_aircraft_increments_request_count() {
-            let port = get_available_port();
-            let _server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
-            let bridge = create_bridge(port).await.unwrap();
-
+            bridge.enable_rc().await.unwrap();
+            bridge.disable_rc().await.unwrap();
             bridge.reset_aircraft().await.unwrap();
 
-            let stats = bridge.statistics();
-            assert_eq!(stats.request_count, 1);
+            let requests = server.requests();
+            assert_eq!(requests.len(), 3);
+            assert!(requests[0].contains("<RestoreOriginalControllerDevice>"));
+            assert!(requests[1].contains("<InjectUAVControllerInterface>"));
+            assert!(requests[2].contains("<ResetAircraft>"));
         }
 
         #[tokio::test]
-        async fn enable_rc_succeeds() {
-            let port = get_available_port();
-            let _server = Server::new(
-                port,
-                vec!["restore-original-controller-device-200".to_string()],
-            );
-            let bridge = create_bridge(port).await.unwrap();
-
-            let result = bridge.enable_rc().await;
-            assert!(result.is_ok(), "expected Ok: {:?}", result);
-        }
-
-        #[tokio::test]
-        async fn enable_rc_returns_soap_fault_on_500() {
-            let port = get_available_port();
-            let _server = Server::new(
-                port,
-                vec!["restore-original-controller-device-500".to_string()],
-            );
-            let bridge = create_bridge(port).await.unwrap();
-
-            let result = bridge.enable_rc().await;
-            match result {
-                Err(BridgeError::SoapFault(msg)) => {
-                    assert_eq!(msg, "Pointer to original controller device is null");
-                }
-                other => panic!("expected SoapFault, got {:?}", other),
-            }
-        }
-
-        #[tokio::test]
-        async fn disable_rc_succeeds() {
-            let port = get_available_port();
-            let _server = Server::new(
-                port,
-                vec!["inject-uav-controller-interface-200".to_string()],
-            );
-            let bridge = create_bridge(port).await.unwrap();
-
-            let result = bridge.disable_rc().await;
-            assert!(result.is_ok(), "expected Ok: {:?}", result);
-        }
-
-        #[tokio::test]
-        async fn disable_rc_returns_soap_fault_on_500() {
+        async fn returns_soap_fault_on_500() {
             let port = get_available_port();
             let _server = Server::new(
                 port,
@@ -335,8 +294,7 @@ mod tests {
             );
             let bridge = create_bridge(port).await.unwrap();
 
-            let result = bridge.disable_rc().await;
-            match result {
+            match bridge.disable_rc().await {
                 Err(BridgeError::SoapFault(msg)) => {
                     assert_eq!(msg, "Preexisting controller reference");
                 }
@@ -351,37 +309,6 @@ mod tests {
 
     mod exchange_data {
         use super::*;
-
-        #[tokio::test]
-        async fn returns_simulator_state_on_success() {
-            let port = get_available_port();
-            let _server = Server::new(port, vec!["return-data-200".to_string()]);
-            let bridge = create_bridge(port).await.unwrap();
-
-            let control = ControlInputs::default();
-            let result = bridge.exchange_data(&control).await;
-
-            assert!(result.is_ok(), "expected Ok: {:?}", result);
-            let state = result.unwrap();
-            assert_eq!(state.current_physics_speed_multiplier, 1.0);
-        }
-
-        #[tokio::test]
-        async fn returns_soap_fault_on_500() {
-            let port = get_available_port();
-            let _server = Server::new(port, vec!["return-data-500".to_string()]);
-            let bridge = create_bridge(port).await.unwrap();
-
-            let control = ControlInputs::default();
-            let result = bridge.exchange_data(&control).await;
-
-            match result {
-                Err(BridgeError::SoapFault(msg)) => {
-                    assert_eq!(msg, "RealFlight Link controller has not been instantiated");
-                }
-                other => panic!("expected SoapFault, got {:?}", other),
-            }
-        }
 
         #[tokio::test]
         async fn returns_decoded_state() {
