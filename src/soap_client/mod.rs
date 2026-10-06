@@ -37,15 +37,6 @@ impl SoapResponse {
     }
 }
 
-impl From<SoapResponse> for Result<(), BridgeError> {
-    fn from(val: SoapResponse) -> Self {
-        match val.status_code {
-            200 => Ok(()),
-            _ => Err(BridgeError::SoapFault(val.fault_message())),
-        }
-    }
-}
-
 /// Trait for sending SOAP requests to the RealFlight simulator
 pub(crate) trait SoapClient: Send {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError>;
@@ -90,33 +81,6 @@ mod tests {
             };
 
             assert_eq!(response.fault_message(), "Failed to extract error message");
-        }
-
-        #[test]
-        fn converts_200_to_ok() {
-            let response = SoapResponse {
-                status_code: 200,
-                body: String::new(),
-            };
-
-            let result: Result<(), BridgeError> = response.into();
-            assert!(result.is_ok());
-        }
-
-        #[test]
-        fn converts_500_to_soap_fault_error() {
-            let response = SoapResponse {
-                status_code: 500,
-                body: "<detail>Server error</detail>".to_string(),
-            };
-
-            let result: Result<(), BridgeError> = response.into();
-            match result {
-                Err(BridgeError::SoapFault(msg)) => {
-                    assert_eq!(msg, "Server error");
-                }
-                other => panic!("expected SoapFault, got {:?}", other),
-            }
         }
     }
 }

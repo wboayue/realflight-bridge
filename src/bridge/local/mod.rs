@@ -2,19 +2,19 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
 use crate::defaults;
-use crate::encoders::encode_control_inputs;
-use crate::soap_client::{SoapClient, tcp::TcpSoapClient};
+use crate::soap_client::{SoapClient, SoapResponse, tcp::TcpSoapClient};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
+use ops::{Op, decode_exchange, decode_unit};
 
 #[cfg(test)]
 use crate::soap_client::stub::StubSoapClient;
+
+mod ops;
 
 #[cfg(feature = "rt-tokio")]
 mod async_impl;
 #[cfg(feature = "rt-tokio")]
 pub use async_impl::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
-
-const EMPTY_BODY: &str = "";
 
 /// A high-level client for interacting with RealFlight simulators via RealFlight Link.
 ///
@@ -119,12 +119,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
-        let body = encode_control_inputs(control);
-        let response = self.soap_client.send_action("ExchangeData", &body)?;
-        match response.status_code {
-            200 => crate::decoders::decode_simulator_state(&response.body),
-            _ => Err(BridgeError::SoapFault(response.fault_message())),
-        }
+        decode_exchange(self.call(Op::Exchange(control))?)
     }
 
     /// Reverts the RealFlight simulator to use its original Spektrum (or built-in) RC input.
@@ -156,9 +151,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn enable_rc(&self) -> Result<(), BridgeError> {
-        self.soap_client
-            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)?
-            .into()
+        decode_unit(self.call(Op::EnableRc)?)
     }
 
     /// Switches the RealFlight simulator's input to the external RealFlight Link controller,
@@ -191,9 +184,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn disable_rc(&self) -> Result<(), BridgeError> {
-        self.soap_client
-            .send_action("InjectUAVControllerInterface", EMPTY_BODY)?
-            .into()
+        decode_unit(self.call(Op::DisableRc)?)
     }
 
     /// Resets the currently loaded aircraft in the RealFlight simulator, analogous
@@ -226,13 +217,16 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn reset_aircraft(&self) -> Result<(), BridgeError> {
-        self.soap_client
-            .send_action("ResetAircraft", EMPTY_BODY)?
-            .into()
+        decode_unit(self.call(Op::Reset)?)
     }
 }
 
 impl RealFlightLocalBridge {
+    /// Sends an operation to the simulator.
+    fn call(&self, op: Op) -> Result<SoapResponse, BridgeError> {
+        self.soap_client.send_action(op.action(), &op.body())
+    }
+
     /// Creates a new [RealFlightBridge] instance configured to communicate
     /// with a RealFlight simulator running on local machine.
     ///
