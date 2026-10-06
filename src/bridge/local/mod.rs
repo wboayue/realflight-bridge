@@ -48,7 +48,7 @@ const EMPTY_BODY: &str = "";
 ///
 ///     // Exchange data with the simulator
 ///     let sim_state = bridge.exchange_data(&inputs)?;
-///     println!("Current airspeed: {:?}", sim_state.airspeed);
+///     println!("Current airspeed: {:?}", sim_state.airspeed_mps);
 ///
 ///     // Return to internal control
 ///     bridge.enable_rc()?;
@@ -111,8 +111,8 @@ impl RealFlightBridge for RealFlightLocalBridge {
     ///
     ///     // Exchange data with the simulator
     ///     let state = bridge.exchange_data(&inputs)?;
-    ///     println!("Current airspeed: {:?}", state.airspeed);
-    ///     println!("Altitude above ground: {:?}", state.altitude_agl);
+    ///     println!("Current airspeed: {:?}", state.airspeed_mps);
+    ///     println!("Altitude above ground: {:?}", state.altitude_agl_m);
     ///
     ///     Ok(())
     /// }

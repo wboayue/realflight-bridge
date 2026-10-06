@@ -121,7 +121,7 @@ impl AsyncLocalBridgeBuilder {
 ///
 ///     // Exchange data with the simulator
 ///     let state = bridge.exchange_data(&inputs).await?;
-///     println!("Current airspeed: {:?}", state.airspeed);
+///     println!("Current airspeed: {:?}", state.airspeed_mps);
 ///
 ///     Ok(())
 /// }
@@ -427,8 +427,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_relative_eq!(state.airspeed, 0.040872246);
-            assert_relative_eq!(state.groundspeed, 4.643444754E-06);
+            assert_relative_eq!(state.airspeed_mps, 0.040872246);
+            assert_relative_eq!(state.groundspeed_mps, 4.643444754E-06);
         }
     }
 

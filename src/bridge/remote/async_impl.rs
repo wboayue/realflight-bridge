@@ -99,7 +99,7 @@ impl AsyncRemoteBridgeBuilder {
 ///
 ///     // Exchange data with the simulator
 ///     let state = bridge.exchange_data(&inputs).await?;
-///     println!("Current airspeed: {:?}", state.airspeed);
+///     println!("Current airspeed: {:?}", state.airspeed_mps);
 ///
 ///     Ok(())
 /// }

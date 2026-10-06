@@ -11,10 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `uom` feature and dependency. `SimulatorState` fields are now always `f32` ([#52](https://github.com/wboayue/realflight-bridge/issues/52))
 
 ### Changed
+- **Breaking:** `SimulatorState` physical fields renamed with unit suffixes (e.g. `airspeed` → `airspeed_mps`, `altitude_agl` → `altitude_agl_m`, `azimuth` → `azimuth_deg`, `pitch_rate` → `pitch_rate_dps`, `fuel_remaining` → `fuel_remaining_oz`, `current_physics_time` → `current_physics_time_s`)
 - Documented the unit of every `SimulatorState` field
 
 ### Migration
-- Replace `state.field.get::<unit>()` with `state.field`. Values are in the units RealFlight reports (see field docs).
+- Rename field accesses to their suffixed names. `uom` users: replace `state.field.get::<unit>()` with `state.field_<unit>`.
 - `fuel_remaining` is in ounces (was liters with `uom`); divide by 33.814 for liters.
 - Angles and angular rates are in degrees (`uom` stored radians); use `.to_radians()` if needed.
 

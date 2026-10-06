@@ -248,14 +248,14 @@ mod exchange_data {
             let bridge = stub_bridge(vec!["return-data-200"]);
             let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-            assert_relative_eq!(state.airspeed, 0.040872246);
-            assert_relative_eq!(state.groundspeed, 4.643444754E-06);
-            assert_relative_eq!(state.velocity_world_u, -2.005582700E-06);
-            assert_relative_eq!(state.velocity_world_v, 4.187984814E-06);
-            assert_relative_eq!(state.velocity_world_w, 0.040872246);
-            assert_relative_eq!(state.velocity_body_u, -0.001089469);
-            assert_relative_eq!(state.velocity_body_v, -0.000530726);
-            assert_relative_eq!(state.velocity_body_w, 0.040854275);
+            assert_relative_eq!(state.airspeed_mps, 0.040872246);
+            assert_relative_eq!(state.groundspeed_mps, 4.643444754E-06);
+            assert_relative_eq!(state.velocity_world_u_mps, -2.005582700E-06);
+            assert_relative_eq!(state.velocity_world_v_mps, 4.187984814E-06);
+            assert_relative_eq!(state.velocity_world_w_mps, 0.040872246);
+            assert_relative_eq!(state.velocity_body_u_mps, -0.001089469);
+            assert_relative_eq!(state.velocity_body_v_mps, -0.000530726);
+            assert_relative_eq!(state.velocity_body_w_mps, 0.040854275);
         }
 
         #[test]
@@ -263,10 +263,10 @@ mod exchange_data {
             let bridge = stub_bridge(vec!["return-data-200"]);
             let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-            assert_relative_eq!(state.altitude_asl, 1127.370971679);
-            assert_relative_eq!(state.altitude_agl, 0.266309916);
-            assert_relative_eq!(state.aircraft_position_x, 5575.6806640625);
-            assert_relative_eq!(state.aircraft_position_y, 1715.962158203125);
+            assert_relative_eq!(state.altitude_asl_m, 1127.370971679);
+            assert_relative_eq!(state.altitude_agl_m, 0.266309916);
+            assert_relative_eq!(state.aircraft_position_x_m, 5575.6806640625);
+            assert_relative_eq!(state.aircraft_position_y_m, 1715.962158203125);
         }
 
         #[test]
@@ -274,12 +274,12 @@ mod exchange_data {
             let bridge = stub_bridge(vec!["return-data-200"]);
             let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-            assert_relative_eq!(state.acceleration_world_ax, -0.000483050);
-            assert_relative_eq!(state.acceleration_world_ay, 0.001008689);
-            assert_relative_eq!(state.acceleration_world_az, 9.844209671);
-            assert_relative_eq!(state.acceleration_body_ax, -0.000176936);
-            assert_relative_eq!(state.acceleration_body_ay, -8.662045001E-05);
-            assert_relative_eq!(state.acceleration_body_az, 0.044223785);
+            assert_relative_eq!(state.acceleration_world_ax_mps2, -0.000483050);
+            assert_relative_eq!(state.acceleration_world_ay_mps2, 0.001008689);
+            assert_relative_eq!(state.acceleration_world_az_mps2, 9.844209671);
+            assert_relative_eq!(state.acceleration_body_ax_mps2, -0.000176936);
+            assert_relative_eq!(state.acceleration_body_ay_mps2, -8.662045001E-05);
+            assert_relative_eq!(state.acceleration_body_az_mps2, 0.044223785);
         }
 
         #[test]
@@ -287,10 +287,10 @@ mod exchange_data {
             let bridge = stub_bridge(vec!["return-data-200"]);
             let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-            assert_relative_eq!(state.battery_voltage, 12.599982261);
-            assert_relative_eq!(state.battery_current_draw, 0.0);
-            assert_relative_eq!(state.battery_remaining_capacity, 3999.990722656);
-            assert_relative_eq!(state.fuel_remaining, -1.0);
+            assert_relative_eq!(state.battery_voltage_v, 12.599982261);
+            assert_relative_eq!(state.battery_current_draw_a, 0.0);
+            assert_relative_eq!(state.battery_remaining_capacity_mah, 3999.990722656);
+            assert_relative_eq!(state.fuel_remaining_oz, -1.0);
         }
 
         #[test]
@@ -298,9 +298,9 @@ mod exchange_data {
             let bridge = stub_bridge(vec!["return-data-200"]);
             let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-            assert_relative_eq!(state.pitch_rate, 0.001380353);
-            assert_relative_eq!(state.roll_rate, -0.000032227);
-            assert_relative_eq!(state.yaw_rate, 0.001473751);
+            assert_relative_eq!(state.pitch_rate_dps, 0.001380353);
+            assert_relative_eq!(state.roll_rate_dps, -0.000032227);
+            assert_relative_eq!(state.yaw_rate_dps, 0.001473751);
         }
 
         #[test]
@@ -308,9 +308,9 @@ mod exchange_data {
             let bridge = stub_bridge(vec!["return-data-200"]);
             let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-            assert_relative_eq!(state.wind_x, 0.0);
-            assert_relative_eq!(state.wind_y, 0.0);
-            assert_relative_eq!(state.wind_z, 0.0);
+            assert_relative_eq!(state.wind_x_mps, 0.0);
+            assert_relative_eq!(state.wind_y_mps, 0.0);
+            assert_relative_eq!(state.wind_z_mps, 0.0);
         }
 
         #[test]
@@ -318,7 +318,7 @@ mod exchange_data {
             let bridge = stub_bridge(vec!["return-data-200"]);
             let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-            assert_relative_eq!(state.current_physics_time, 72263.411813672);
+            assert_relative_eq!(state.current_physics_time_s, 72263.411813672);
         }
     }
 }

@@ -101,40 +101,40 @@ fn decode_state_field(
 ) -> Result<(), BridgeError> {
     match name {
         "m-currentPhysicsTime-SEC" => {
-            state.current_physics_time = parse_f32(name, value)?;
+            state.current_physics_time_s = parse_f32(name, value)?;
         }
         "m-currentPhysicsSpeedMultiplier" => {
             state.current_physics_speed_multiplier = parse_f32(name, value)?;
         }
         "m-airspeed-MPS" => {
-            state.airspeed = parse_f32(name, value)?;
+            state.airspeed_mps = parse_f32(name, value)?;
         }
         "m-altitudeASL-MTR" => {
-            state.altitude_asl = parse_f32(name, value)?;
+            state.altitude_asl_m = parse_f32(name, value)?;
         }
         "m-altitudeAGL-MTR" => {
-            state.altitude_agl = parse_f32(name, value)?;
+            state.altitude_agl_m = parse_f32(name, value)?;
         }
         "m-groundspeed-MPS" => {
-            state.groundspeed = parse_f32(name, value)?;
+            state.groundspeed_mps = parse_f32(name, value)?;
         }
         "m-pitchRate-DEGpSEC" => {
-            state.pitch_rate = parse_f32(name, value)?;
+            state.pitch_rate_dps = parse_f32(name, value)?;
         }
         "m-rollRate-DEGpSEC" => {
-            state.roll_rate = parse_f32(name, value)?;
+            state.roll_rate_dps = parse_f32(name, value)?;
         }
         "m-yawRate-DEGpSEC" => {
-            state.yaw_rate = parse_f32(name, value)?;
+            state.yaw_rate_dps = parse_f32(name, value)?;
         }
         "m-azimuth-DEG" => {
-            state.azimuth = parse_f32(name, value)?;
+            state.azimuth_deg = parse_f32(name, value)?;
         }
         "m-inclination-DEG" => {
-            state.inclination = parse_f32(name, value)?;
+            state.inclination_deg = parse_f32(name, value)?;
         }
         "m-roll-DEG" => {
-            state.roll = parse_f32(name, value)?;
+            state.roll_deg = parse_f32(name, value)?;
         }
         "m-orientationQuaternion-X" => {
             state.orientation_quaternion_x = parse_f32(name, value)?;
@@ -149,55 +149,55 @@ fn decode_state_field(
             state.orientation_quaternion_w = parse_f32(name, value)?;
         }
         "m-aircraftPositionX-MTR" => {
-            state.aircraft_position_x = parse_f32(name, value)?;
+            state.aircraft_position_x_m = parse_f32(name, value)?;
         }
         "m-aircraftPositionY-MTR" => {
-            state.aircraft_position_y = parse_f32(name, value)?;
+            state.aircraft_position_y_m = parse_f32(name, value)?;
         }
         "m-velocityWorldU-MPS" => {
-            state.velocity_world_u = parse_f32(name, value)?;
+            state.velocity_world_u_mps = parse_f32(name, value)?;
         }
         "m-velocityWorldV-MPS" => {
-            state.velocity_world_v = parse_f32(name, value)?;
+            state.velocity_world_v_mps = parse_f32(name, value)?;
         }
         "m-velocityWorldW-MPS" => {
-            state.velocity_world_w = parse_f32(name, value)?;
+            state.velocity_world_w_mps = parse_f32(name, value)?;
         }
         "m-velocityBodyU-MPS" => {
-            state.velocity_body_u = parse_f32(name, value)?;
+            state.velocity_body_u_mps = parse_f32(name, value)?;
         }
         "m-velocityBodyV-MPS" => {
-            state.velocity_body_v = parse_f32(name, value)?;
+            state.velocity_body_v_mps = parse_f32(name, value)?;
         }
         "m-velocityBodyW-MPS" => {
-            state.velocity_body_w = parse_f32(name, value)?;
+            state.velocity_body_w_mps = parse_f32(name, value)?;
         }
         "m-accelerationWorldAX-MPS2" => {
-            state.acceleration_world_ax = parse_f32(name, value)?;
+            state.acceleration_world_ax_mps2 = parse_f32(name, value)?;
         }
         "m-accelerationWorldAY-MPS2" => {
-            state.acceleration_world_ay = parse_f32(name, value)?;
+            state.acceleration_world_ay_mps2 = parse_f32(name, value)?;
         }
         "m-accelerationWorldAZ-MPS2" => {
-            state.acceleration_world_az = parse_f32(name, value)?;
+            state.acceleration_world_az_mps2 = parse_f32(name, value)?;
         }
         "m-accelerationBodyAX-MPS2" => {
-            state.acceleration_body_ax = parse_f32(name, value)?;
+            state.acceleration_body_ax_mps2 = parse_f32(name, value)?;
         }
         "m-accelerationBodyAY-MPS2" => {
-            state.acceleration_body_ay = parse_f32(name, value)?;
+            state.acceleration_body_ay_mps2 = parse_f32(name, value)?;
         }
         "m-accelerationBodyAZ-MPS2" => {
-            state.acceleration_body_az = parse_f32(name, value)?;
+            state.acceleration_body_az_mps2 = parse_f32(name, value)?;
         }
         "m-windX-MPS" => {
-            state.wind_x = parse_f32(name, value)?;
+            state.wind_x_mps = parse_f32(name, value)?;
         }
         "m-windY-MPS" => {
-            state.wind_y = parse_f32(name, value)?;
+            state.wind_y_mps = parse_f32(name, value)?;
         }
         "m-windZ-MPS" => {
-            state.wind_z = parse_f32(name, value)?;
+            state.wind_z_mps = parse_f32(name, value)?;
         }
         "m-propRPM" => {
             state.prop_rpm = parse_f32(name, value)?;
@@ -206,16 +206,16 @@ fn decode_state_field(
             state.heli_main_rotor_rpm = parse_f32(name, value)?;
         }
         "m-batteryVoltage-VOLTS" => {
-            state.battery_voltage = parse_f32(name, value)?;
+            state.battery_voltage_v = parse_f32(name, value)?;
         }
         "m-batteryCurrentDraw-AMPS" => {
-            state.battery_current_draw = parse_f32(name, value)?;
+            state.battery_current_draw_a = parse_f32(name, value)?;
         }
         "m-batteryRemainingCapacity-MAH" => {
-            state.battery_remaining_capacity = parse_f32(name, value)?;
+            state.battery_remaining_capacity_mah = parse_f32(name, value)?;
         }
         "m-fuelRemaining-OZ" => {
-            state.fuel_remaining = parse_f32(name, value)?;
+            state.fuel_remaining_oz = parse_f32(name, value)?;
         }
         "m-isLocked" => {
             state.is_locked = parse_bool(name, value)?;
