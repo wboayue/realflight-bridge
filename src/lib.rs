@@ -23,10 +23,15 @@ use thiserror::Error;
 #[non_exhaustive]
 pub enum BridgeError {
     /// Connection to the simulator failed
+    ///
+    /// From a remote bridge, a message starting with `proxy: ` means the proxy could
+    /// not reach the simulator; the client-to-proxy connection is still usable.
     #[error("Connection failed: {0}")]
     Connection(#[from] std::io::Error),
 
     /// Initialization failed
+    ///
+    /// From a remote bridge, a message starting with `proxy: ` was reported by the proxy.
     #[error("Initialization failed: {0}")]
     Initialization(String),
 

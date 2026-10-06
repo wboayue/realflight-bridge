@@ -1,7 +1,6 @@
 //! Wire protocol shared by remote bridges (clients) and the proxy (server):
 //! message types, length-prefixed framing, and response interpretation.
 
-use log::error;
 use serde::{Deserialize, Serialize};
 
 use crate::{BridgeError, ControlInputs, SimulatorState};
@@ -62,69 +61,56 @@ pub enum ResponseStatus {
 }
 
 /// An error reported by the proxy, sent to the client so it can rebuild the [BridgeError].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RemoteError {
-    /// Which [BridgeError] variant the proxy saw
-    pub kind: RemoteErrorKind,
-    /// Error message (for `Parse`, the parse message without the field)
-    pub message: String,
-    /// Field name for `Parse` errors
-    pub field: Option<String>,
-}
-
-/// [BridgeError] variant carried by a [RemoteError].
 ///
-/// Encoded by index, so proxy and client must use the same major version.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum RemoteErrorKind {
-    Connection,
-    Initialization,
-    SoapFault,
-    Parse,
-    Protocol,
+/// Mirrors [BridgeError]. Encoded by variant index, so proxy and client must use the
+/// same major version.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RemoteError {
+    /// Proxy could not reach the simulator ([BridgeError::Connection])
+    Connection(String),
+    /// Proxy failed to initialize its simulator bridge ([BridgeError::Initialization])
+    Initialization(String),
+    /// Simulator returned a SOAP fault ([BridgeError::SoapFault])
+    SoapFault(String),
+    /// Proxy failed to parse the simulator response ([BridgeError::Parse])
+    Parse { field: String, message: String },
+    /// Malformed request or simulator response ([BridgeError::Protocol])
+    Protocol(String),
 }
 
-impl RemoteError {
-    fn new(kind: RemoteErrorKind, message: String) -> Self {
-        Self {
-            kind,
-            message,
-            field: None,
-        }
-    }
-}
+/// Prefix for relayed errors that would otherwise look like client-side failures.
+const PROXY_PREFIX: &str = "proxy: ";
 
 impl From<&BridgeError> for RemoteError {
     fn from(err: &BridgeError) -> Self {
         match err {
-            BridgeError::Connection(e) => Self::new(RemoteErrorKind::Connection, e.to_string()),
-            BridgeError::Initialization(msg) => {
-                Self::new(RemoteErrorKind::Initialization, msg.clone())
-            }
-            BridgeError::SoapFault(msg) => Self::new(RemoteErrorKind::SoapFault, msg.clone()),
-            BridgeError::Parse { field, message } => Self {
-                kind: RemoteErrorKind::Parse,
+            BridgeError::Connection(e) => RemoteError::Connection(e.to_string()),
+            BridgeError::Initialization(msg) => RemoteError::Initialization(msg.clone()),
+            BridgeError::SoapFault(msg) => RemoteError::SoapFault(msg.clone()),
+            BridgeError::Parse { field, message } => RemoteError::Parse {
+                field: field.clone(),
                 message: message.clone(),
-                field: Some(field.clone()),
             },
-            BridgeError::Protocol(msg) => Self::new(RemoteErrorKind::Protocol, msg.clone()),
+            BridgeError::Protocol(msg) => RemoteError::Protocol(msg.clone()),
         }
     }
 }
 
+/// Rebuilds the proxy-side error. `Connection` and `Initialization` messages are
+/// prefixed with `"proxy: "` so they can be told apart from failures of the
+/// client-to-proxy link.
 impl From<RemoteError> for BridgeError {
     fn from(err: RemoteError) -> Self {
-        match err.kind {
-            RemoteErrorKind::Connection => {
-                BridgeError::Connection(std::io::Error::other(err.message))
+        match err {
+            RemoteError::Connection(msg) => {
+                BridgeError::Connection(std::io::Error::other(format!("{PROXY_PREFIX}{msg}")))
             }
-            RemoteErrorKind::Initialization => BridgeError::Initialization(err.message),
-            RemoteErrorKind::SoapFault => BridgeError::SoapFault(err.message),
-            RemoteErrorKind::Parse => BridgeError::Parse {
-                field: err.field.unwrap_or_default(),
-                message: err.message,
-            },
-            RemoteErrorKind::Protocol => BridgeError::Protocol(err.message),
+            RemoteError::Initialization(msg) => {
+                BridgeError::Initialization(format!("{PROXY_PREFIX}{msg}"))
+            }
+            RemoteError::SoapFault(msg) => BridgeError::SoapFault(msg),
+            RemoteError::Parse { field, message } => BridgeError::Parse { field, message },
+            RemoteError::Protocol(msg) => BridgeError::Protocol(msg),
         }
     }
 }
@@ -134,10 +120,7 @@ impl Response {
     pub(crate) fn into_state(self) -> Result<SimulatorState, BridgeError> {
         let payload = self.payload;
         Self::check_status(self.status)?;
-        payload.ok_or_else(|| {
-            error!("No payload in response");
-            BridgeError::Protocol("No payload in response".to_string())
-        })
+        payload.ok_or_else(|| BridgeError::Protocol("No payload in response".to_string()))
     }
 
     /// Interprets a response to an operation without a payload.
