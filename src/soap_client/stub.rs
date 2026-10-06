@@ -46,7 +46,7 @@ impl SoapClient for StubSoapClient {
         self.add_request(&envelope);
 
         let response_key = self.next_response();
-        let code = response_key.split('-').last().unwrap();
+        let code = response_key.rsplit('-').next().unwrap();
 
         Ok(SoapResponse {
             status_code: code.parse().unwrap(),
@@ -73,7 +73,7 @@ fn load_response(response_key: &str) -> String {
 
     let mut buffer = String::new();
 
-    let code = response_key.split('-').last().unwrap();
+    let code = response_key.rsplit('-').next().unwrap();
 
     buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
     buffer.push_str("Server: gSOAP/2.7\r\n");

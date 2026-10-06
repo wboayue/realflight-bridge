@@ -84,7 +84,7 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 ### Writing tests
 
 - Never require a running simulator; use stubs or `test_support::Server`
-- Bind test servers to `127.0.0.1:0` to get a free port; never hardcode ports
+- Listeners bind `127.0.0.1:0` and read the port back (`test_support::Server::port()`); never pick a port up front. Connection-refused tests may target `127.0.0.1:1`
 - Sync and async bridges share behavior; keep their tests in sync but avoid duplicating coverage that the shared code (`ops`, `wire`) already tests
 - Async tests use `#[tokio::test]` and are compiled only with `rt-tokio`; run `cargo test` and `cargo test --features rt-tokio` before committing
 - Float comparisons use `approx::assert_relative_eq!`

@@ -5,7 +5,6 @@
 //! - `configuration`: Tests for Configuration defaults and validation
 //! - `tcp_integration`: Integration tests using TCP stub server
 
-use std::net::TcpListener;
 use std::time::Duration;
 
 use crate::bridge::RealFlightBridge;
@@ -202,14 +201,6 @@ mod tcp_integration {
     use super::*;
     use crate::soap_client::test_support::Server;
 
-    fn get_available_port() -> u16 {
-        TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port()
-    }
-
     fn create_bridge(port: u16) -> Result<RealFlightLocalBridge, BridgeError> {
         let config = Configuration {
             simulator_host: format!("127.0.0.1:{}", port),
@@ -221,9 +212,8 @@ mod tcp_integration {
 
     #[test]
     fn tcp_client_sends_and_receives() {
-        let port = get_available_port();
-        let server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
-        let bridge = create_bridge(port).unwrap();
+        let server = Server::new(vec!["reset-aircraft-200".to_string()]);
+        let bridge = create_bridge(server.port()).unwrap();
 
         let result = bridge.reset_aircraft();
         assert!(result.is_ok(), "expected Ok: {:?}", result);

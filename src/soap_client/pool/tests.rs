@@ -3,25 +3,22 @@ use std::net::TcpListener;
 
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn get_available_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+/// Address with no listener; connections are refused.
+const UNREACHABLE_ADDR: &str = "127.0.0.1:1";
+
+fn listen() -> (TcpListener, SocketAddr) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    (listener, addr)
 }
 
-fn local_addr(port: u16) -> SocketAddr {
-    SocketAddr::from(([127, 0, 0, 1], port))
-}
-
-fn test_pool(
-    port: u16,
+fn make_pool(
+    addr: SocketAddr,
     connect_timeout: Duration,
     pool_size: usize,
     stats: Arc<StatisticsEngine>,
 ) -> Result<ConnectionPool, BridgeError> {
-    ConnectionPool::new(local_addr(port), connect_timeout, pool_size, stats)
+    ConnectionPool::new(addr, connect_timeout, pool_size, stats)
 }
 
 mod pool_creation {
@@ -29,23 +26,22 @@ mod pool_creation {
 
     #[test]
     fn succeeds_with_listening_server() {
-        let port = get_available_port();
-        let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (_listener, addr) = listen();
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats);
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats);
         assert!(pool.is_ok());
     }
 
     #[test]
     fn fails_when_server_unreachable() {
-        let port = get_available_port();
+        let addr = UNREACHABLE_ADDR.parse().unwrap();
         // Don't start a server - connection should fail
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats);
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats);
         assert!(pool.is_ok());
 
         let pool = pool.unwrap();
@@ -66,24 +62,22 @@ mod ensure_initialized {
 
     #[test]
     fn returns_ok_when_initialized() {
-        let port = get_available_port();
-        let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (_listener, addr) = listen();
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats).unwrap();
         let result = pool.ensure_initialized(INIT_TIMEOUT);
         assert!(result.is_ok());
     }
 
     #[test]
     fn multiple_calls_succeed_after_init() {
-        let port = get_available_port();
-        let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (_listener, addr) = listen();
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats).unwrap();
 
         // First call waits for initialization
         assert!(pool.ensure_initialized(INIT_TIMEOUT).is_ok());
@@ -99,12 +93,11 @@ mod get_connection {
 
     #[test]
     fn returns_valid_connection() {
-        let port = get_available_port();
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (listener, addr) = listen();
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats).unwrap();
         pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
         // Accept the connections the pool created
@@ -122,13 +115,12 @@ mod get_connection {
 
     #[test]
     fn connections_are_consumed() {
-        let port = get_available_port();
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (listener, addr) = listen();
 
         // pool_size = 2, so we can get exactly 2 connections initially
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats).unwrap();
         pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
         // Accept the connections the pool created
@@ -149,12 +141,11 @@ mod pool_drop {
 
     #[test]
     fn stops_creator_thread() {
-        let port = get_available_port();
-        let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (_listener, addr) = listen();
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats).unwrap();
         pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
         // Drop should complete without hanging
@@ -163,12 +154,12 @@ mod pool_drop {
 
     #[test]
     fn drop_is_safe_before_initialization() {
-        let port = get_available_port();
+        let addr = UNREACHABLE_ADDR.parse().unwrap();
         // No listener - pool will fail to initialize
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(100), 2, stats).unwrap();
         // Don't wait for initialization, just drop
         drop(pool);
     }
@@ -179,19 +170,18 @@ mod background_connection_creation {
 
     #[test]
     fn creates_new_connections_after_consumption() {
-        let port = get_available_port();
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (listener, addr) = listen();
         listener.set_nonblocking(true).unwrap();
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(100), 1, stats).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(100), 1, stats).unwrap();
         pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
         // Accept initial connection
         thread::sleep(Duration::from_millis(50));
         let mut accepted = 0;
-        while let Ok(_) = listener.accept() {
+        while listener.accept().is_ok() {
             accepted += 1;
         }
         assert!(accepted >= 1, "should have accepted at least 1 connection");
@@ -204,7 +194,7 @@ mod background_connection_creation {
 
         // Should have created at least one more connection
         let mut more_accepted = 0;
-        while let Ok(_) = listener.accept() {
+        while listener.accept().is_ok() {
             more_accepted += 1;
         }
         assert!(
@@ -219,12 +209,11 @@ mod error_statistics {
 
     #[test]
     fn increments_error_on_connection_failure() {
-        let port = get_available_port();
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let (listener, addr) = listen();
 
         let stats = Arc::new(StatisticsEngine::new());
 
-        let pool = test_pool(port, Duration::from_millis(50), 1, stats.clone()).unwrap();
+        let pool = make_pool(addr, Duration::from_millis(50), 1, stats.clone()).unwrap();
         pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
         // Accept initial connection
