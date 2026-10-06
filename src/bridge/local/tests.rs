@@ -87,6 +87,22 @@ mod configuration_tests {
         assert_eq!(cloned.connect_timeout, config.connect_timeout);
         assert_eq!(cloned.pool_size, config.pool_size);
     }
+
+    #[test]
+    fn invalid_host_fails_fast() {
+        let config = Configuration {
+            simulator_host: "not-a-valid-socket-addr".to_string(),
+            ..Configuration::default()
+        };
+
+        match RealFlightLocalBridge::with_configuration(&config) {
+            Err(BridgeError::Initialization(msg)) => {
+                assert!(msg.contains("Invalid simulator host"));
+            }
+            Err(other) => panic!("expected Initialization error, got {:?}", other),
+            Ok(_) => panic!("expected Initialization error, got Ok"),
+        }
+    }
 }
 
 // ============================================================================

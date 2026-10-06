@@ -2,13 +2,13 @@
 
 use std::{
     io::{BufRead, BufReader, Read, Write},
-    net::TcpStream,
+    net::{SocketAddr, TcpStream},
     sync::Arc,
+    time::Duration,
 };
 
 use crate::BridgeError;
 use crate::StatisticsEngine;
-use crate::bridge::local::Configuration;
 
 use super::pool::ConnectionPool;
 use super::xml::{build_http_request, create_response, parse_content_length, parse_status_line};
@@ -41,19 +41,25 @@ impl SoapClient for TcpSoapClient {
 impl TcpSoapClient {
     /// Creates a new TCP SOAP client.
     pub fn new(
-        configuration: Configuration,
+        addr: SocketAddr,
+        connect_timeout: Duration,
+        pool_size: usize,
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, BridgeError> {
-        let connection_pool = ConnectionPool::new(configuration, statistics.clone())?;
+        let connection_pool =
+            ConnectionPool::new(addr, connect_timeout, pool_size, statistics.clone())?;
         Ok(TcpSoapClient {
             statistics,
             connection_pool,
         })
     }
 
-    pub(crate) fn ensure_pool_initialized(&self) -> Result<(), BridgeError> {
-        self.connection_pool.ensure_pool_initialized()?;
-        Ok(())
+    /// Ensures the connection pool is initialized.
+    pub(crate) fn ensure_pool_initialized(
+        &self,
+        init_timeout: Duration,
+    ) -> Result<(), BridgeError> {
+        self.connection_pool.ensure_initialized(init_timeout)
     }
 
     /// Sends a request to the simulator.

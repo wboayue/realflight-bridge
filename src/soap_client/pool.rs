@@ -4,7 +4,7 @@
 //! This pool pre-creates connections in the background to hide latency.
 
 use std::{
-    net::TcpStream,
+    net::{SocketAddr, TcpStream},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -18,8 +18,6 @@ use log::{debug, error};
 
 use crate::BridgeError;
 use crate::StatisticsEngine;
-use crate::bridge::local::Configuration;
-use crate::defaults::INIT_TIMEOUT;
 
 /// Pre-creates TCP connections in a background thread to hide connection latency.
 ///
@@ -27,7 +25,6 @@ use crate::defaults::INIT_TIMEOUT;
 /// The idea for the pool is to create the next connection
 /// in the background while the current request is being processed.
 pub(crate) struct ConnectionPool {
-    config: Configuration,
     next_socket: Receiver<TcpStream>,
     creator_thread: Option<thread::JoinHandle<()>>,
     running: Arc<AtomicBool>,
@@ -38,13 +35,14 @@ pub(crate) struct ConnectionPool {
 
 impl ConnectionPool {
     pub fn new(
-        config: Configuration,
+        addr: SocketAddr,
+        connect_timeout: Duration,
+        pool_size: usize,
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, BridgeError> {
-        let (sender, receiver) = bounded(config.pool_size);
+        let (sender, receiver) = bounded(pool_size);
 
         let mut pool = ConnectionPool {
-            config,
             next_socket: receiver,
             creator_thread: None,
             running: Arc::new(AtomicBool::new(true)),
@@ -53,12 +51,12 @@ impl ConnectionPool {
             statistics,
         };
 
-        pool.initialize_pool(sender)?;
+        pool.initialize_pool(sender, addr, connect_timeout, pool_size)?;
 
         Ok(pool)
     }
 
-    pub(crate) fn ensure_pool_initialized(&self) -> Result<(), BridgeError> {
+    pub(crate) fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
         let now = Instant::now();
         while !self.initialized.load(Ordering::Relaxed) {
             // Check for initialization error
@@ -73,10 +71,10 @@ impl ConnectionPool {
                     err
                 )));
             }
-            if now.elapsed() > INIT_TIMEOUT {
+            if now.elapsed() > init_timeout {
                 return Err(BridgeError::Initialization(format!(
                     "Connection pool did not initialize. Waited for {:?}.",
-                    INIT_TIMEOUT
+                    init_timeout
                 )));
             }
             thread::sleep(Duration::from_millis(100));
@@ -85,8 +83,13 @@ impl ConnectionPool {
     }
 
     // Start the background thread that creates new connections
-    fn initialize_pool(&mut self, sender: Sender<TcpStream>) -> Result<(), BridgeError> {
-        let config = self.config.clone();
+    fn initialize_pool(
+        &mut self,
+        sender: Sender<TcpStream>,
+        simulator_address: SocketAddr,
+        connect_timeout: Duration,
+        pool_size: usize,
+    ) -> Result<(), BridgeError> {
         let running = Arc::clone(&self.running);
         let initialized = Arc::clone(&self.initialized);
         let init_error = Arc::clone(&self.init_error);
@@ -94,23 +97,11 @@ impl ConnectionPool {
 
         let worker = thread::Builder::new().name("connection-pool".to_string());
         let handle = worker.spawn(move || {
-            debug!("Creating {} connections in pool.", config.pool_size);
-
-            let simulator_address = match config.simulator_host.parse() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    let msg = format!("Invalid simulator host '{}': {}", config.simulator_host, e);
-                    error!("{}", msg);
-                    if let Ok(mut guard) = init_error.lock() {
-                        *guard = Some(msg);
-                    }
-                    return;
-                }
-            };
+            debug!("Creating {} connections in pool.", pool_size);
 
             // Create initial connections
-            for i in 0..config.pool_size {
-                match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
+            for i in 0..pool_size {
+                match TcpStream::connect_timeout(&simulator_address, connect_timeout) {
                     Ok(stream) => {
                         if let Err(e) = sender.send(stream) {
                             let msg = format!("Failed to queue initial connection {}: {}", i, e);
@@ -124,7 +115,7 @@ impl ConnectionPool {
                     Err(e) => {
                         let msg = format!(
                             "Failed to connect to simulator at {}: {}",
-                            config.simulator_host, e
+                            simulator_address, e
                         );
                         error!("{}", msg);
                         if let Ok(mut guard) = init_error.lock() {
@@ -140,11 +131,11 @@ impl ConnectionPool {
             // Continue creating connections as needed
             while running.load(Ordering::Relaxed) {
                 if sender.is_full() {
-                    thread::sleep(config.connect_timeout / 2);
+                    thread::sleep(connect_timeout / 2);
                     continue;
                 }
 
-                match TcpStream::connect_timeout(&simulator_address, config.connect_timeout) {
+                match TcpStream::connect_timeout(&simulator_address, connect_timeout) {
                     Ok(stream) => {
                         if let Err(e) = sender.send(stream) {
                             error!("Error sending connection: {}", e);
@@ -154,7 +145,7 @@ impl ConnectionPool {
                     Err(e) => {
                         error!("Error creating connection: {}", e);
                         statistics.increment_error_count();
-                        thread::sleep(config.connect_timeout);
+                        thread::sleep(connect_timeout);
                     }
                 }
             }
@@ -189,8 +180,9 @@ impl Drop for ConnectionPool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bridge::local::Configuration;
     use std::net::TcpListener;
+
+    const INIT_TIMEOUT: Duration = Duration::from_secs(5);
 
     fn get_available_port() -> u16 {
         TcpListener::bind("127.0.0.1:0")
@@ -200,12 +192,17 @@ mod tests {
             .port()
     }
 
-    fn test_config(host: &str) -> Configuration {
-        Configuration {
-            simulator_host: host.to_string(),
-            connect_timeout: Duration::from_millis(100),
-            pool_size: 2,
-        }
+    fn local_addr(port: u16) -> SocketAddr {
+        SocketAddr::from(([127, 0, 0, 1], port))
+    }
+
+    fn test_pool(
+        port: u16,
+        connect_timeout: Duration,
+        pool_size: usize,
+        stats: Arc<StatisticsEngine>,
+    ) -> Result<ConnectionPool, BridgeError> {
+        ConnectionPool::new(local_addr(port), connect_timeout, pool_size, stats)
     }
 
     mod pool_creation {
@@ -216,31 +213,10 @@ mod tests {
             let port = get_available_port();
             let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
-            let config = test_config(&format!("127.0.0.1:{}", port));
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats);
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats);
             assert!(pool.is_ok());
-        }
-
-        #[test]
-        fn fails_with_invalid_host_format() {
-            let config = test_config("not-a-valid-socket-addr");
-            let stats = Arc::new(StatisticsEngine::new());
-
-            let pool = ConnectionPool::new(config, stats);
-            assert!(pool.is_ok()); // Pool creation succeeds, error is deferred
-
-            let pool = pool.unwrap();
-            let result = pool.ensure_pool_initialized();
-            assert!(result.is_err());
-
-            match result {
-                Err(BridgeError::Initialization(msg)) => {
-                    assert!(msg.contains("Invalid simulator host"));
-                }
-                other => panic!("expected Initialization error, got {:?}", other),
-            }
         }
 
         #[test]
@@ -248,14 +224,13 @@ mod tests {
             let port = get_available_port();
             // Don't start a server - connection should fail
 
-            let config = test_config(&format!("127.0.0.1:{}", port));
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats);
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats);
             assert!(pool.is_ok());
 
             let pool = pool.unwrap();
-            let result = pool.ensure_pool_initialized();
+            let result = pool.ensure_initialized(INIT_TIMEOUT);
             assert!(result.is_err());
 
             match result {
@@ -267,7 +242,7 @@ mod tests {
         }
     }
 
-    mod ensure_pool_initialized {
+    mod ensure_initialized {
         use super::*;
 
         #[test]
@@ -275,22 +250,11 @@ mod tests {
             let port = get_available_port();
             let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
-            let config = test_config(&format!("127.0.0.1:{}", port));
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats).unwrap();
-            let result = pool.ensure_pool_initialized();
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+            let result = pool.ensure_initialized(INIT_TIMEOUT);
             assert!(result.is_ok());
-        }
-
-        #[test]
-        fn returns_error_on_init_failure() {
-            let config = test_config("invalid:host:format");
-            let stats = Arc::new(StatisticsEngine::new());
-
-            let pool = ConnectionPool::new(config, stats).unwrap();
-            let result = pool.ensure_pool_initialized();
-            assert!(result.is_err());
         }
 
         #[test]
@@ -298,16 +262,15 @@ mod tests {
             let port = get_available_port();
             let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
-            let config = test_config(&format!("127.0.0.1:{}", port));
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats).unwrap();
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
 
             // First call waits for initialization
-            assert!(pool.ensure_pool_initialized().is_ok());
+            assert!(pool.ensure_initialized(INIT_TIMEOUT).is_ok());
             // Subsequent calls return immediately
-            assert!(pool.ensure_pool_initialized().is_ok());
-            assert!(pool.ensure_pool_initialized().is_ok());
+            assert!(pool.ensure_initialized(INIT_TIMEOUT).is_ok());
+            assert!(pool.ensure_initialized(INIT_TIMEOUT).is_ok());
         }
     }
 
@@ -320,11 +283,10 @@ mod tests {
             let port = get_available_port();
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
-            let config = test_config(&format!("127.0.0.1:{}", port));
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats).unwrap();
-            pool.ensure_pool_initialized().unwrap();
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+            pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
             // Accept the connections the pool created
             let _conn1 = listener.accept().unwrap();
@@ -345,15 +307,10 @@ mod tests {
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
             // pool_size = 2, so we can get exactly 2 connections initially
-            let config = Configuration {
-                simulator_host: format!("127.0.0.1:{}", port),
-                connect_timeout: Duration::from_millis(100),
-                pool_size: 2,
-            };
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats).unwrap();
-            pool.ensure_pool_initialized().unwrap();
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+            pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
             // Accept the connections the pool created
             let _conn1 = listener.accept().unwrap();
@@ -376,11 +333,10 @@ mod tests {
             let port = get_available_port();
             let _listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
-            let config = test_config(&format!("127.0.0.1:{}", port));
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats).unwrap();
-            pool.ensure_pool_initialized().unwrap();
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
+            pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
             // Drop should complete without hanging
             drop(pool);
@@ -391,10 +347,9 @@ mod tests {
             let port = get_available_port();
             // No listener - pool will fail to initialize
 
-            let config = test_config(&format!("127.0.0.1:{}", port));
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats).unwrap();
+            let pool = test_pool(port, Duration::from_millis(100), 2, stats).unwrap();
             // Don't wait for initialization, just drop
             drop(pool);
         }
@@ -409,15 +364,10 @@ mod tests {
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
             listener.set_nonblocking(true).unwrap();
 
-            let config = Configuration {
-                simulator_host: format!("127.0.0.1:{}", port),
-                connect_timeout: Duration::from_millis(100),
-                pool_size: 1,
-            };
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats).unwrap();
-            pool.ensure_pool_initialized().unwrap();
+            let pool = test_pool(port, Duration::from_millis(100), 1, stats).unwrap();
+            pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
             // Accept initial connection
             thread::sleep(Duration::from_millis(50));
@@ -453,15 +403,10 @@ mod tests {
             let port = get_available_port();
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
-            let config = Configuration {
-                simulator_host: format!("127.0.0.1:{}", port),
-                connect_timeout: Duration::from_millis(50),
-                pool_size: 1,
-            };
             let stats = Arc::new(StatisticsEngine::new());
 
-            let pool = ConnectionPool::new(config, stats.clone()).unwrap();
-            pool.ensure_pool_initialized().unwrap();
+            let pool = test_pool(port, Duration::from_millis(50), 1, stats.clone()).unwrap();
+            pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
             // Accept initial connection
             let _conn = listener.accept().unwrap();
