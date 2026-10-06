@@ -416,7 +416,6 @@ mod tests {
             assert!(state.flight_axis_controller_is_active);
         }
 
-        #[cfg(not(feature = "uom"))]
         #[tokio::test]
         async fn parses_velocity_fields() {
             let port = get_available_port();

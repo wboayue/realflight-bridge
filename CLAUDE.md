@@ -9,7 +9,6 @@ cargo build                              # Build project
 cargo test                               # Run all tests
 cargo test <test_name>                   # Run single test
 cargo test --features rt-tokio           # Run tests with async support
-cargo test --features uom                # Run tests with SI units
 cargo bench --features bench-internals   # Run benchmarks
 cargo fmt                                # Format code
 cargo clippy                             # Run lints
@@ -52,7 +51,6 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 
 ### Feature Flags
 
-- `uom`: Strongly-typed SI units via `uom` crate
 - `rt-tokio`: Async bridge implementations
 - `bench-internals`: Expose internal functions for benchmarking
 

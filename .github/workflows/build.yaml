@@ -48,4 +48,3 @@ jobs:
         cargo test
         cargo test --no-default-features
         cargo test --features rt-tokio
-        cargo test --features uom

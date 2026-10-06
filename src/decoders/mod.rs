@@ -2,114 +2,6 @@ use log::debug;
 
 use crate::BridgeError;
 use crate::SimulatorState;
-use crate::unit_types::*;
-
-#[cfg(feature = "uom")]
-use uom::si::{
-    acceleration::meter_per_second_squared, angle::degree, angular_velocity::degree_per_second,
-    electric_charge::milliampere_hour, electric_current::ampere, electric_potential::volt,
-    length::meter, time::second, velocity::meter_per_second, volume::liter,
-};
-
-#[cfg(feature = "uom")]
-pub const OUNCES_PER_LITER: f32 = 33.814;
-
-// Converter functions: wrap f32 into appropriate types based on feature flag
-
-#[cfg(feature = "uom")]
-fn to_velocity(v: f32) -> Velocity {
-    Velocity::new::<meter_per_second>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_velocity(v: f32) -> Velocity {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_length(v: f32) -> Length {
-    Length::new::<meter>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_length(v: f32) -> Length {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_angular_velocity(v: f32) -> AngularVelocity {
-    AngularVelocity::new::<degree_per_second>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_angular_velocity(v: f32) -> AngularVelocity {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_angle(v: f32) -> Angle {
-    Angle::new::<degree>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_angle(v: f32) -> Angle {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_acceleration(v: f32) -> Acceleration {
-    Acceleration::new::<meter_per_second_squared>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_acceleration(v: f32) -> Acceleration {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_electric_potential(v: f32) -> ElectricPotential {
-    ElectricPotential::new::<volt>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_electric_potential(v: f32) -> ElectricPotential {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_electric_current(v: f32) -> ElectricCurrent {
-    ElectricCurrent::new::<ampere>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_electric_current(v: f32) -> ElectricCurrent {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_electric_charge(v: f32) -> ElectricCharge {
-    ElectricCharge::new::<milliampere_hour>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_electric_charge(v: f32) -> ElectricCharge {
-    v
-}
-
-#[cfg(feature = "uom")]
-fn to_volume(v: f32) -> Volume {
-    Volume::new::<liter>(v)
-}
-
-#[cfg(feature = "uom")]
-fn to_time(v: f32) -> Time {
-    Time::new::<second>(v)
-}
-#[cfg(not(feature = "uom"))]
-fn to_time(v: f32) -> Time {
-    v
-}
-
-/// Parse string to f32 and convert using provided function
-fn parse_with<T, F: Fn(f32) -> T>(name: &str, value: &str, convert: F) -> Result<T, BridgeError> {
-    let v: f32 = value.parse().map_err(|e| BridgeError::Parse {
-        field: name.to_string(),
-        message: format!("{}", e),
-    })?;
-    Ok(convert(v))
-}
 
 pub fn extract_element(name: &str, xml: &str) -> Option<String> {
     let start_tag = &format!("<{}>", name);
@@ -209,40 +101,40 @@ fn decode_state_field(
 ) -> Result<(), BridgeError> {
     match name {
         "m-currentPhysicsTime-SEC" => {
-            state.current_physics_time = parse_with(name, value, to_time)?;
+            state.current_physics_time = parse_f32(name, value)?;
         }
         "m-currentPhysicsSpeedMultiplier" => {
             state.current_physics_speed_multiplier = parse_f32(name, value)?;
         }
         "m-airspeed-MPS" => {
-            state.airspeed = parse_with(name, value, to_velocity)?;
+            state.airspeed = parse_f32(name, value)?;
         }
         "m-altitudeASL-MTR" => {
-            state.altitude_asl = parse_with(name, value, to_length)?;
+            state.altitude_asl = parse_f32(name, value)?;
         }
         "m-altitudeAGL-MTR" => {
-            state.altitude_agl = parse_with(name, value, to_length)?;
+            state.altitude_agl = parse_f32(name, value)?;
         }
         "m-groundspeed-MPS" => {
-            state.groundspeed = parse_with(name, value, to_velocity)?;
+            state.groundspeed = parse_f32(name, value)?;
         }
         "m-pitchRate-DEGpSEC" => {
-            state.pitch_rate = parse_with(name, value, to_angular_velocity)?;
+            state.pitch_rate = parse_f32(name, value)?;
         }
         "m-rollRate-DEGpSEC" => {
-            state.roll_rate = parse_with(name, value, to_angular_velocity)?;
+            state.roll_rate = parse_f32(name, value)?;
         }
         "m-yawRate-DEGpSEC" => {
-            state.yaw_rate = parse_with(name, value, to_angular_velocity)?;
+            state.yaw_rate = parse_f32(name, value)?;
         }
         "m-azimuth-DEG" => {
-            state.azimuth = parse_with(name, value, to_angle)?;
+            state.azimuth = parse_f32(name, value)?;
         }
         "m-inclination-DEG" => {
-            state.inclination = parse_with(name, value, to_angle)?;
+            state.inclination = parse_f32(name, value)?;
         }
         "m-roll-DEG" => {
-            state.roll = parse_with(name, value, to_angle)?;
+            state.roll = parse_f32(name, value)?;
         }
         "m-orientationQuaternion-X" => {
             state.orientation_quaternion_x = parse_f32(name, value)?;
@@ -257,55 +149,55 @@ fn decode_state_field(
             state.orientation_quaternion_w = parse_f32(name, value)?;
         }
         "m-aircraftPositionX-MTR" => {
-            state.aircraft_position_x = parse_with(name, value, to_length)?;
+            state.aircraft_position_x = parse_f32(name, value)?;
         }
         "m-aircraftPositionY-MTR" => {
-            state.aircraft_position_y = parse_with(name, value, to_length)?;
+            state.aircraft_position_y = parse_f32(name, value)?;
         }
         "m-velocityWorldU-MPS" => {
-            state.velocity_world_u = parse_with(name, value, to_velocity)?;
+            state.velocity_world_u = parse_f32(name, value)?;
         }
         "m-velocityWorldV-MPS" => {
-            state.velocity_world_v = parse_with(name, value, to_velocity)?;
+            state.velocity_world_v = parse_f32(name, value)?;
         }
         "m-velocityWorldW-MPS" => {
-            state.velocity_world_w = parse_with(name, value, to_velocity)?;
+            state.velocity_world_w = parse_f32(name, value)?;
         }
         "m-velocityBodyU-MPS" => {
-            state.velocity_body_u = parse_with(name, value, to_velocity)?;
+            state.velocity_body_u = parse_f32(name, value)?;
         }
         "m-velocityBodyV-MPS" => {
-            state.velocity_body_v = parse_with(name, value, to_velocity)?;
+            state.velocity_body_v = parse_f32(name, value)?;
         }
         "m-velocityBodyW-MPS" => {
-            state.velocity_body_w = parse_with(name, value, to_velocity)?;
+            state.velocity_body_w = parse_f32(name, value)?;
         }
         "m-accelerationWorldAX-MPS2" => {
-            state.acceleration_world_ax = parse_with(name, value, to_acceleration)?;
+            state.acceleration_world_ax = parse_f32(name, value)?;
         }
         "m-accelerationWorldAY-MPS2" => {
-            state.acceleration_world_ay = parse_with(name, value, to_acceleration)?;
+            state.acceleration_world_ay = parse_f32(name, value)?;
         }
         "m-accelerationWorldAZ-MPS2" => {
-            state.acceleration_world_az = parse_with(name, value, to_acceleration)?;
+            state.acceleration_world_az = parse_f32(name, value)?;
         }
         "m-accelerationBodyAX-MPS2" => {
-            state.acceleration_body_ax = parse_with(name, value, to_acceleration)?;
+            state.acceleration_body_ax = parse_f32(name, value)?;
         }
         "m-accelerationBodyAY-MPS2" => {
-            state.acceleration_body_ay = parse_with(name, value, to_acceleration)?;
+            state.acceleration_body_ay = parse_f32(name, value)?;
         }
         "m-accelerationBodyAZ-MPS2" => {
-            state.acceleration_body_az = parse_with(name, value, to_acceleration)?;
+            state.acceleration_body_az = parse_f32(name, value)?;
         }
         "m-windX-MPS" => {
-            state.wind_x = parse_with(name, value, to_velocity)?;
+            state.wind_x = parse_f32(name, value)?;
         }
         "m-windY-MPS" => {
-            state.wind_y = parse_with(name, value, to_velocity)?;
+            state.wind_y = parse_f32(name, value)?;
         }
         "m-windZ-MPS" => {
-            state.wind_z = parse_with(name, value, to_velocity)?;
+            state.wind_z = parse_f32(name, value)?;
         }
         "m-propRPM" => {
             state.prop_rpm = parse_f32(name, value)?;
@@ -314,16 +206,16 @@ fn decode_state_field(
             state.heli_main_rotor_rpm = parse_f32(name, value)?;
         }
         "m-batteryVoltage-VOLTS" => {
-            state.battery_voltage = parse_with(name, value, to_electric_potential)?;
+            state.battery_voltage = parse_f32(name, value)?;
         }
         "m-batteryCurrentDraw-AMPS" => {
-            state.battery_current_draw = parse_with(name, value, to_electric_current)?;
+            state.battery_current_draw = parse_f32(name, value)?;
         }
         "m-batteryRemainingCapacity-MAH" => {
-            state.battery_remaining_capacity = parse_with(name, value, to_electric_charge)?;
+            state.battery_remaining_capacity = parse_f32(name, value)?;
         }
         "m-fuelRemaining-OZ" => {
-            state.fuel_remaining = parse_fuel(name, value)?;
+            state.fuel_remaining = parse_f32(name, value)?;
         }
         "m-isLocked" => {
             state.is_locked = parse_bool(name, value)?;
@@ -358,18 +250,6 @@ fn parse_f32(name: &str, value: &str) -> Result<f32, BridgeError> {
         field: name.to_string(),
         message: format!("{}", e),
     })
-}
-
-/// Parse fuel: convert ounces to liters with uom, keep raw value without
-#[cfg(feature = "uom")]
-fn parse_fuel(name: &str, value: &str) -> Result<Volume, BridgeError> {
-    parse_with(name, value, |v| to_volume(v / OUNCES_PER_LITER))
-}
-
-/// Parse fuel: keep raw ounces value without uom
-#[cfg(not(feature = "uom"))]
-fn parse_fuel(name: &str, value: &str) -> Result<Volume, BridgeError> {
-    parse_f32(name, value)
 }
 
 fn parse_bool(name: &str, value: &str) -> Result<bool, BridgeError> {

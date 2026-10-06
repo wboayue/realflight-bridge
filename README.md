@@ -40,12 +40,6 @@ Use the latest version directly from crates.io:
 cargo add realflight-bridge
 ```
 
-For type-safe SI units via the `uom` crate:
-
-```bash
-cargo add realflight-bridge --features uom
-```
-
 ## Architecture
 
 This library provides two main ways to connect to RealFlight:
@@ -231,7 +225,7 @@ The SimulatorState struct provides comprehensive flight data including:
   - Engine state
   - Aircraft status messages
 
-Physical quantities primarily use metric units (meters, m/s, degrees). Some values use domain-standard units: fuel remaining is in ounces without `uom` or liters with `uom` enabled, and battery capacity is in milliamp-hours. Enable the `uom` feature for type-safe unit handling.
+All values are `f32`, passed through unconverted from RealFlight. Physical quantities use metric units (meters, m/s, m/s²) and degrees; fuel remaining is in ounces and battery capacity in milliamp-hours. See `SimulatorState` docs for per-field units.
 
 All bridge implementations provide a `statistics()` method for performance monitoring (request count, error count, frame rate).
 
