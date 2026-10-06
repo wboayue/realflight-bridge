@@ -9,7 +9,6 @@ cargo build                              # Build project
 cargo test                               # Run all tests
 cargo test <test_name>                   # Run single test
 cargo test --features rt-tokio           # Run tests with async support
-cargo test --features uom                # Run tests with SI units
 cargo bench --features bench-internals   # Run benchmarks
 cargo fmt                                # Format code
 cargo clippy                             # Run lints
@@ -46,13 +45,12 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 ### Key Data Types
 
 - `ControlInputs`: 12-channel RC input array (values 0.0-1.0)
-- `SimulatorState`: Complete flight state (position, orientation, velocities, accelerations)
+- `SimulatorState`: Complete flight state (position, orientation, velocities, accelerations). Fields carry unit suffixes (`_m`, `_mps`, `_deg`, ...); vectors grouped as `Vector3`, orientation as `Quaternion`
 - `Configuration`: Connection settings (host, timeout, pool size)
 - `StatisticsEngine`: Tracks request count, errors, frame rate for performance monitoring
 
 ### Feature Flags
 
-- `uom`: Strongly-typed SI units via `uom` crate
 - `rt-tokio`: Async bridge implementations
 - `bench-internals`: Expose internal functions for benchmarking
 

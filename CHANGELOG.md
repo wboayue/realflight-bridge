@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `Vector3` and `Quaternion` types, with `[f32; 3]` / `[f32; 4]` conversions
+- `Clone` for `SimulatorState`
+- Coordinate frame documentation for `SimulatorState` fields
+
+### Changed
+- **Breaking:** `SimulatorState` physical fields renamed with unit suffixes (e.g. `airspeed` → `airspeed_mps`, `altitude_agl` → `altitude_agl_m`, `azimuth` → `azimuth_deg`, `pitch_rate` → `pitch_rate_dps`, `fuel_remaining` → `fuel_remaining_oz`, `current_physics_time` → `current_physics_time_s`)
+- **Breaking:** vector fields grouped into `Vector3` (`velocity_world_mps`, `velocity_body_mps`, `acceleration_world_mps2`, `acceleration_body_mps2`, `wind_mps`) and quaternion fields into `orientation: Quaternion`. RealFlight u/v/w components map to x/y/z
+- Documented the unit of every `SimulatorState` field
+- Decoder reads leaf elements that carry XML attributes (previously skipped)
+
+### Removed
+- **Breaking:** `uom` feature and dependency. `SimulatorState` fields are now always `f32` ([#52](https://github.com/wboayue/realflight-bridge/issues/52))
+
+### Fixed
+- Decoder returns a `Parse` error instead of panicking when a response has more than 12 channel values
+- `aircraft_position_x_m` / `aircraft_position_y_m` docs: X is east, Y is north (previously documented as north/east)
+
+### Migration
+- Rename field accesses to their suffixed names; e.g. `velocity_world_u` → `velocity_world_mps.x`, `orientation_quaternion_w` → `orientation.w`. `uom` users: replace `state.field.get::<unit>()` with `state.field_<unit>`.
+- `fuel_remaining_oz` is in US fluid ounces (was liters with `uom`); 1 L = 33.814 US fl oz.
+- Angles and angular rates are in degrees (`uom` stored radians); use `.to_radians()` if needed.
+
 ## [1.1.0] - 2026-07-22
 
 ### Changed

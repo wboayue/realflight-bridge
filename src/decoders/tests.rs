@@ -2,7 +2,8 @@
 //!
 //! Organized into submodules:
 //! - `extract_element_tests`: Tests for XML element extraction
-//! - `decode_state_tests`: Tests for full simulator state decoding
+//! - `for_each_leaf_tests`: Tests for the leaf-element scanner
+//! - `decode_state_fields`: Tests for full simulator state decoding
 //! - `error_handling`: Tests for parse error handling
 
 use approx::assert_relative_eq;
@@ -157,6 +158,17 @@ mod error_handling {
     }
 
     #[test]
+    fn returns_error_for_too_many_channels() {
+        let xml = "<item>0.5</item>".repeat(13);
+        let result = decode_simulator_state(&xml);
+
+        match result {
+            Err(BridgeError::Parse { field, .. }) => assert_eq!(field, "channel[12]"),
+            other => panic!("expected Parse error, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn ignores_unknown_fields() {
         let xml = r#"<unknown-field>some value</unknown-field><m-propRPM>100.0</m-propRPM>"#;
         let result = decode_simulator_state(xml);
@@ -168,12 +180,179 @@ mod error_handling {
 }
 
 // ============================================================================
-// decode_simulator_state Full Parsing Tests (without uom)
+// for_each_leaf Tests
 // ============================================================================
 
-#[cfg(not(feature = "uom"))]
-mod decode_state_raw_values {
+mod for_each_leaf_tests {
     use super::*;
+
+    fn collect(xml: &str) -> Vec<(String, String)> {
+        let mut leaves = Vec::new();
+        for_each_leaf(xml, |tag, content| {
+            leaves.push((tag.to_string(), content.to_string()));
+            Ok(())
+        })
+        .unwrap();
+        leaves
+    }
+
+    #[test]
+    fn yields_leaf_elements_only() {
+        let leaves = collect("<?xml version='1.0'?><a><b>1</b><c>two</c></a>");
+        assert_eq!(
+            leaves,
+            vec![("b".into(), "1".into()), ("c".into(), "two".into())]
+        );
+    }
+
+    #[test]
+    fn strips_attributes_from_tag() {
+        let leaves = collect(r#"<m-airspeed-MPS xsi:type="xsd:double">1.5</m-airspeed-MPS>"#);
+        assert_eq!(leaves, vec![("m-airspeed-MPS".into(), "1.5".into())]);
+    }
+
+    #[test]
+    fn strips_attributes_after_any_whitespace() {
+        for xml in [
+            "<a\tx=\"1\">1</a>",
+            "<a\nx=\"1\">1</a>",
+            "<a\r\n  x=\"1\">1</a>",
+        ] {
+            assert_eq!(collect(xml), vec![("a".into(), "1".into())], "{xml:?}");
+        }
+    }
+
+    #[test]
+    fn yields_empty_content() {
+        assert_eq!(collect("<a></a>"), vec![("a".into(), "".into())]);
+    }
+
+    #[test]
+    fn skips_empty_element_with_attributes() {
+        let leaves = collect(r#"<a xsi:nil="true"></a><b>2</b>"#);
+        assert_eq!(leaves, vec![("b".into(), "2".into())]);
+    }
+
+    #[test]
+    fn returns_empty_for_no_tags() {
+        assert!(collect("plain text").is_empty());
+    }
+
+    #[test]
+    fn propagates_callback_error() {
+        let result = for_each_leaf("<a>1</a><b>2</b>", |tag, _| {
+            if tag == "b" {
+                Err(BridgeError::Parse {
+                    field: tag.to_string(),
+                    message: "stop".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        });
+        assert!(matches!(result, Err(BridgeError::Parse { field, .. }) if field == "b"));
+    }
+}
+
+// ============================================================================
+// decode_simulator_state Full Parsing Tests
+// ============================================================================
+
+mod decode_state_fields {
+    use super::*;
+
+    /// Each numeric tag gets a unique value so swapped mappings are caught.
+    #[test]
+    fn maps_each_numeric_tag_to_its_field() {
+        type Getter = fn(&SimulatorState) -> f32;
+        let cases: &[(&str, Getter)] = &[
+            ("m-currentPhysicsTime-SEC", |s| s.current_physics_time_s),
+            ("m-currentPhysicsSpeedMultiplier", |s| {
+                s.current_physics_speed_multiplier
+            }),
+            ("m-airspeed-MPS", |s| s.airspeed_mps),
+            ("m-altitudeASL-MTR", |s| s.altitude_asl_m),
+            ("m-altitudeAGL-MTR", |s| s.altitude_agl_m),
+            ("m-groundspeed-MPS", |s| s.groundspeed_mps),
+            ("m-pitchRate-DEGpSEC", |s| s.pitch_rate_dps),
+            ("m-rollRate-DEGpSEC", |s| s.roll_rate_dps),
+            ("m-yawRate-DEGpSEC", |s| s.yaw_rate_dps),
+            ("m-azimuth-DEG", |s| s.azimuth_deg),
+            ("m-inclination-DEG", |s| s.inclination_deg),
+            ("m-roll-DEG", |s| s.roll_deg),
+            ("m-orientationQuaternion-X", |s| s.orientation.x),
+            ("m-orientationQuaternion-Y", |s| s.orientation.y),
+            ("m-orientationQuaternion-Z", |s| s.orientation.z),
+            ("m-orientationQuaternion-W", |s| s.orientation.w),
+            ("m-aircraftPositionX-MTR", |s| s.aircraft_position_x_m),
+            ("m-aircraftPositionY-MTR", |s| s.aircraft_position_y_m),
+            ("m-velocityWorldU-MPS", |s| s.velocity_world_mps.x),
+            ("m-velocityWorldV-MPS", |s| s.velocity_world_mps.y),
+            ("m-velocityWorldW-MPS", |s| s.velocity_world_mps.z),
+            ("m-velocityBodyU-MPS", |s| s.velocity_body_mps.x),
+            ("m-velocityBodyV-MPS", |s| s.velocity_body_mps.y),
+            ("m-velocityBodyW-MPS", |s| s.velocity_body_mps.z),
+            ("m-accelerationWorldAX-MPS2", |s| {
+                s.acceleration_world_mps2.x
+            }),
+            ("m-accelerationWorldAY-MPS2", |s| {
+                s.acceleration_world_mps2.y
+            }),
+            ("m-accelerationWorldAZ-MPS2", |s| {
+                s.acceleration_world_mps2.z
+            }),
+            ("m-accelerationBodyAX-MPS2", |s| s.acceleration_body_mps2.x),
+            ("m-accelerationBodyAY-MPS2", |s| s.acceleration_body_mps2.y),
+            ("m-accelerationBodyAZ-MPS2", |s| s.acceleration_body_mps2.z),
+            ("m-windX-MPS", |s| s.wind_mps.x),
+            ("m-windY-MPS", |s| s.wind_mps.y),
+            ("m-windZ-MPS", |s| s.wind_mps.z),
+            ("m-propRPM", |s| s.prop_rpm),
+            ("m-heliMainRotorRPM", |s| s.heli_main_rotor_rpm),
+            ("m-batteryVoltage-VOLTS", |s| s.battery_voltage_v),
+            ("m-batteryCurrentDraw-AMPS", |s| s.battery_current_draw_a),
+            ("m-batteryRemainingCapacity-MAH", |s| {
+                s.battery_remaining_capacity_mah
+            }),
+            ("m-fuelRemaining-OZ", |s| s.fuel_remaining_oz),
+        ];
+
+        let xml: String = cases
+            .iter()
+            .enumerate()
+            .map(|(i, (tag, _))| format!("<{tag}>{}</{tag}>", i + 1))
+            .collect();
+        let state = decode_simulator_state(&xml).unwrap();
+
+        for (i, (tag, get)) in cases.iter().enumerate() {
+            assert_eq!(get(&state), (i + 1) as f32, "{tag}");
+        }
+    }
+
+    #[test]
+    fn maps_each_boolean_tag_to_its_field() {
+        type Getter = fn(&SimulatorState) -> bool;
+        let cases: &[(&str, Getter)] = &[
+            ("m-isLocked", |s| s.is_locked),
+            ("m-hasLostComponents", |s| s.has_lost_components),
+            ("m-anEngineIsRunning", |s| s.an_engine_is_running),
+            ("m-isTouchingGround", |s| s.is_touching_ground),
+            ("m-flightAxisControllerIsActive", |s| {
+                s.flight_axis_controller_is_active
+            }),
+            ("m-resetButtonHasBeenPressed", |s| {
+                s.reset_button_has_been_pressed
+            }),
+        ];
+
+        // Set one flag at a time so a swapped mapping shows up as a wrong field
+        for (tag, get) in cases {
+            let state = decode_simulator_state(&format!("<{tag}>true</{tag}>")).unwrap();
+            assert!(get(&state), "{tag}");
+            let set = cases.iter().filter(|(_, g)| g(&state)).count();
+            assert_eq!(set, 1, "{tag} set other flags");
+        }
+    }
 
     #[test]
     fn parses_previous_channel_inputs() {
@@ -190,7 +369,7 @@ mod decode_state_raw_values {
     fn parses_time_and_speed() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.current_physics_time, 72263.411813672);
+        assert_relative_eq!(state.current_physics_time_s, 72263.411813672);
         assert_relative_eq!(state.current_physics_speed_multiplier, 1.0);
     }
 
@@ -198,73 +377,73 @@ mod decode_state_raw_values {
     fn parses_velocity_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.airspeed, 0.040872246);
-        assert_relative_eq!(state.groundspeed, 4.6434447540377732E-06);
-        assert_relative_eq!(state.velocity_world_u, -2.005582700E-06);
-        assert_relative_eq!(state.velocity_world_v, 4.187984814E-06);
-        assert_relative_eq!(state.velocity_world_w, 0.040872246);
-        assert_relative_eq!(state.velocity_body_u, -0.001089469);
-        assert_relative_eq!(state.velocity_body_v, -0.000530726);
-        assert_relative_eq!(state.velocity_body_w, 0.040854275);
+        assert_relative_eq!(state.airspeed_mps, 0.040872246);
+        assert_relative_eq!(state.groundspeed_mps, 4.6434447540377732E-06);
+        assert_relative_eq!(state.velocity_world_mps.x, -2.005582700E-06);
+        assert_relative_eq!(state.velocity_world_mps.y, 4.187984814E-06);
+        assert_relative_eq!(state.velocity_world_mps.z, 0.040872246);
+        assert_relative_eq!(state.velocity_body_mps.x, -0.001089469);
+        assert_relative_eq!(state.velocity_body_mps.y, -0.000530726);
+        assert_relative_eq!(state.velocity_body_mps.z, 0.040854275);
     }
 
     #[test]
     fn parses_position_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.altitude_asl, 1127.370971679);
-        assert_relative_eq!(state.altitude_agl, 0.266309916);
-        assert_relative_eq!(state.aircraft_position_x, 5575.680664062);
-        assert_relative_eq!(state.aircraft_position_y, 1715.962158203);
+        assert_relative_eq!(state.altitude_asl_m, 1127.370971679);
+        assert_relative_eq!(state.altitude_agl_m, 0.266309916);
+        assert_relative_eq!(state.aircraft_position_x_m, 5575.680664062);
+        assert_relative_eq!(state.aircraft_position_y_m, 1715.962158203);
     }
 
     #[test]
     fn parses_angular_rate_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.pitch_rate, 0.001380353);
-        assert_relative_eq!(state.roll_rate, -0.000032227);
-        assert_relative_eq!(state.yaw_rate, 0.001473751);
+        assert_relative_eq!(state.pitch_rate_dps, 0.001380353);
+        assert_relative_eq!(state.roll_rate_dps, -0.000032227);
+        assert_relative_eq!(state.yaw_rate_dps, 0.001473751);
     }
 
     #[test]
     fn parses_orientation_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.azimuth, -89.607055664);
-        assert_relative_eq!(state.inclination, 1.533278226);
-        assert_relative_eq!(state.roll, -0.747124254);
+        assert_relative_eq!(state.azimuth_deg, -89.607055664);
+        assert_relative_eq!(state.inclination_deg, 1.533278226);
+        assert_relative_eq!(state.roll_deg, -0.747124254);
     }
 
     #[test]
     fn parses_quaternion_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.orientation_quaternion_x, 0.004899279);
-        assert_relative_eq!(state.orientation_quaternion_y, -0.014053969);
-        assert_relative_eq!(state.orientation_quaternion_z, -0.704661786);
-        assert_relative_eq!(state.orientation_quaternion_w, 0.709387302);
+        assert_relative_eq!(state.orientation.x, 0.004899279);
+        assert_relative_eq!(state.orientation.y, -0.014053969);
+        assert_relative_eq!(state.orientation.z, -0.704661786);
+        assert_relative_eq!(state.orientation.w, 0.709387302);
     }
 
     #[test]
     fn parses_acceleration_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.acceleration_world_ax, -0.000483050);
-        assert_relative_eq!(state.acceleration_world_ay, 0.001008689);
-        assert_relative_eq!(state.acceleration_world_az, 9.844209671);
-        assert_relative_eq!(state.acceleration_body_ax, -0.000176936);
-        assert_relative_eq!(state.acceleration_body_ay, -0.000086620);
-        assert_relative_eq!(state.acceleration_body_az, 0.044223785);
+        assert_relative_eq!(state.acceleration_world_mps2.x, -0.000483050);
+        assert_relative_eq!(state.acceleration_world_mps2.y, 0.001008689);
+        assert_relative_eq!(state.acceleration_world_mps2.z, 9.844209671);
+        assert_relative_eq!(state.acceleration_body_mps2.x, -0.000176936);
+        assert_relative_eq!(state.acceleration_body_mps2.y, -0.000086620);
+        assert_relative_eq!(state.acceleration_body_mps2.z, 0.044223785);
     }
 
     #[test]
     fn parses_wind_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.wind_x, 0.0);
-        assert_relative_eq!(state.wind_y, 0.0);
-        assert_relative_eq!(state.wind_z, 0.0);
+        assert_relative_eq!(state.wind_mps.x, 0.0);
+        assert_relative_eq!(state.wind_mps.y, 0.0);
+        assert_relative_eq!(state.wind_mps.z, 0.0);
     }
 
     #[test]
@@ -279,178 +458,10 @@ mod decode_state_raw_values {
     fn parses_battery_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.battery_voltage, 12.599982261);
-        assert_relative_eq!(state.battery_current_draw, 0.0);
-        assert_relative_eq!(state.battery_remaining_capacity, 3999.990722656);
-        assert_relative_eq!(state.fuel_remaining, -1.0);
-    }
-
-    #[test]
-    fn parses_boolean_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert!(!state.is_locked);
-        assert!(!state.has_lost_components);
-        assert!(state.an_engine_is_running);
-        assert!(!state.is_touching_ground);
-        assert!(state.flight_axis_controller_is_active);
-    }
-
-    #[test]
-    fn parses_status_field() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-        assert_eq!(state.current_aircraft_status, "CAS-WAITINGTOLAUNCH");
-    }
-}
-
-// ============================================================================
-// decode_simulator_state Full Parsing Tests (with uom)
-// ============================================================================
-
-#[cfg(feature = "uom")]
-mod decode_state_with_units {
-    use super::*;
-    use uom::si::acceleration::meter_per_second_squared;
-    use uom::si::angle::degree;
-    use uom::si::angular_velocity::degree_per_second;
-    use uom::si::electric_charge::milliampere_hour;
-    use uom::si::electric_current::ampere;
-    use uom::si::electric_potential::volt;
-    use uom::si::f32::{Angle, Length};
-    use uom::si::length::meter;
-    use uom::si::time::second;
-    use uom::si::velocity::meter_per_second;
-    use uom::si::volume::liter;
-
-    #[test]
-    fn parses_previous_channel_inputs() {
-        let state =
-            decode_simulator_state(SIM_STATE_RESPONSE).expect("Failed to decode simulator state");
-
-        assert_eq!(
-            state.previous_inputs.channels,
-            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.0]
-        );
-    }
-
-    #[test]
-    fn parses_time_and_speed() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_eq!(state.current_physics_time.get::<second>(), 72263.411813672);
-        assert_eq!(state.current_physics_speed_multiplier, 1.0);
-    }
-
-    #[test]
-    fn parses_velocity_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_eq!(state.airspeed.get::<meter_per_second>(), 0.040872246);
-        assert_eq!(state.groundspeed.get::<meter_per_second>(), 4.643444754E-06);
-    }
-
-    #[test]
-    fn parses_position_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_eq!(state.altitude_asl, Length::new::<meter>(1127.370971679));
-        assert_eq!(state.altitude_agl, Length::new::<meter>(0.266309916));
-        assert_relative_eq!(state.aircraft_position_x.get::<meter>(), 5575.680664062);
-        assert_relative_eq!(state.aircraft_position_y.get::<meter>(), 1715.962158203);
-    }
-
-    #[test]
-    fn parses_angular_rate_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_relative_eq!(state.pitch_rate.get::<degree_per_second>(), 0.001380353);
-        assert_relative_eq!(state.roll_rate.get::<degree_per_second>(), -0.000032227);
-        assert_relative_eq!(state.yaw_rate.get::<degree_per_second>(), 0.001473751);
-    }
-
-    #[test]
-    fn parses_orientation_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_eq!(state.azimuth, Angle::new::<degree>(-89.607055664));
-        assert_eq!(state.inclination, Angle::new::<degree>(1.533278226));
-        assert_eq!(state.roll, Angle::new::<degree>(-0.74712425470352173));
-    }
-
-    #[test]
-    fn parses_quaternion_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_relative_eq!(state.orientation_quaternion_x, 0.004899279);
-        assert_relative_eq!(state.orientation_quaternion_y, -0.014053969);
-        assert_relative_eq!(state.orientation_quaternion_z, -0.704661786);
-        assert_relative_eq!(state.orientation_quaternion_w, 0.709387302);
-    }
-
-    #[test]
-    fn parses_acceleration_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_relative_eq!(
-            state
-                .acceleration_world_ax
-                .get::<meter_per_second_squared>(),
-            -0.000483050
-        );
-        assert_relative_eq!(
-            state
-                .acceleration_world_ay
-                .get::<meter_per_second_squared>(),
-            0.001008689
-        );
-        assert_relative_eq!(
-            state
-                .acceleration_world_az
-                .get::<meter_per_second_squared>(),
-            9.844209671
-        );
-        assert_relative_eq!(
-            state.acceleration_body_ax.get::<meter_per_second_squared>(),
-            -0.000176936
-        );
-        assert_relative_eq!(
-            state.acceleration_body_ay.get::<meter_per_second_squared>(),
-            -8.662045001E-05
-        );
-        assert_relative_eq!(
-            state.acceleration_body_az.get::<meter_per_second_squared>(),
-            0.044223785
-        );
-    }
-
-    #[test]
-    fn parses_wind_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_relative_eq!(state.wind_x.get::<meter_per_second>(), 0.0);
-        assert_relative_eq!(state.wind_y.get::<meter_per_second>(), 0.0);
-        assert_relative_eq!(state.wind_z.get::<meter_per_second>(), 0.0);
-    }
-
-    #[test]
-    fn parses_engine_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_relative_eq!(state.prop_rpm, 47.404716491);
-        assert_relative_eq!(state.heli_main_rotor_rpm, -1.0);
-    }
-
-    #[test]
-    fn parses_battery_fields() {
-        let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
-
-        assert_relative_eq!(state.battery_voltage.get::<volt>(), 12.599982261);
-        assert_relative_eq!(state.battery_current_draw.get::<ampere>(), 0.0);
-        assert_relative_eq!(
-            state.battery_remaining_capacity.get::<milliampere_hour>(),
-            3999.990722656
-        );
-        assert_relative_eq!(state.fuel_remaining.get::<liter>(), -1.0 / OUNCES_PER_LITER);
+        assert_relative_eq!(state.battery_voltage_v, 12.599982261);
+        assert_relative_eq!(state.battery_current_draw_a, 0.0);
+        assert_relative_eq!(state.battery_remaining_capacity_mah, 3999.990722656);
+        assert_relative_eq!(state.fuel_remaining_oz, -1.0);
     }
 
     #[test]

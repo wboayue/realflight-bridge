@@ -37,34 +37,6 @@ pub enum BridgeError {
     #[error("Parse error for field '{field}': {message}")]
     Parse { field: String, message: String },
 }
-
-/// Conditional type aliases for physical quantities.
-/// With `uom` feature: strongly-typed SI units
-/// Without `uom` feature: raw f32 values
-#[cfg(feature = "uom")]
-mod unit_types {
-    pub use uom::si::f32::{
-        Acceleration, Angle, AngularVelocity, ElectricCharge, ElectricCurrent, ElectricPotential,
-        Length, Time, Velocity, Volume,
-    };
-}
-
-#[cfg(not(feature = "uom"))]
-mod unit_types {
-    pub type Velocity = f32;
-    pub type Length = f32;
-    pub type AngularVelocity = f32;
-    pub type Angle = f32;
-    pub type Acceleration = f32;
-    pub type ElectricPotential = f32;
-    pub type ElectricCurrent = f32;
-    pub type ElectricCharge = f32;
-    pub type Volume = f32;
-    pub type Time = f32;
-}
-
-use unit_types::*;
-
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::decode_simulator_state;
 
@@ -159,78 +131,133 @@ pub struct ControlInputs {
     pub channels: [f32; 12],
 }
 
+/// Three-component vector. Frame and unit depend on the field holding it; see
+/// [`SimulatorState`].
+///
+/// Converts to and from `[x, y, z]`.
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Vector3 {
+    /// X component (RealFlight U for velocities)
+    pub x: f32,
+    /// Y component (RealFlight V for velocities)
+    pub y: f32,
+    /// Z component (RealFlight W for velocities)
+    pub z: f32,
+}
+
+impl From<[f32; 3]> for Vector3 {
+    fn from([x, y, z]: [f32; 3]) -> Self {
+        Self { x, y, z }
+    }
+}
+
+impl From<Vector3> for [f32; 3] {
+    fn from(v: Vector3) -> Self {
+        [v.x, v.y, v.z]
+    }
+}
+
+/// Orientation quaternion in RealFlight's convention (unitless).
+///
+/// Converts to and from `[x, y, z, w]` (scalar last). RealFlight's axes differ
+/// from NED; see [`SimulatorState::orientation`].
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Quaternion {
+    /// X (i) component
+    pub x: f32,
+    /// Y (j) component
+    pub y: f32,
+    /// Z (k) component
+    pub z: f32,
+    /// W (scalar) component
+    pub w: f32,
+}
+
+impl From<[f32; 4]> for Quaternion {
+    fn from([x, y, z, w]: [f32; 4]) -> Self {
+        Self { x, y, z, w }
+    }
+}
+
+impl From<Quaternion> for [f32; 4] {
+    fn from(q: Quaternion) -> Self {
+        [q.x, q.y, q.z, q.w]
+    }
+}
+
 /// Represents the complete state of the simulated aircraft in RealFlight.
-/// Physical quantities use metric units (strongly-typed with `uom` feature, raw f32 otherwise).
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+///
+/// # Units
+///
+/// Values are passed through unconverted from RealFlight. Field names carry a unit
+/// suffix: `_m` meters, `_mps` m/s, `_mps2` m/s², `_deg` degrees, `_dps` deg/s,
+/// `_v` volts, `_a` amps, `_mah` milliamp-hours, `_oz` US fluid ounces, `_s` seconds.
+///
+/// # Frames
+///
+/// RealFlight does not document its axes, and they are not consistent across
+/// fields. Values are passed through as-is. The conventions below follow
+/// ArduPilot's RealFlight SITL integration (`SIM_FlightAxis.cpp`):
+///
+/// * `velocity_world_mps`: x north, y east, z down (NED)
+/// * `aircraft_position_x_m`, `aircraft_position_y_m`, `wind_mps`: x east, y north
+///   (wind z down)
+/// * `acceleration_body_mps2`: x forward, y right, z down
+/// * `yaw_rate_dps`: positive is nose left, opposite to NED
+/// * `orientation`: see field docs
+///
+/// `velocity_body_mps` and `acceleration_world_mps2` are not used by ArduPilot;
+/// their axes are unverified.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
     pub previous_inputs: ControlInputs,
-    /// Velocity relative to the air mass [meters/second]
-    pub airspeed: Velocity,
+    /// Velocity relative to the air mass (m/s)
+    pub airspeed_mps: f32,
     /// Altitude above sea level (m)
-    pub altitude_asl: Length,
+    pub altitude_asl_m: f32,
     /// Altitude above ground level (m)
-    pub altitude_agl: Length,
-    /// Velocity relative to the ground [meters/second]
-    pub groundspeed: Velocity,
-    /// Pitch rate around body Y axis [degrees/second]
-    pub pitch_rate: AngularVelocity,
-    /// Roll rate around body X axis [degrees/second]
-    pub roll_rate: AngularVelocity,
-    /// Yaw rate around body Z axis [degrees/second]
-    pub yaw_rate: AngularVelocity,
+    pub altitude_agl_m: f32,
+    /// Velocity relative to the ground (m/s)
+    pub groundspeed_mps: f32,
+    /// Pitch rate around body Y axis (deg/s)
+    pub pitch_rate_dps: f32,
+    /// Roll rate around body X axis (deg/s)
+    pub roll_rate_dps: f32,
+    /// Yaw rate (deg/s). Positive is nose left, opposite to NED
+    pub yaw_rate_dps: f32,
     /// Heading angle (true north reference) (deg)
-    pub azimuth: Angle,
+    pub azimuth_deg: f32,
     /// Pitch angle (nose up reference) (deg)
-    pub inclination: Angle,
+    pub inclination_deg: f32,
     /// Roll angle (right wing down reference) (deg)
-    pub roll: Angle,
-    /// Aircraft position along world X axis (North) (m)
-    pub aircraft_position_x: Length,
-    /// Aircraft position along world Y axis (East) (m)
-    pub aircraft_position_y: Length,
-    /// Velocity component along world X axis (North) [meters/second]
-    pub velocity_world_u: Velocity,
-    /// Velocity component along world Y axis (East) [meters/second]
-    pub velocity_world_v: Velocity,
-    /// Velocity component along world Z axis (Down) [meters/second]
-    pub velocity_world_w: Velocity,
-    /// Forward velocity in body frame [meters/second]
-    pub velocity_body_u: Velocity,
-    /// Lateral velocity in body frame [meters/second]
-    pub velocity_body_v: Velocity,
-    /// Vertical velocity in body frame [meters/second]
-    pub velocity_body_w: Velocity,
-    /// Acceleration along world X axis (North) [meters/second²]
-    pub acceleration_world_ax: Acceleration,
-    /// Acceleration along world Y axis (East) [meters/second²]
-    pub acceleration_world_ay: Acceleration,
-    /// Acceleration along world Z axis (Down) [meters/second²]
-    pub acceleration_world_az: Acceleration,
-    /// Acceleration along body X axis (Forward) [meters/second²]
-    pub acceleration_body_ax: Acceleration,
-    /// Acceleration along body Y axis (Right) [meters/second²]
-    pub acceleration_body_ay: Acceleration,
-    /// Acceleration along body Z axis (Down) [meters/second²]
-    pub acceleration_body_az: Acceleration,
-    /// Wind velocity along world X axis [meters/second]
-    pub wind_x: Velocity,
-    /// Wind velocity along world Y axis [meters/second]
-    pub wind_y: Velocity,
-    /// Wind velocity along world Z axis [meters/second]
-    pub wind_z: Velocity,
-    /// Propeller RPM for piston/electric aircraft [revolutions/minute]
+    pub roll_deg: f32,
+    /// Aircraft position, east (m)
+    pub aircraft_position_x_m: f32,
+    /// Aircraft position, north (m)
+    pub aircraft_position_y_m: f32,
+    /// Velocity in world frame, NED (m/s)
+    pub velocity_world_mps: Vector3,
+    /// Velocity in body frame (m/s). Axes unverified
+    pub velocity_body_mps: Vector3,
+    /// Acceleration in world frame (m/s²). Axes unverified
+    pub acceleration_world_mps2: Vector3,
+    /// Acceleration in body frame, forward/right/down (m/s²)
+    pub acceleration_body_mps2: Vector3,
+    /// Wind velocity: x east, y north, z down (m/s)
+    pub wind_mps: Vector3,
+    /// Propeller RPM for piston/electric aircraft (rpm)
     pub prop_rpm: f32,
-    /// Main rotor RPM for helicopters [revolutions/minute]
+    /// Main rotor RPM for helicopters (rpm)
     pub heli_main_rotor_rpm: f32,
     /// Battery voltage (V)
-    pub battery_voltage: ElectricPotential,
+    pub battery_voltage_v: f32,
     /// Current draw from battery (A)
-    pub battery_current_draw: ElectricCurrent,
-    /// Remaining battery capacity [milliamperes-hour]
-    pub battery_remaining_capacity: ElectricCharge,
-    /// Remaining fuel volume (oz)
-    pub fuel_remaining: Volume,
+    pub battery_current_draw_a: f32,
+    /// Remaining battery capacity (mAh)
+    pub battery_remaining_capacity_mah: f32,
+    /// Remaining fuel volume (US fl oz)
+    pub fuel_remaining_oz: f32,
     /// True if aircraft is in a frozen/paused state
     pub is_locked: bool,
     /// True if aircraft has lost components due to damage
@@ -241,18 +268,15 @@ pub struct SimulatorState {
     pub is_touching_ground: bool,
     /// Current status message from simulator
     pub current_aircraft_status: String,
-    /// Current simulation time
-    pub current_physics_time: Time,
-    /// Current time acceleration factor
+    /// Current simulation time (s)
+    pub current_physics_time_s: f32,
+    /// Current time acceleration factor (unitless)
     pub current_physics_speed_multiplier: f32,
-    /// Quaternion X component (scalar)
-    pub orientation_quaternion_x: f32,
-    /// Quaternion Y component (scalar)
-    pub orientation_quaternion_y: f32,
-    /// Quaternion Z component (scalar)
-    pub orientation_quaternion_z: f32,
-    /// Quaternion W component (scalar)
-    pub orientation_quaternion_w: f32,
+    /// Aircraft orientation in RealFlight's convention.
+    ///
+    /// For a body-to-NED quaternion, NED `(w, x, y, z)` = RealFlight `(w, y, x, -z)`,
+    /// as ArduPilot does.
+    pub orientation: Quaternion,
     /// True if external flight controller is active
     pub flight_axis_controller_is_active: bool,
     /// True if reset button was pressed

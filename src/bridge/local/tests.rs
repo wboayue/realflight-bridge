@@ -8,17 +8,19 @@
 use std::net::TcpListener;
 use std::time::Duration;
 
-use approx::assert_relative_eq;
-
 use crate::bridge::RealFlightBridge;
 use crate::soap_client::stub::StubSoapClient;
-use crate::{BridgeError, ControlInputs, DEFAULT_SIMULATOR_HOST};
+use crate::{
+    BridgeError, ControlInputs, DEFAULT_SIMULATOR_HOST, SimulatorState, decode_simulator_state,
+};
 
 use super::{Configuration, RealFlightLocalBridge};
 
 // ============================================================================
 // Test Fixtures
 // ============================================================================
+
+const RETURN_DATA_200: &str = include_str!("../../../testdata/responses/return-data-200.xml");
 
 mod fixtures {
     pub const RESET_AIRCRAFT_REQUEST: &str = "\
@@ -208,198 +210,14 @@ mod exchange_data {
     }
 
     #[test]
-    fn parses_boolean_fields() {
+    fn returns_decoded_state() {
         let bridge = stub_bridge(vec!["return-data-200"]);
-        let control = ControlInputs::default();
 
-        let state = bridge.exchange_data(&control).unwrap();
+        let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
-        assert!(!state.is_locked);
-        assert!(!state.has_lost_components);
-        assert!(state.an_engine_is_running);
-        assert!(!state.is_touching_ground);
-        assert!(state.flight_axis_controller_is_active);
-    }
-
-    #[test]
-    fn parses_string_fields() {
-        let bridge = stub_bridge(vec!["return-data-200"]);
-        let control = ControlInputs::default();
-
-        let state = bridge.exchange_data(&control).unwrap();
-        assert_eq!(state.current_aircraft_status, "CAS-WAITINGTOLAUNCH");
-    }
-
-    #[test]
-    fn parses_rpm_fields() {
-        let bridge = stub_bridge(vec!["return-data-200"]);
-        let control = ControlInputs::default();
-
-        let state = bridge.exchange_data(&control).unwrap();
-        assert_relative_eq!(state.prop_rpm, 47.404716491);
-        assert_relative_eq!(state.heli_main_rotor_rpm, -1.0);
-    }
-
-    #[cfg(not(feature = "uom"))]
-    mod raw_values {
-        use super::*;
-
-        #[test]
-        fn parses_velocity_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.airspeed, 0.040872246);
-            assert_relative_eq!(state.groundspeed, 4.643444754E-06);
-            assert_relative_eq!(state.velocity_world_u, -2.005582700E-06);
-            assert_relative_eq!(state.velocity_world_v, 4.187984814E-06);
-            assert_relative_eq!(state.velocity_world_w, 0.040872246);
-            assert_relative_eq!(state.velocity_body_u, -0.001089469);
-            assert_relative_eq!(state.velocity_body_v, -0.000530726);
-            assert_relative_eq!(state.velocity_body_w, 0.040854275);
-        }
-
-        #[test]
-        fn parses_position_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.altitude_asl, 1127.370971679);
-            assert_relative_eq!(state.altitude_agl, 0.266309916);
-            assert_relative_eq!(state.aircraft_position_x, 5575.6806640625);
-            assert_relative_eq!(state.aircraft_position_y, 1715.962158203125);
-        }
-
-        #[test]
-        fn parses_acceleration_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.acceleration_world_ax, -0.000483050);
-            assert_relative_eq!(state.acceleration_world_ay, 0.001008689);
-            assert_relative_eq!(state.acceleration_world_az, 9.844209671);
-            assert_relative_eq!(state.acceleration_body_ax, -0.000176936);
-            assert_relative_eq!(state.acceleration_body_ay, -8.662045001E-05);
-            assert_relative_eq!(state.acceleration_body_az, 0.044223785);
-        }
-
-        #[test]
-        fn parses_battery_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.battery_voltage, 12.599982261);
-            assert_relative_eq!(state.battery_current_draw, 0.0);
-            assert_relative_eq!(state.battery_remaining_capacity, 3999.990722656);
-            assert_relative_eq!(state.fuel_remaining, -1.0);
-        }
-
-        #[test]
-        fn parses_angular_rate_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.pitch_rate, 0.001380353);
-            assert_relative_eq!(state.roll_rate, -0.000032227);
-            assert_relative_eq!(state.yaw_rate, 0.001473751);
-        }
-
-        #[test]
-        fn parses_wind_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.wind_x, 0.0);
-            assert_relative_eq!(state.wind_y, 0.0);
-            assert_relative_eq!(state.wind_z, 0.0);
-        }
-
-        #[test]
-        fn parses_time_field() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.current_physics_time, 72263.411813672);
-        }
-    }
-
-    #[cfg(feature = "uom")]
-    mod with_units {
-        use super::*;
-        use uom::si::acceleration::meter_per_second_squared;
-        use uom::si::angular_velocity::degree_per_second;
-        use uom::si::electric_charge::milliampere_hour;
-        use uom::si::electric_current::ampere;
-        use uom::si::electric_potential::volt;
-        use uom::si::length::meter;
-        use uom::si::time::second;
-        use uom::si::velocity::meter_per_second;
-        use uom::si::volume::liter;
-
-        use crate::decoders::OUNCES_PER_LITER;
-
-        #[test]
-        fn parses_velocity_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.airspeed.get::<meter_per_second>(), 0.040872246);
-            assert_relative_eq!(state.groundspeed.get::<meter_per_second>(), 4.643444754E-06);
-        }
-
-        #[test]
-        fn parses_position_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.altitude_asl.get::<meter>(), 1127.370971679);
-            assert_relative_eq!(state.altitude_agl.get::<meter>(), 0.266309916);
-        }
-
-        #[test]
-        fn parses_acceleration_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(
-                state
-                    .acceleration_world_az
-                    .get::<meter_per_second_squared>(),
-                9.844209671
-            );
-        }
-
-        #[test]
-        fn parses_battery_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.battery_voltage.get::<volt>(), 12.599982261);
-            assert_relative_eq!(state.battery_current_draw.get::<ampere>(), 0.0);
-            assert_relative_eq!(
-                state.battery_remaining_capacity.get::<milliampere_hour>(),
-                3999.990722656
-            );
-            assert_relative_eq!(state.fuel_remaining.get::<liter>(), -1.0 / OUNCES_PER_LITER);
-        }
-
-        #[test]
-        fn parses_angular_rate_fields() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.pitch_rate.get::<degree_per_second>(), 0.001380353);
-            assert_relative_eq!(state.roll_rate.get::<degree_per_second>(), -0.000032227);
-            assert_relative_eq!(state.yaw_rate.get::<degree_per_second>(), 0.001473751);
-        }
-
-        #[test]
-        fn parses_time_field() {
-            let bridge = stub_bridge(vec!["return-data-200"]);
-            let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
-
-            assert_relative_eq!(state.current_physics_time.get::<second>(), 72263.411813672);
-        }
+        let expected = decode_simulator_state(RETURN_DATA_200).unwrap();
+        assert_ne!(expected, SimulatorState::default());
+        assert_eq!(state, expected);
     }
 }
 
