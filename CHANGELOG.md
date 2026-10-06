@@ -11,10 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Vector3` and `Quaternion` types, with `[f32; 3]` / `[f32; 4]` conversions
 - `Clone` for `SimulatorState`
 - Coordinate frame documentation for `SimulatorState` fields
+- `BridgeError::Protocol` for malformed or unexpected responses from the simulator or proxy ([#60](https://github.com/wboayue/realflight-bridge/issues/60))
+- Remote bridges return the proxy-side error (e.g. a simulator `SoapFault`) instead of a generic failure
 
 ### Changed
 - **Breaking:** `SimulatorState` physical fields renamed with unit suffixes (e.g. `airspeed` → `airspeed_mps`, `altitude_agl` → `altitude_agl_m`, `azimuth` → `azimuth_deg`, `pitch_rate` → `pitch_rate_dps`, `fuel_remaining` → `fuel_remaining_oz`, `current_physics_time` → `current_physics_time_s`)
 - **Breaking:** vector fields grouped into `Vector3` (`velocity_world_mps`, `velocity_body_mps`, `acceleration_world_mps2`, `acceleration_body_mps2`, `wind_mps`) and quaternion fields into `orientation: Quaternion`. RealFlight u/v/w components map to x/y/z
+- **Breaking:** `BridgeError` is `#[non_exhaustive]`
+- **Breaking:** HTTP parsing and remote protocol errors return `BridgeError::Protocol` instead of `SoapFault`. `SoapFault` now only means the simulator returned a fault
+- **Breaking:** wire format: `ResponseStatus::Error` carries a `RemoteError`. Proxy and clients must both be 2.x
 - Documented the unit of every `SimulatorState` field
 - Decoder reads leaf elements that carry XML attributes (previously skipped)
 - Decoder ~33% faster: tokenizer reuses buffers instead of allocating per tag
@@ -30,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename field accesses to their suffixed names; e.g. `velocity_world_u` → `velocity_world_mps.x`, `orientation_quaternion_w` → `orientation.w`. `uom` users: replace `state.field.get::<unit>()` with `state.field_<unit>`.
 - `fuel_remaining_oz` is in US fluid ounces (was liters with `uom`); 1 L = 33.814 US fl oz.
 - Angles and angular rates are in degrees (`uom` stored radians); use `.to_radians()` if needed.
+- Add a `_ =>` arm when matching `BridgeError`. Match `Protocol` where you previously matched non-fault `SoapFault` messages (e.g. "Missing Content-Length header", "Proxy reported operation failure").
+- Upgrade the proxy and remote clients together.
 
 ## [1.1.0] - 2026-07-22
 

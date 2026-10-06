@@ -9,7 +9,9 @@ use std::{io::ErrorKind, time::Duration};
 
 use crate::{BridgeError, ControlInputs, RealFlightBridge, SimulatorState};
 
-use super::{RealFlightRemoteBridge, RequestType, Response, ResponseStatus};
+use super::{
+    RealFlightRemoteBridge, RemoteError, RemoteErrorKind, RequestType, Response, ResponseStatus,
+};
 use crate::bridge::wire::test_support::MockProxy;
 
 // ============================================================================
@@ -118,7 +120,11 @@ fn malformed_response_is_invalid_data() {
 #[test]
 fn unit_ops_fail_on_proxy_error() {
     let proxy = MockProxy::respond(Response {
-        status: ResponseStatus::Error,
+        status: ResponseStatus::Error(RemoteError {
+            kind: RemoteErrorKind::Protocol,
+            message: "bad".into(),
+            field: None,
+        }),
         payload: None,
     });
     let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
@@ -126,6 +132,24 @@ fn unit_ops_fail_on_proxy_error() {
     assert!(client.enable_rc().is_err());
     assert!(client.disable_rc().is_err());
     assert!(client.reset_aircraft().is_err());
+}
+
+#[test]
+fn relays_simulator_fault_from_proxy() {
+    let proxy = MockProxy::respond(Response {
+        status: ResponseStatus::Error(RemoteError {
+            kind: RemoteErrorKind::SoapFault,
+            message: "Preexisting controller reference".into(),
+            field: None,
+        }),
+        payload: None,
+    });
+    let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
+
+    match client.disable_rc() {
+        Err(BridgeError::SoapFault(msg)) => assert_eq!(msg, "Preexisting controller reference"),
+        other => panic!("expected SoapFault, got {:?}", other),
+    }
 }
 
 #[test]

@@ -173,12 +173,24 @@ async fn malformed_response_is_invalid_data() {
 
 #[tokio::test]
 async fn unit_ops_fail_on_proxy_error() {
-    let proxy = MockProxy::respond(Response::error());
+    let proxy = MockProxy::respond(Response::error(&BridgeError::Protocol("bad".into())));
     let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
 
     assert!(bridge.enable_rc().await.is_err());
     assert!(bridge.disable_rc().await.is_err());
     assert!(bridge.reset_aircraft().await.is_err());
+}
+
+#[tokio::test]
+async fn relays_simulator_fault_from_proxy() {
+    let fault = BridgeError::SoapFault("Preexisting controller reference".into());
+    let proxy = MockProxy::respond(Response::error(&fault));
+    let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
+
+    match bridge.disable_rc().await {
+        Err(BridgeError::SoapFault(msg)) => assert_eq!(msg, "Preexisting controller reference"),
+        other => panic!("expected SoapFault, got {:?}", other),
+    }
 }
 
 #[tokio::test]

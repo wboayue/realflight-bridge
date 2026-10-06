@@ -42,7 +42,9 @@ use super::RealFlightBridge;
 use super::wire::RequestRef;
 use super::wire::frame::{decode_frame, encode_frame};
 use super::wire::frame_io::read_frame;
-pub use super::wire::{Request, RequestType, Response, ResponseStatus};
+pub use super::wire::{
+    RemoteError, RemoteErrorKind, Request, RequestType, Response, ResponseStatus,
+};
 
 #[cfg(test)]
 mod tests;

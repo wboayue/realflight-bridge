@@ -48,7 +48,7 @@ impl AsyncSoapClient for AsyncStubSoapClient {
         let mut responses = self.responses.lock().await;
         responses
             .pop_front()
-            .ok_or_else(|| BridgeError::SoapFault("No more stubbed responses available".into()))
+            .ok_or_else(|| BridgeError::Protocol("No more stubbed responses available".into()))
     }
 }
 

@@ -20,6 +20,7 @@ use thiserror::Error;
 
 /// Errors that can occur when interacting with the RealFlight simulator.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BridgeError {
     /// Connection to the simulator failed
     #[error("Connection failed: {0}")]
@@ -29,9 +30,13 @@ pub enum BridgeError {
     #[error("Initialization failed: {0}")]
     Initialization(String),
 
-    /// SOAP fault returned by the simulator
+    /// SOAP fault returned by the simulator (directly, or relayed by the proxy)
     #[error("SOAP fault: {0}")]
     SoapFault(String),
+
+    /// Malformed or unexpected response from the simulator or proxy
+    #[error("Protocol error: {0}")]
+    Protocol(String),
 
     /// Failed to parse simulator response
     #[error("Parse error for field '{field}': {message}")]
