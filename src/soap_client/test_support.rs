@@ -69,11 +69,7 @@ impl Server {
         server
     }
 
-    pub fn request_count(&self) -> usize {
-        let request = self.requests.lock().unwrap();
-        request.len()
-    }
-
+    #[cfg_attr(not(feature = "rt-tokio"), allow(dead_code))]
     pub fn requests(&self) -> Vec<String> {
         let requests = self.requests.lock().unwrap();
         requests.clone()

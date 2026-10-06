@@ -1,8 +1,8 @@
 //! Tests for the decoder module.
 //!
 //! Organized into submodules:
-//! - `extract_element_tests`: Tests for XML element extraction
-//! - `for_each_leaf_tests`: Tests for the leaf-element scanner
+//! - `extract_element`: Tests for XML element extraction
+//! - `for_each_leaf`: Tests for the leaf-element scanner
 //! - `decode_state_fields`: Tests for full simulator state decoding
 //! - `error_handling`: Tests for parse error handling
 
@@ -16,7 +16,7 @@ static SIM_STATE_RESPONSE: &str = include_str!("../../testdata/responses/return-
 // extract_element Tests
 // ============================================================================
 
-mod extract_element_tests {
+mod extract_element {
     use super::*;
 
     #[test]
@@ -183,7 +183,7 @@ mod error_handling {
 // for_each_leaf Tests
 // ============================================================================
 
-mod for_each_leaf_tests {
+mod for_each_leaf {
     use super::*;
 
     fn collect(xml: &str) -> Vec<(String, String)> {

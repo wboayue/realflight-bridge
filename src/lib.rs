@@ -285,4 +285,4 @@ pub struct SimulatorState {
 }
 
 #[cfg(test)]
-pub mod tests;
+mod tests;

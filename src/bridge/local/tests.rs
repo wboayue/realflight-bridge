@@ -54,7 +54,7 @@ fn stub_bridge(responses: Vec<&str>) -> RealFlightLocalBridge {
 // Configuration Tests
 // ============================================================================
 
-mod configuration_tests {
+mod configuration {
     use super::*;
 
     #[test]
@@ -200,7 +200,7 @@ mod exchange_data {
 
 mod tcp_integration {
     use super::*;
-    use crate::tests::soap_stub::Server;
+    use crate::soap_client::test_support::Server;
 
     fn get_available_port() -> u16 {
         TcpListener::bind("127.0.0.1:0")
