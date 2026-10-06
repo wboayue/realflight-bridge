@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-10-06
 
 ### Added
 - `Vector3` and `Quaternion` types, with `[f32; 3]` / `[f32; 4]` conversions
@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** vector fields grouped into `Vector3` (`velocity_world_mps`, `velocity_body_mps`, `acceleration_world_mps2`, `acceleration_body_mps2`, `wind_mps`) and quaternion fields into `orientation: Quaternion`. RealFlight u/v/w components map to x/y/z
 - Documented the unit of every `SimulatorState` field
 - Decoder reads leaf elements that carry XML attributes (previously skipped)
+- Decoder ~33% faster: tokenizer reuses buffers instead of allocating per tag
 
 ### Removed
 - **Breaking:** `uom` feature and dependency. `SimulatorState` fields are now always `f32` ([#52](https://github.com/wboayue/realflight-bridge/issues/52))
