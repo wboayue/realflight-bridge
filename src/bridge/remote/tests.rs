@@ -116,6 +116,17 @@ fn malformed_response_is_invalid_data() {
 }
 
 #[test]
+fn oversized_response_is_invalid_data() {
+    let proxy = MockProxy::reply_header(u32::MAX);
+    let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
+
+    match client.enable_rc() {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), ErrorKind::InvalidData),
+        other => panic!("expected Connection(InvalidData), got {:?}", other),
+    }
+}
+
+#[test]
 fn unit_ops_fail_on_proxy_error() {
     let proxy = MockProxy::respond(Response {
         status: ResponseStatus::Error(RemoteError::Protocol("bad".into())),

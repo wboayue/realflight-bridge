@@ -41,7 +41,7 @@ use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::RealFlightBridge;
 use super::wire::RequestRef;
-use super::wire::frame::{decode_frame, encode_frame};
+use super::wire::frame::{decode_frame, encode_frame_into};
 use super::wire::frame_io::read_frame;
 pub use super::wire::{RemoteError, Request, RequestType, Response, ResponseStatus};
 
@@ -60,6 +60,7 @@ pub(crate) fn resolve(address: &str) -> std::io::Result<SocketAddr> {
 pub struct RealFlightRemoteBridge {
     reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
     writer: RefCell<BufWriter<TcpStream>>, // Buffered writer for outgoing data
+    request_buffer: RefCell<Vec<u8>>,      // Reusable buffer for requests
     response_buffer: RefCell<Vec<u8>>,     // Reusable buffer for responses
 }
 
@@ -119,6 +120,7 @@ impl RealFlightRemoteBridge {
         Ok(RealFlightRemoteBridge {
             reader: RefCell::new(BufReader::new(stream.try_clone()?)),
             writer: RefCell::new(BufWriter::new(stream)),
+            request_buffer: RefCell::new(Vec::with_capacity(256)),
             response_buffer: RefCell::new(Vec::with_capacity(4096)),
         })
     }
@@ -136,13 +138,17 @@ impl RealFlightRemoteBridge {
         request_type: RequestType,
         payload: Option<&ControlInputs>,
     ) -> Result<Response, BridgeError> {
-        let frame = encode_frame(&RequestRef {
-            request_type,
-            payload,
-        })?;
+        let mut request_buffer = self.request_buffer.borrow_mut();
+        encode_frame_into(
+            &RequestRef {
+                request_type,
+                payload,
+            },
+            &mut request_buffer,
+        )?;
 
         let mut writer = self.writer.borrow_mut();
-        writer.write_all(&frame)?;
+        writer.write_all(&request_buffer)?;
         writer.flush()?;
 
         let mut response_buffer = self.response_buffer.borrow_mut();

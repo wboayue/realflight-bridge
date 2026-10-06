@@ -50,3 +50,7 @@ required-features = ["rt-tokio"]
 [[bench]]
 name = "decode_state_bench"
 harness = false
+
+[[bench]]
+name = "frame_bench"
+harness = false

@@ -76,6 +76,21 @@ impl MockProxy {
         })
     }
 
+    /// Replies to the first request with a bare frame header announcing `len`
+    /// bytes, then waits for the client to disconnect.
+    pub(crate) fn reply_header(len: u32) -> Self {
+        Self::spawn(move |mut stream| {
+            let mut requests = Vec::new();
+            if let Ok(request) = recv::<Request>(&mut stream) {
+                requests.push(request);
+                let _ = stream.write_all(&len.to_be_bytes());
+                let _ = stream.flush();
+                let _ = stream.read(&mut [0u8; 1]);
+            }
+            requests
+        })
+    }
+
     /// Accepts the connection and closes it without replying.
     pub(crate) fn hang_up() -> Self {
         Self::spawn(|_stream| Vec::new())
