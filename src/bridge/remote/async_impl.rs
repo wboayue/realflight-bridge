@@ -62,9 +62,12 @@ impl AsyncRemoteBridgeBuilder {
         let (read_half, write_half) = stream.into_split();
 
         Ok(AsyncRemoteBridge {
-            reader: Mutex::new(BufReader::new(read_half)),
-            writer: Mutex::new(BufWriter::new(write_half)),
-            response_buffer: Mutex::new(Vec::with_capacity(4096)),
+            connection: Mutex::new(Connection {
+                reader: BufReader::new(read_half),
+                writer: BufWriter::new(write_half),
+                response_buffer: Vec::with_capacity(4096),
+                in_flight: false,
+            }),
         })
     }
 }
@@ -98,10 +101,25 @@ impl AsyncRemoteBridgeBuilder {
 ///     Ok(())
 /// }
 /// ```
+///
+/// # Cancellation
+///
+/// Calls are serialized over one connection. If a call is cancelled (e.g. by
+/// `tokio::time::timeout`) mid-exchange, the connection is out of sync and later
+/// calls return [BridgeError::Connection]; create a new bridge to recover.
 pub struct AsyncRemoteBridge {
-    reader: Mutex<BufReader<tokio::net::tcp::OwnedReadHalf>>,
-    writer: Mutex<BufWriter<tokio::net::tcp::OwnedWriteHalf>>,
-    response_buffer: Mutex<Vec<u8>>,
+    connection: Mutex<Connection>,
+}
+
+/// Connection state, locked for a full request/response round trip.
+struct Connection {
+    reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
+    writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
+    response_buffer: Vec<u8>,
+    /// Set while a round trip is in progress. Still set at the start of a call
+    /// means a previous call was cancelled or failed mid-exchange, leaving the
+    /// stream out of sync.
+    in_flight: bool,
 }
 
 impl AsyncBridge for AsyncRemoteBridge {
@@ -148,23 +166,28 @@ impl AsyncRemoteBridge {
             payload,
         })?;
 
-        let mut writer = self.writer.lock().await;
-        writer.write_all(&frame).await?;
-        writer.flush().await?;
+        let mut guard = self.connection.lock().await;
+        let conn = &mut *guard;
+        if conn.in_flight {
+            return Err(BridgeError::Connection(std::io::Error::other(
+                "connection out of sync after interrupted request; reconnect",
+            )));
+        }
 
-        drop(writer); // Release lock before reading
+        conn.in_flight = true;
+        conn.writer.write_all(&frame).await?;
+        conn.writer.flush().await?;
 
-        let mut reader = self.reader.lock().await;
         let mut header = [0u8; FRAME_HEADER_LEN];
-        reader.read_exact(&mut header).await?;
+        conn.reader.read_exact(&mut header).await?;
 
         // Read the response data into reusable buffer
-        let mut response_buffer = self.response_buffer.lock().await;
-        response_buffer.clear();
-        response_buffer.resize(frame_len(header), 0);
-        reader.read_exact(&mut response_buffer).await?;
+        conn.response_buffer.clear();
+        conn.response_buffer.resize(frame_len(header), 0);
+        conn.reader.read_exact(&mut conn.response_buffer).await?;
+        conn.in_flight = false;
 
-        decode_frame(&response_buffer)
+        decode_frame(&conn.response_buffer)
     }
 }
 
@@ -267,6 +290,61 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].request_type, RequestType::ExchangeData);
         assert_eq!(requests[0].payload, Some(control));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_calls_receive_own_responses() {
+        // Echo channel 0 back in the state so each caller can check its reply
+        let proxy = MockProxy::handle(|request| {
+            let mut state = SimulatorState::default();
+            state.current_physics_time_s = request.payload.as_ref().unwrap().channels[0];
+            Response::success_with(state)
+        });
+        let bridge = std::sync::Arc::new(AsyncRemoteBridge::new(&proxy.addr).await.unwrap());
+
+        let tasks: Vec<_> = (0..200)
+            .map(|i| {
+                let bridge = bridge.clone();
+                tokio::spawn(async move {
+                    let mut control = ControlInputs::default();
+                    control.channels[0] = i as f32;
+                    let state = bridge.exchange_data(&control).await.unwrap();
+                    assert_eq!(state.current_physics_time_s, i as f32, "task {i}");
+                })
+            })
+            .collect();
+
+        for task in tasks {
+            task.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_call_does_not_leak_response_to_next_call() {
+        // First reply is slow so the caller times out after the request is sent
+        let mut first = true;
+        let proxy = MockProxy::handle(move |request| {
+            if std::mem::take(&mut first) {
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let mut state = SimulatorState::default();
+            state.current_physics_time_s = request.payload.as_ref().unwrap().channels[0];
+            Response::success_with(state)
+        });
+        let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
+
+        let mut stale = ControlInputs::default();
+        stale.channels[0] = 1.0;
+        let cancelled = timeout(Duration::from_millis(50), bridge.exchange_data(&stale)).await;
+        assert!(cancelled.is_err(), "first call should time out");
+
+        let mut fresh = ControlInputs::default();
+        fresh.channels[0] = 2.0;
+        match bridge.exchange_data(&fresh).await {
+            Err(BridgeError::Connection(_)) => {}
+            Ok(state) => panic!("received stale response: {}", state.current_physics_time_s),
+            Err(other) => panic!("expected Connection error, got {:?}", other),
+        }
     }
 
     // ========================================================================

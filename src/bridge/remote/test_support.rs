@@ -48,9 +48,26 @@ impl MockProxy {
 
     /// Replies to each request with `payload` framed as-is.
     pub(crate) fn reply_raw(payload: Vec<u8>) -> Self {
+        Self::serve(move |_| payload.clone())
+    }
+
+    /// Replies to each request with the response built by `handler`.
+    #[cfg_attr(not(feature = "rt-tokio"), allow(dead_code))] // used by async tests
+    pub(crate) fn handle<F>(mut handler: F) -> Self
+    where
+        F: FnMut(&Request) -> Response + Send + 'static,
+    {
+        Self::serve(move |request| postcard::to_stdvec(&handler(request)).unwrap())
+    }
+
+    fn serve<F>(mut reply: F) -> Self
+    where
+        F: FnMut(&Request) -> Vec<u8> + Send + 'static,
+    {
         Self::spawn(move |mut stream| {
             let mut requests = Vec::new();
             while let Ok(request) = recv::<Request>(&mut stream) {
+                let payload = reply(&request);
                 requests.push(request);
                 if write_raw_frame(&mut stream, &payload).is_err() {
                     break;
