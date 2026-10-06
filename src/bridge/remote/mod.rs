@@ -4,7 +4,8 @@
 //!
 //! - **[`RequestType`]**: Enumerates the types of requests that can be sent (e.g., [RequestType::EnableRC], [RequestType::ExchangeData]).
 //! - **[`Request`]**: Defines the structure of client requests, including an optional [ControlInputs] payload.
-//! - **[`Response`]**: Defines server responses, including a status and optional [SimulatorState] payload.
+//! - **[`Response`]**: Defines server responses: a [`ResponseStatus`] and optional [SimulatorState] payload.
+//! - **[`RemoteError`]**: Proxy-side error carried by [`ResponseStatus::Error`]; the client rebuilds it as a [BridgeError].
 //! - **[`RealFlightRemoteBridge`]**: Client struct for connecting to the server and sending requests.
 //!
 //! ## Usage
@@ -42,9 +43,7 @@ use super::RealFlightBridge;
 use super::wire::RequestRef;
 use super::wire::frame::{decode_frame, encode_frame};
 use super::wire::frame_io::read_frame;
-pub use super::wire::{
-    RemoteError, RemoteErrorKind, Request, RequestType, Response, ResponseStatus,
-};
+pub use super::wire::{RemoteError, Request, RequestType, Response, ResponseStatus};
 
 #[cfg(test)]
 mod tests;

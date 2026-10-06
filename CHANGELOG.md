@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Clone` for `SimulatorState`
 - Coordinate frame documentation for `SimulatorState` fields
 - `BridgeError::Protocol` for malformed or unexpected responses from the simulator or proxy ([#60](https://github.com/wboayue/realflight-bridge/issues/60))
-- Remote bridges return the proxy-side error (e.g. a simulator `SoapFault`) instead of a generic failure
+- Remote bridges return the proxy-side error (e.g. a simulator `SoapFault`) instead of a generic failure. Relayed `Connection` / `Initialization` messages are prefixed with `proxy: `
 
 ### Changed
 - **Breaking:** `SimulatorState` physical fields renamed with unit suffixes (e.g. `airspeed` → `airspeed_mps`, `altitude_agl` → `altitude_agl_m`, `azimuth` → `azimuth_deg`, `pitch_rate` → `pitch_rate_dps`, `fuel_remaining` → `fuel_remaining_oz`, `current_physics_time` → `current_physics_time_s`)

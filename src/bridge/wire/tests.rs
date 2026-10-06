@@ -3,7 +3,7 @@
 use crate::{BridgeError, SimulatorState};
 
 use super::frame::{FRAME_HEADER_LEN, decode_frame, encode_frame};
-use super::{RemoteError, RemoteErrorKind, Response, ResponseStatus};
+use super::{RemoteError, Response, ResponseStatus};
 
 mod fixtures {
     use super::*;
@@ -72,55 +72,41 @@ mod remote_error {
     }
 
     #[test]
-    fn round_trips_every_kind() {
+    fn round_trips_every_variant() {
         let cases = [
             (
                 BridgeError::Connection(std::io::Error::other("refused")),
-                RemoteErrorKind::Connection,
+                "Connection failed: proxy: refused",
             ),
             (
                 BridgeError::Initialization("no pool".into()),
-                RemoteErrorKind::Initialization,
+                "Initialization failed: proxy: no pool",
             ),
             (
                 BridgeError::SoapFault("rejected".into()),
-                RemoteErrorKind::SoapFault,
+                "SOAP fault: rejected",
             ),
             (
                 BridgeError::Parse {
                     field: "airspeed".into(),
                     message: "bad float".into(),
                 },
-                RemoteErrorKind::Parse,
+                "Parse error for field 'airspeed': bad float",
             ),
             (
                 BridgeError::Protocol("truncated".into()),
-                RemoteErrorKind::Protocol,
+                "Protocol error: truncated",
             ),
         ];
 
-        for (err, kind) in cases {
-            assert_eq!(RemoteError::from(&err).kind, kind);
-
-            let expected = err.to_string();
+        for (err, expected) in cases {
+            let sent = RemoteError::from(&err);
             let rebuilt = round_trip(err);
-            assert_eq!(RemoteError::from(&rebuilt).kind, kind);
             assert_eq!(rebuilt.to_string(), expected);
-        }
-    }
-
-    #[test]
-    fn parse_keeps_field() {
-        let err = BridgeError::Parse {
-            field: "airspeed".into(),
-            message: "bad float".into(),
-        };
-        match round_trip(err) {
-            BridgeError::Parse { field, message } => {
-                assert_eq!(field, "airspeed");
-                assert_eq!(message, "bad float");
-            }
-            other => panic!("expected Parse, got {:?}", other),
+            assert_eq!(
+                std::mem::discriminant(&RemoteError::from(&rebuilt)),
+                std::mem::discriminant(&sent),
+            );
         }
     }
 }
