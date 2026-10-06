@@ -131,24 +131,58 @@ pub struct ControlInputs {
     pub channels: [f32; 12],
 }
 
-/// Three-component vector.
+/// Three-component vector. Frame and unit depend on the field holding it; see
+/// [`SimulatorState`].
 ///
-/// For body- and world-frame velocities RealFlight names the components u/v/w;
-/// these map to x/y/z respectively.
+/// Converts to and from `[x, y, z]`.
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Vector3 {
+    /// X component (RealFlight U for velocities)
     pub x: f32,
+    /// Y component (RealFlight V for velocities)
     pub y: f32,
+    /// Z component (RealFlight W for velocities)
     pub z: f32,
 }
 
-/// Orientation quaternion (unitless).
+impl From<[f32; 3]> for Vector3 {
+    fn from([x, y, z]: [f32; 3]) -> Self {
+        Self { x, y, z }
+    }
+}
+
+impl From<Vector3> for [f32; 3] {
+    fn from(v: Vector3) -> Self {
+        [v.x, v.y, v.z]
+    }
+}
+
+/// Orientation quaternion in RealFlight's convention (unitless).
+///
+/// Converts to and from `[x, y, z, w]` (scalar last). RealFlight's axes differ
+/// from NED; see [`SimulatorState::orientation`].
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Quaternion {
+    /// X (i) component
     pub x: f32,
+    /// Y (j) component
     pub y: f32,
+    /// Z (k) component
     pub z: f32,
+    /// W (scalar) component
     pub w: f32,
+}
+
+impl From<[f32; 4]> for Quaternion {
+    fn from([x, y, z, w]: [f32; 4]) -> Self {
+        Self { x, y, z, w }
+    }
+}
+
+impl From<Quaternion> for [f32; 4] {
+    fn from(q: Quaternion) -> Self {
+        [q.x, q.y, q.z, q.w]
+    }
 }
 
 /// Represents the complete state of the simulated aircraft in RealFlight.
@@ -161,8 +195,19 @@ pub struct Quaternion {
 ///
 /// # Frames
 ///
-/// World frame: X north, Y east, Z down. Body frame: X forward, Y right, Z down.
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+/// RealFlight does not document its axes, and they are not consistent across
+/// fields. Values are passed through as-is. The conventions below follow
+/// ArduPilot's RealFlight SITL integration (`SIM_FlightAxis.cpp`):
+///
+/// * `velocity_world_mps`: x north, y east, z down (NED)
+/// * `aircraft_position_x_m`, `aircraft_position_y_m`, `wind_mps`: x east, y north
+///   (wind z down)
+/// * `velocity_body_mps`, `acceleration_body_mps2`: x forward, y right, z down
+/// * `yaw_rate_dps`: positive is nose left, opposite to NED
+/// * `orientation`: see field docs
+///
+/// `acceleration_world_mps2` is not used by ArduPilot; its axes are unverified.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
     pub previous_inputs: ControlInputs,
@@ -178,7 +223,7 @@ pub struct SimulatorState {
     pub pitch_rate_dps: f32,
     /// Roll rate around body X axis (deg/s)
     pub roll_rate_dps: f32,
-    /// Yaw rate around body Z axis (deg/s)
+    /// Yaw rate (deg/s). Positive is nose left, opposite to NED
     pub yaw_rate_dps: f32,
     /// Heading angle (true north reference) (deg)
     pub azimuth_deg: f32,
@@ -186,19 +231,19 @@ pub struct SimulatorState {
     pub inclination_deg: f32,
     /// Roll angle (right wing down reference) (deg)
     pub roll_deg: f32,
-    /// Aircraft position along world X axis (North) (m)
+    /// Aircraft position, east (m)
     pub aircraft_position_x_m: f32,
-    /// Aircraft position along world Y axis (East) (m)
+    /// Aircraft position, north (m)
     pub aircraft_position_y_m: f32,
-    /// Velocity in world frame (m/s)
+    /// Velocity in world frame, NED (m/s)
     pub velocity_world_mps: Vector3,
-    /// Velocity in body frame (m/s)
+    /// Velocity in body frame, forward/right/down (m/s)
     pub velocity_body_mps: Vector3,
-    /// Acceleration in world frame (m/s²)
+    /// Acceleration in world frame (m/s²). Axes unverified
     pub acceleration_world_mps2: Vector3,
-    /// Acceleration in body frame (m/s²)
+    /// Acceleration in body frame, forward/right/down (m/s²)
     pub acceleration_body_mps2: Vector3,
-    /// Wind velocity in world frame (m/s)
+    /// Wind velocity: x east, y north, z down (m/s)
     pub wind_mps: Vector3,
     /// Propeller RPM for piston/electric aircraft (rpm)
     pub prop_rpm: f32,
@@ -226,7 +271,10 @@ pub struct SimulatorState {
     pub current_physics_time_s: f32,
     /// Current time acceleration factor (unitless)
     pub current_physics_speed_multiplier: f32,
-    /// Aircraft orientation
+    /// Aircraft orientation in RealFlight's convention.
+    ///
+    /// For a body-to-NED quaternion, NED `(w, x, y, z)` = RealFlight `(w, y, x, -z)`,
+    /// as ArduPilot does.
     pub orientation: Quaternion,
     /// True if external flight controller is active
     pub flight_axis_controller_is_active: bool,

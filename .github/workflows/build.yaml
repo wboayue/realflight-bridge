@@ -48,3 +48,15 @@ jobs:
         cargo test
         cargo test --no-default-features
         cargo test --features rt-tokio
+
+  msrv:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v7
+    # Keep in sync with rust-version in Cargo.toml
+    - uses: dtolnay/rust-toolchain@1.85
+
+    - name: check
+      # Library and binary only; dev-dependencies require newer toolchains
+      run: cargo check --lib --bins --all-features

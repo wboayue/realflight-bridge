@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use crate::bridge::RealFlightBridge;
 use crate::soap_client::stub::StubSoapClient;
-use crate::{BridgeError, ControlInputs, DEFAULT_SIMULATOR_HOST, decode_simulator_state};
+use crate::{
+    BridgeError, ControlInputs, DEFAULT_SIMULATOR_HOST, SimulatorState, decode_simulator_state,
+};
 
 use super::{Configuration, RealFlightLocalBridge};
 
@@ -214,6 +216,7 @@ mod exchange_data {
         let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
         let expected = decode_simulator_state(RETURN_DATA_200).unwrap();
+        assert_ne!(expected, SimulatorState::default());
         assert_eq!(state, expected);
     }
 }

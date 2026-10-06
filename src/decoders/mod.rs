@@ -32,8 +32,9 @@ enum ParseState {
 /// Walks `xml` and calls `on_leaf(tag, content)` for every leaf element
 /// (an element whose close tag matches the most recent open tag).
 ///
-/// Lightweight, allocation-reusing scanner tailored to RealFlight responses;
-/// attributes are kept as part of the tag name, so callers match on exact tags.
+/// Lightweight, allocation-reusing scanner tailored to RealFlight responses.
+/// Attributes (anything after the first space in a tag) are dropped, so `tag`
+/// is the bare element name.
 fn for_each_leaf<F>(xml: &str, mut on_leaf: F) -> Result<(), BridgeError>
 where
     F: FnMut(&str, &str) -> Result<(), BridgeError>,
@@ -63,6 +64,9 @@ where
                 state = ParseState::OpenTag;
             }
             ParseState::OpenTag if ch == '>' => {
+                if let Some(end) = key.find(' ') {
+                    key.truncate(end);
+                }
                 open_tag = std::mem::take(&mut key);
                 content.clear();
                 state = ParseState::Content;
@@ -111,17 +115,16 @@ pub fn decode_simulator_state(xml: &str) -> Result<SimulatorState, BridgeError> 
 }
 
 fn decode_channel(state: &mut SimulatorState, ndx: usize, value: &str) -> Result<(), BridgeError> {
-    let field = format_args!("channel[{}]", ndx);
     let channel =
         state
             .previous_inputs
             .channels
             .get_mut(ndx)
             .ok_or_else(|| BridgeError::Parse {
-                field: field.to_string(),
+                field: format!("channel[{}]", ndx),
                 message: "too many channel values".to_string(),
             })?;
-    *channel = parse(field, value)?;
+    *channel = parse(format_args!("channel[{}]", ndx), value)?;
     Ok(())
 }
 

@@ -206,6 +206,12 @@ mod for_each_leaf_tests {
     }
 
     #[test]
+    fn strips_attributes_from_tag() {
+        let leaves = collect(r#"<m-airspeed-MPS xsi:type="xsd:double">1.5</m-airspeed-MPS>"#);
+        assert_eq!(leaves, vec![("m-airspeed-MPS".into(), "1.5".into())]);
+    }
+
+    #[test]
     fn yields_empty_content() {
         assert_eq!(collect("<a></a>"), vec![("a".into(), "".into())]);
     }

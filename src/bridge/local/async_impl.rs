@@ -412,6 +412,7 @@ mod tests {
                 "../../../testdata/responses/return-data-200.xml"
             ))
             .unwrap();
+            assert_ne!(expected, crate::SimulatorState::default());
             assert_eq!(state, expected);
         }
     }
