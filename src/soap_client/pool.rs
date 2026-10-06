@@ -19,8 +19,7 @@ use log::{debug, error};
 use crate::BridgeError;
 use crate::StatisticsEngine;
 use crate::bridge::local::Configuration;
-
-const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(5);
+use crate::defaults::INIT_TIMEOUT;
 
 /// Pre-creates TCP connections in a background thread to hide connection latency.
 ///
@@ -74,10 +73,10 @@ impl ConnectionPool {
                     err
                 )));
             }
-            if now.elapsed() > INITIALIZATION_TIMEOUT {
+            if now.elapsed() > INIT_TIMEOUT {
                 return Err(BridgeError::Initialization(format!(
                     "Connection pool did not initialize. Waited for {:?}.",
-                    INITIALIZATION_TIMEOUT
+                    INIT_TIMEOUT
                 )));
             }
             thread::sleep(Duration::from_millis(100));

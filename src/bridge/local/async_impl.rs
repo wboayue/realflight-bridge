@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::bridge::AsyncBridge;
+use crate::defaults;
 use crate::soap_client::AsyncSoapClient;
 use crate::soap_client::tcp_async::AsyncTcpSoapClient;
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
@@ -12,10 +13,6 @@ use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEn
 use super::encode_control_inputs;
 
 const EMPTY_BODY: &str = "";
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_millis(5);
-const DEFAULT_INIT_TIMEOUT: Duration = Duration::from_secs(5);
-/// Pool pre-creates next connection to hide latency. Only one connection needed at a time.
-const DEFAULT_POOL_SIZE: usize = 1;
 
 /// Builder for AsyncLocalBridge.
 ///
@@ -31,10 +28,10 @@ pub struct AsyncLocalBridgeBuilder {
 impl Default for AsyncLocalBridgeBuilder {
     fn default() -> Self {
         Self {
-            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
-            init_timeout: DEFAULT_INIT_TIMEOUT,
+            connect_timeout: defaults::CONNECT_TIMEOUT,
+            init_timeout: defaults::INIT_TIMEOUT,
             addr: crate::DEFAULT_SIMULATOR_HOST.parse().unwrap(),
-            pool_size: DEFAULT_POOL_SIZE,
+            pool_size: defaults::POOL_SIZE,
         }
     }
 }

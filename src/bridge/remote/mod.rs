@@ -39,6 +39,7 @@ use log::error;
 use postcard::{from_bytes, to_stdvec};
 use serde::{Deserialize, Serialize};
 
+use crate::defaults;
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::RealFlightBridge;
@@ -155,9 +156,6 @@ impl RealFlightBridge for RealFlightRemoteBridge {
 }
 
 impl RealFlightRemoteBridge {
-    /// Default connection timeout (5 seconds)
-    const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
-
     /// Creates a new client instance connected to the specified address.
     ///
     /// # Arguments
@@ -166,7 +164,7 @@ impl RealFlightRemoteBridge {
     /// # Returns
     /// A `Result` containing the new client instance or an I/O error.
     pub fn new(address: &str) -> std::io::Result<Self> {
-        Self::with_timeout(address, Self::DEFAULT_TIMEOUT)
+        Self::with_timeout(address, defaults::REMOTE_TIMEOUT)
     }
 
     /// Creates a new client instance with a custom timeout.
