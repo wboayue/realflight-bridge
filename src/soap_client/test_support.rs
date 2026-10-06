@@ -1,4 +1,4 @@
-//! TCP stub server for integration testing.
+//! TCP stub server for tests needing a real socket.
 //!
 //! This module provides a mock TCP server that simulates RealFlight's SOAP interface.
 //! It loads canned responses from `testdata/responses/` and returns them based on
@@ -7,9 +7,9 @@
 //! # Usage
 //!
 //! ```ignore
-//! let server = Server::new(port, vec!["reset-aircraft-200".to_string()]);
-//! // Server is now listening and will return the response from
-//! // testdata/responses/reset-aircraft-200.xml
+//! let server = Server::new(vec!["reset-aircraft-200".to_string()]);
+//! // Server is listening on 127.0.0.1:{server.port()} and will return the response
+//! // from testdata/responses/reset-aircraft-200.xml
 //! ```
 //!
 //! # Response Key Format
@@ -19,24 +19,18 @@
 //! - `inject-uav-controller-interface-500` - Failed disable RC response
 //! - `return-data-200` - Successful exchange data response
 
-use std::io::BufRead;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::time::Duration;
-use std::{
-    io::{Read, Write},
-    net::{TcpListener, TcpStream},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
 };
+use std::thread;
 
 /// A mock TCP server for testing SOAP client interactions.
 pub struct Server {
     port: u16,
-    responses: Vec<String>,
     handle: Option<thread::JoinHandle<()>>,
     running: Arc<AtomicBool>,
     requests: Arc<Mutex<Vec<String>>>,
@@ -45,132 +39,123 @@ pub struct Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
+        // wake the worker if it is blocked in accept
+        let _ = TcpStream::connect(("127.0.0.1", self.port));
 
-        if let Some(handle) = self.handle.take() {
-            if let Err(e) = handle.join() {
-                eprintln!("error shutting down server: {:?}", e);
-            }
+        if let Some(handle) = self.handle.take()
+            && let Err(e) = handle.join()
+        {
+            eprintln!("error shutting down server: {:?}", e);
         }
     }
 }
 
 impl Server {
-    pub fn new(port: u16, responses: Vec<String>) -> Self {
-        let mut server = Server {
-            port,
+    /// Binds to a free port on 127.0.0.1 and serves `responses` (popped from the end).
+    pub fn new(responses: Vec<String>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let running = Arc::new(AtomicBool::new(true));
+        let requests = Arc::new(Mutex::new(Vec::new()));
+
+        let handle = spawn_worker(
+            listener,
             responses,
-            handle: None,
-            running: Arc::new(AtomicBool::new(true)),
-            requests: Arc::new(Mutex::new(Vec::new())),
-        };
-        server.start_worker();
-        // allow server time to start
-        thread::sleep(Duration::from_millis(100));
-        server
+            Arc::clone(&running),
+            Arc::clone(&requests),
+        );
+
+        Server {
+            port,
+            handle: Some(handle),
+            running,
+            requests,
+        }
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
     #[cfg_attr(not(feature = "rt-tokio"), allow(dead_code))]
     pub fn requests(&self) -> Vec<String> {
-        let requests = self.requests.lock().unwrap();
-        requests.clone()
-    }
-
-    fn start_worker(&mut self) {
-        let mut responses = self.responses.clone();
-        let requests = Arc::clone(&self.requests);
-        let port = self.port;
-
-        let handle = thread::spawn(move || {
-            let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-
-            eprintln!("server listening on port {}", port);
-
-            for mut incoming in listener.incoming() {
-                eprintln!("incoming connection");
-                if responses.is_empty() {
-                    break;
-                }
-
-                if let Err(ref e) = incoming {
-                    eprintln!("connection error: {}", e);
-                    break;
-                }
-
-                if let Ok(ref mut stream) = incoming {
-                    let a = &mut stream.try_clone().unwrap();
-                    let mut streamb = BufReader::new(a);
-                    let mut line = String::new();
-                    if let Err(e) = streamb.read_line(&mut line) {
-                        eprintln!("error reading line: {}", e);
-                        break;
-                    } else {
-                        eprintln!("status line: {}", line);
-                    }
-
-                    let request_body = read_request_body(&mut streamb);
-                    if request_body.is_empty() {
-                        eprintln!("empty request. try next.");
-                        thread::sleep(std::time::Duration::from_millis(100));
-                        break;
-                    }
-
-                    record_request(&requests, &request_body);
-
-                    if let Some(response_key) = responses.pop() {
-                        send_response(stream, &response_key);
-                    } else {
-                        eprintln!("no more responses to send");
-                    }
-                }
-            }
-
-            eprintln!("server shutting down");
-        });
-
-        self.handle = Some(handle);
+        self.requests.lock().unwrap().clone()
     }
 }
 
-fn read_request_body(stream: &mut BufReader<&mut TcpStream>) -> String {
-    let content_length = content_length(stream);
+fn spawn_worker(
+    listener: TcpListener,
+    mut responses: Vec<String>,
+    running: Arc<AtomicBool>,
+    requests: Arc<Mutex<Vec<String>>>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        for incoming in listener.incoming() {
+            if !running.load(Ordering::Relaxed) || responses.is_empty() {
+                break;
+            }
 
-    eprintln!("body content length: {}", content_length);
+            let stream = match incoming {
+                Ok(stream) => stream,
+                Err(e) => {
+                    eprintln!("connection error: {}", e);
+                    break;
+                }
+            };
+
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut status_line = String::new();
+            if let Err(e) = reader.read_line(&mut status_line) {
+                eprintln!("error reading status line: {}", e);
+                break;
+            }
+
+            let request_body = read_request_body(&mut reader);
+            if request_body.is_empty() {
+                eprintln!("empty request, stopping");
+                break;
+            }
+
+            requests.lock().unwrap().push(request_body);
+
+            if let Some(response_key) = responses.pop() {
+                send_response(&stream, &response_key);
+            }
+        }
+    })
+}
+
+fn read_request_body(reader: &mut BufReader<TcpStream>) -> String {
+    let content_length = content_length(reader);
     if content_length == 0 {
         return String::new();
     }
 
     let mut request_body = vec![0; content_length];
-    stream.read_exact(&mut request_body).unwrap();
+    reader.read_exact(&mut request_body).unwrap();
 
     String::from_utf8_lossy(&request_body).to_string()
 }
 
-fn content_length(stream: &mut BufReader<&mut TcpStream>) -> usize {
+fn content_length(reader: &mut BufReader<TcpStream>) -> usize {
     let mut content_length: Option<usize> = None;
     loop {
         let mut line = String::new();
-        if let Err(_) = stream.read_line(&mut line) {
+        if reader.read_line(&mut line).is_err() {
             return 0;
         }
 
-        // eprintln!("line: {}", line);
-
-        if line == "\r\n" {
+        if line == "\r\n" || line.is_empty() {
             break;
         }
 
-        if line.to_lowercase().starts_with("content-length:") {
-            if let Some(length) = line.split_whitespace().nth(1) {
-                content_length = length.trim().parse().ok();
-            }
+        if line.to_lowercase().starts_with("content-length:")
+            && let Some(length) = line.split_whitespace().nth(1)
+        {
+            content_length = length.trim().parse().ok();
         }
     }
     content_length.unwrap_or(0)
-}
-
-fn record_request(requests: &Arc<Mutex<Vec<String>>>, request: &str) {
-    let mut requests = requests.lock().unwrap();
-    requests.push(request.to_string());
 }
 
 fn send_response(mut stream: &TcpStream, response_key: &str) {
@@ -182,22 +167,19 @@ fn send_response(mut stream: &TcpStream, response_key: &str) {
     ]
     .iter()
     .collect();
-    eprintln!("Response path: {:?}", response_path);
     let body = std::fs::read_to_string(response_path).unwrap();
 
+    let code = response_key.rsplit('-').next().unwrap();
+
     let mut buffer = String::new();
-
-    let code = response_key.split('-').last().unwrap();
-
     buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
     buffer.push_str("Server: gSOAP/2.7\r\n");
     buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
-    buffer.push_str(&format!("Content-Length: {}\r\n", body.as_bytes().len()));
+    buffer.push_str(&format!("Content-Length: {}\r\n", body.len()));
     buffer.push_str("Connection: close\r\n");
     buffer.push_str("\r\n");
     buffer.push_str(&body);
 
-    //    eprintln!("sending response:\n{}", buffer);
     stream.write_all(buffer.as_bytes()).unwrap();
     stream.flush().unwrap();
 }

@@ -6,6 +6,9 @@
 //! - `decode_state_fields`: Tests for full simulator state decoding
 //! - `error_handling`: Tests for parse error handling
 
+// Expected values are copied verbatim from the XML fixture.
+#![allow(clippy::excessive_precision)]
+
 use approx::assert_relative_eq;
 
 use super::*;

@@ -1,15 +1,6 @@
 use super::*;
 use crate::bridge::AsyncBridge;
 use crate::soap_client::test_support::Server;
-use std::net::TcpListener;
-
-fn get_available_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
 
 async fn create_bridge(port: u16) -> Result<AsyncLocalBridge, BridgeError> {
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
@@ -91,17 +82,13 @@ mod bridge_operations {
 
     #[tokio::test]
     async fn unit_ops_send_correct_actions() {
-        let port = get_available_port();
         // Server pops responses from the end
-        let server = Server::new(
-            port,
-            vec![
-                "reset-aircraft-200".to_string(),
-                "inject-uav-controller-interface-200".to_string(),
-                "restore-original-controller-device-200".to_string(),
-            ],
-        );
-        let bridge = create_bridge(port).await.unwrap();
+        let server = Server::new(vec![
+            "reset-aircraft-200".to_string(),
+            "inject-uav-controller-interface-200".to_string(),
+            "restore-original-controller-device-200".to_string(),
+        ]);
+        let bridge = create_bridge(server.port()).await.unwrap();
 
         bridge.enable_rc().await.unwrap();
         bridge.disable_rc().await.unwrap();
@@ -116,12 +103,8 @@ mod bridge_operations {
 
     #[tokio::test]
     async fn returns_soap_fault_on_500() {
-        let port = get_available_port();
-        let _server = Server::new(
-            port,
-            vec!["inject-uav-controller-interface-500".to_string()],
-        );
-        let bridge = create_bridge(port).await.unwrap();
+        let server = Server::new(vec!["inject-uav-controller-interface-500".to_string()]);
+        let bridge = create_bridge(server.port()).await.unwrap();
 
         match bridge.disable_rc().await {
             Err(BridgeError::SoapFault(msg)) => {
@@ -141,9 +124,8 @@ mod exchange_data {
 
     #[tokio::test]
     async fn returns_decoded_state() {
-        let port = get_available_port();
-        let _server = Server::new(port, vec!["return-data-200".to_string()]);
-        let bridge = create_bridge(port).await.unwrap();
+        let server = Server::new(vec!["return-data-200".to_string()]);
+        let bridge = create_bridge(server.port()).await.unwrap();
 
         let state = bridge
             .exchange_data(&ControlInputs::default())
@@ -168,15 +150,11 @@ mod statistics {
 
     #[tokio::test]
     async fn statistics_returns_snapshot() {
-        let port = get_available_port();
-        let _server = Server::new(
-            port,
-            vec![
-                "reset-aircraft-200".to_string(),
-                "reset-aircraft-200".to_string(),
-            ],
-        );
-        let bridge = create_bridge(port).await.unwrap();
+        let server = Server::new(vec![
+            "reset-aircraft-200".to_string(),
+            "reset-aircraft-200".to_string(),
+        ]);
+        let bridge = create_bridge(server.port()).await.unwrap();
 
         bridge.reset_aircraft().await.unwrap();
         bridge.reset_aircraft().await.unwrap();
