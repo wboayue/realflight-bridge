@@ -1,7 +1,7 @@
 use super::*;
 use crate::ControlInputs;
 use crate::bridge::wire::test_support::{recv, send, write_raw_frame};
-use crate::bridge::wire::{Request, RequestType, Response, ResponseStatus};
+use crate::bridge::wire::{RemoteErrorKind, Request, RequestType, Response, ResponseStatus};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -255,7 +255,10 @@ async fn exchange_data_without_payload_returns_error() {
     };
     let response = send_request_async(addr, request).await;
 
-    assert!(matches!(response.status, ResponseStatus::Error));
+    match response.status {
+        ResponseStatus::Error(err) => assert_eq!(err.kind, RemoteErrorKind::Protocol),
+        other => panic!("expected Protocol error, got {:?}", other),
+    }
 
     cancel.cancel();
     let _ = handle.await;
@@ -337,7 +340,10 @@ async fn enable_rc_error_returns_error_response() {
     };
     let response = send_request_async(addr, request).await;
 
-    assert!(matches!(response.status, ResponseStatus::Error));
+    match response.status {
+        ResponseStatus::Error(err) => assert_eq!(err.kind, RemoteErrorKind::SoapFault),
+        other => panic!("expected SoapFault error, got {:?}", other),
+    }
 
     cancel.cancel();
     let _ = handle.await;
@@ -361,7 +367,10 @@ async fn disable_rc_error_returns_error_response() {
     };
     let response = send_request_async(addr, request).await;
 
-    assert!(matches!(response.status, ResponseStatus::Error));
+    match response.status {
+        ResponseStatus::Error(err) => assert_eq!(err.kind, RemoteErrorKind::SoapFault),
+        other => panic!("expected SoapFault error, got {:?}", other),
+    }
 
     cancel.cancel();
     let _ = handle.await;
@@ -385,7 +394,10 @@ async fn reset_aircraft_error_returns_error_response() {
     };
     let response = send_request_async(addr, request).await;
 
-    assert!(matches!(response.status, ResponseStatus::Error));
+    match response.status {
+        ResponseStatus::Error(err) => assert_eq!(err.kind, RemoteErrorKind::SoapFault),
+        other => panic!("expected SoapFault error, got {:?}", other),
+    }
 
     cancel.cancel();
     let _ = handle.await;
@@ -409,7 +421,10 @@ async fn exchange_data_error_returns_error_response() {
     };
     let response = send_request_async(addr, request).await;
 
-    assert!(matches!(response.status, ResponseStatus::Error));
+    match response.status {
+        ResponseStatus::Error(err) => assert_eq!(err.kind, RemoteErrorKind::SoapFault),
+        other => panic!("expected SoapFault error, got {:?}", other),
+    }
 
     cancel.cancel();
     let _ = handle.await;

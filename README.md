@@ -115,6 +115,8 @@ realflight_bridge_proxy
 
 By default, `realflight_bridge_proxy` binds to `0.0.0.0:8080`. This can be changed by passing the `--bind-address` argument to `realflight_bridge_proxy`.
 
+The proxy and client must use the same major version of `realflight-bridge`; the wire protocol is not compatible across major versions.
+
 #### Remote Connection (Client)
 
 The following example shows how your application code connects to the simulator using the proxy.

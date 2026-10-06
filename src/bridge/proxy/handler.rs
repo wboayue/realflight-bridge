@@ -73,8 +73,10 @@ async fn process_request<B: AsyncBridge>(request: Request, bridge: &B) -> Respon
         RequestType::ExchangeData => match &request.payload {
             Some(control) => bridge.exchange_data(control).await.map(Some),
             None => {
-                error!("ExchangeData request missing control inputs");
-                return Response::error();
+                let err =
+                    BridgeError::Protocol("ExchangeData request missing control inputs".into());
+                error!("{}", err);
+                return Response::error(&err);
             }
         },
     };
@@ -84,7 +86,7 @@ async fn process_request<B: AsyncBridge>(request: Request, bridge: &B) -> Respon
         Ok(None) => Response::success(),
         Err(e) => {
             error!("{:?} failed: {}", request.request_type, e);
-            Response::error()
+            Response::error(&e)
         }
     }
 }

@@ -52,7 +52,7 @@ impl ResponseParser {
         }
 
         if line.is_empty() {
-            return Err(BridgeError::SoapFault(
+            return Err(BridgeError::Protocol(
                 "Connection closed while reading headers".into(),
             ));
         }
@@ -61,7 +61,7 @@ impl ResponseParser {
             return self
                 .content_length
                 .map(Next::Body)
-                .ok_or_else(|| BridgeError::SoapFault("Missing Content-Length header".into()));
+                .ok_or_else(|| BridgeError::Protocol("Missing Content-Length header".into()));
         }
 
         if let Some(length) = parse_content_length(line) {
@@ -86,7 +86,7 @@ impl ResponseParser {
 /// Parse HTTP status line and extract status code
 fn parse_status_line(status_line: &str) -> Result<u32, BridgeError> {
     if status_line.is_empty() {
-        return Err(BridgeError::SoapFault(
+        return Err(BridgeError::Protocol(
             "Empty response from simulator".into(),
         ));
     }
@@ -95,10 +95,10 @@ fn parse_status_line(status_line: &str) -> Result<u32, BridgeError> {
         .split_whitespace()
         .nth(1)
         .ok_or_else(|| {
-            BridgeError::SoapFault("Malformed HTTP status line: missing status code".into())
+            BridgeError::Protocol("Malformed HTTP status line: missing status code".into())
         })?
         .parse()
-        .map_err(|e| BridgeError::SoapFault(format!("Invalid HTTP status code: {}", e)))
+        .map_err(|e| BridgeError::Protocol(format!("Invalid HTTP status code: {}", e)))
 }
 
 /// Extract Content-Length from a header line if present

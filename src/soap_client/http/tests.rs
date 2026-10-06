@@ -87,32 +87,29 @@ mod response_parser {
     }
 
     #[test]
-    fn missing_content_length_returns_error() {
-        match parse_head(&["HTTP/1.1 200 OK\r\n", "\r\n"]) {
-            Err(BridgeError::SoapFault(msg)) => assert!(msg.contains("Content-Length")),
-            other => panic!("expected SoapFault, got {:?}", other.map(|(_, l)| l)),
-        }
-    }
+    fn malformed_heads_return_protocol_error() {
+        let cases: &[(&[&str], &str)] = &[
+            (&["HTTP/1.1 200 OK\r\n", "\r\n"], "Content-Length"),
+            (&[""], "Empty response"),
+            (
+                &["HTTP/1.1 200 OK\r\n", "Content-Length: 4\r\n", ""],
+                "Connection closed",
+            ),
+            (&["INVALID\r\n"], "missing status code"),
+        ];
 
-    #[test]
-    fn eof_before_status_returns_error() {
-        match parse_head(&[""]) {
-            Err(BridgeError::SoapFault(msg)) => assert!(msg.contains("Empty response")),
-            other => panic!("expected SoapFault, got {:?}", other.map(|(_, l)| l)),
+        for (lines, expected) in cases {
+            match parse_head(lines) {
+                Err(BridgeError::Protocol(msg)) => {
+                    assert!(msg.contains(expected), "{:?}: {}", lines, msg)
+                }
+                other => panic!(
+                    "{:?}: expected Protocol, got {:?}",
+                    lines,
+                    other.map(|(_, l)| l)
+                ),
+            }
         }
-    }
-
-    #[test]
-    fn eof_in_headers_returns_error() {
-        match parse_head(&["HTTP/1.1 200 OK\r\n", "Content-Length: 4\r\n", ""]) {
-            Err(BridgeError::SoapFault(msg)) => assert!(msg.contains("Connection closed")),
-            other => panic!("expected SoapFault, got {:?}", other.map(|(_, l)| l)),
-        }
-    }
-
-    #[test]
-    fn malformed_status_returns_error() {
-        assert!(parse_head(&["INVALID\r\n"]).is_err());
     }
 }
 
@@ -132,26 +129,20 @@ mod parse_status_line {
     }
 
     #[test]
-    fn errors_on_empty_line() {
-        let result = parse_status_line("");
-        assert!(result.is_err());
-    }
+    fn invalid_lines_return_protocol_error() {
+        let cases = [
+            ("", "Empty response"),
+            ("INVALID", "missing status code"),
+            ("HTTP/1.1 NOT_A_NUMBER OK", "Invalid HTTP status code"),
+        ];
 
-    #[test]
-    fn errors_on_malformed_line() {
-        let result = parse_status_line("INVALID");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn errors_on_invalid_status_code() {
-        let result = parse_status_line("HTTP/1.1 NOT_A_NUMBER OK");
-        assert!(result.is_err());
-        match result {
-            Err(BridgeError::SoapFault(msg)) => {
-                assert!(msg.contains("Invalid HTTP status code"));
+        for (line, expected) in cases {
+            match parse_status_line(line) {
+                Err(BridgeError::Protocol(msg)) => {
+                    assert!(msg.contains(expected), "{:?}: {}", line, msg)
+                }
+                other => panic!("{:?}: expected Protocol, got {:?}", line, other),
             }
-            other => panic!("expected SoapFault, got {:?}", other),
         }
     }
 }
