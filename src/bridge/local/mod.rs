@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
+use crate::defaults;
 use crate::encoders::encode_control_inputs;
 use crate::soap_client::{SoapClient, tcp::TcpSoapClient};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
@@ -463,8 +464,8 @@ impl Default for Configuration {
     fn default() -> Self {
         Configuration {
             simulator_host: crate::DEFAULT_SIMULATOR_HOST.to_string(),
-            connect_timeout: Duration::from_millis(5),
-            pool_size: 1,
+            connect_timeout: defaults::CONNECT_TIMEOUT,
+            pool_size: defaults::POOL_SIZE,
         }
     }
 }

@@ -11,11 +11,10 @@ use tokio::sync::Mutex;
 use tokio::time::timeout;
 
 use crate::bridge::AsyncBridge;
+use crate::defaults;
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::{Request, RequestType, Response};
-
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Builder for AsyncRemoteBridge.
 ///
@@ -31,7 +30,7 @@ impl AsyncRemoteBridgeBuilder {
     pub fn new(address: &str) -> Self {
         Self {
             address: address.to_string(),
-            connect_timeout: DEFAULT_TIMEOUT,
+            connect_timeout: defaults::REMOTE_TIMEOUT,
         }
     }
 
