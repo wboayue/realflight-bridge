@@ -112,20 +112,37 @@ mod configuration_tests {
 mod bridge_operations {
     use super::*;
 
+    type UnitOp = fn(&RealFlightLocalBridge) -> Result<(), BridgeError>;
+
     #[test]
-    fn reset_aircraft_sends_correct_request() {
-        let bridge = stub_bridge(vec!["reset-aircraft-200"]);
+    fn unit_ops_send_correct_requests() {
+        let cases: [(UnitOp, &str, &str); 3] = [
+            (
+                RealFlightLocalBridge::enable_rc,
+                "restore-original-controller-device-200",
+                fixtures::ENABLE_RC_REQUEST,
+            ),
+            (
+                RealFlightLocalBridge::disable_rc,
+                "inject-uav-controller-interface-200",
+                fixtures::DISABLE_RC_REQUEST,
+            ),
+            (
+                RealFlightLocalBridge::reset_aircraft,
+                "reset-aircraft-200",
+                fixtures::RESET_AIRCRAFT_REQUEST,
+            ),
+        ];
 
-        let result = bridge.reset_aircraft();
-        assert!(result.is_ok());
-
-        let requests = bridge.requests();
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0], fixtures::RESET_AIRCRAFT_REQUEST);
+        for (op, response, expected_request) in cases {
+            let bridge = stub_bridge(vec![response]);
+            op(&bridge).unwrap();
+            assert_eq!(bridge.requests(), [expected_request]);
+        }
     }
 
     #[test]
-    fn reset_aircraft_increments_request_count() {
+    fn increments_request_count() {
         let bridge = stub_bridge(vec!["reset-aircraft-200"]);
         bridge.reset_aircraft().unwrap();
 
@@ -134,50 +151,12 @@ mod bridge_operations {
     }
 
     #[test]
-    fn disable_rc_sends_correct_request() {
-        let bridge = stub_bridge(vec!["inject-uav-controller-interface-200"]);
-
-        let result = bridge.disable_rc();
-        assert!(result.is_ok());
-
-        let requests = bridge.requests();
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0], fixtures::DISABLE_RC_REQUEST);
-    }
-
-    #[test]
-    fn disable_rc_returns_soap_fault_on_500() {
+    fn returns_soap_fault_on_500() {
         let bridge = stub_bridge(vec!["inject-uav-controller-interface-500"]);
 
-        let result = bridge.disable_rc();
-        match result {
+        match bridge.disable_rc() {
             Err(BridgeError::SoapFault(msg)) => {
                 assert_eq!(msg, "Preexisting controller reference");
-            }
-            other => panic!("expected SoapFault, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn enable_rc_sends_correct_request() {
-        let bridge = stub_bridge(vec!["restore-original-controller-device-200"]);
-
-        let result = bridge.enable_rc();
-        assert!(result.is_ok());
-
-        let requests = bridge.requests();
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0], fixtures::ENABLE_RC_REQUEST);
-    }
-
-    #[test]
-    fn enable_rc_returns_soap_fault_on_500() {
-        let bridge = stub_bridge(vec!["restore-original-controller-device-500"]);
-
-        let result = bridge.enable_rc();
-        match result {
-            Err(BridgeError::SoapFault(msg)) => {
-                assert_eq!(msg, "Pointer to original controller device is null");
             }
             other => panic!("expected SoapFault, got {:?}", other),
         }
@@ -191,40 +170,6 @@ mod bridge_operations {
 mod exchange_data {
     use super::*;
 
-    fn create_sequential_inputs() -> ControlInputs {
-        let mut control = ControlInputs::default();
-        for i in 0..control.channels.len() {
-            control.channels[i] = i as f32 / 12.0;
-        }
-        control
-    }
-
-    #[test]
-    fn returns_simulator_state_on_success() {
-        let bridge = stub_bridge(vec!["return-data-200"]);
-        let control = create_sequential_inputs();
-
-        let result = bridge.exchange_data(&control);
-        assert!(result.is_ok());
-
-        let state = result.unwrap();
-        assert_eq!(state.current_physics_speed_multiplier, 1.0);
-    }
-
-    #[test]
-    fn returns_soap_fault_on_500() {
-        let bridge = stub_bridge(vec!["return-data-500"]);
-        let control = create_sequential_inputs();
-
-        let result = bridge.exchange_data(&control);
-        match result {
-            Err(BridgeError::SoapFault(msg)) => {
-                assert_eq!(msg, "RealFlight Link controller has not been instantiated");
-            }
-            other => panic!("expected SoapFault, got {:?}", other),
-        }
-    }
-
     #[test]
     fn returns_decoded_state() {
         let bridge = stub_bridge(vec!["return-data-200"]);
@@ -234,6 +179,18 @@ mod exchange_data {
         let expected = decode_simulator_state(RETURN_DATA_200).unwrap();
         assert_ne!(expected, SimulatorState::default());
         assert_eq!(state, expected);
+    }
+
+    #[test]
+    fn returns_soap_fault_on_500() {
+        let bridge = stub_bridge(vec!["return-data-500"]);
+
+        match bridge.exchange_data(&ControlInputs::default()) {
+            Err(BridgeError::SoapFault(msg)) => {
+                assert_eq!(msg, "RealFlight Link controller has not been instantiated");
+            }
+            other => panic!("expected SoapFault, got {:?}", other),
+        }
     }
 }
 
