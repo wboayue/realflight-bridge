@@ -36,14 +36,15 @@ use std::{
 };
 
 use log::error;
-use postcard::{from_bytes, to_stdvec};
 use serde::{Deserialize, Serialize};
 
 use crate::defaults;
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::RealFlightBridge;
+use frame::{FRAME_HEADER_LEN, decode_frame, encode_frame, frame_len};
 
+pub(crate) mod frame;
 #[cfg(test)]
 mod tests;
 
@@ -67,6 +68,14 @@ pub struct Request {
     pub request_type: RequestType,
     /// Optional [ControlInputs] data
     pub payload: Option<ControlInputs>,
+}
+
+/// Borrowed form of [Request] for sending without cloning the payload.
+/// Serializes identically to [Request].
+#[derive(Debug, Serialize)]
+pub(crate) struct RequestRef<'a> {
+    pub request_type: RequestType,
+    pub payload: Option<&'a ControlInputs>,
 }
 
 /// Represents a response sent from the server to the client.
@@ -145,7 +154,7 @@ impl RealFlightBridge for RealFlightRemoteBridge {
     /// # Returns
     /// The [SimulatorState] or an error if no state is returned.
     fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
-        let response = self.send_request(RequestType::ExchangeData, Some(control.clone()))?;
+        let response = self.send_request(RequestType::ExchangeData, Some(control))?;
         if let Some(state) = response.payload {
             Ok(state)
         } else {
@@ -197,48 +206,31 @@ impl RealFlightRemoteBridge {
     /// * `payload` - Optional [ControlInputs] to include in the request.
     ///
     /// # Returns
-    /// A `Result` containing the server's response or an I/O error.
+    /// A `Result` containing the server's response or an error.
     fn send_request(
         &self,
         request_type: RequestType,
-        payload: Option<ControlInputs>,
-    ) -> std::io::Result<Response> {
-        let request = Request {
+        payload: Option<&ControlInputs>,
+    ) -> Result<Response, BridgeError> {
+        let frame = encode_frame(&RequestRef {
             request_type,
             payload,
-        };
-
-        // Serialize the request to a byte vector
-        let request_bytes = to_stdvec(&request)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        })?;
 
         let mut writer = self.writer.borrow_mut();
-
-        // Send the length of the request (4 bytes)
-        let length_bytes = (request_bytes.len() as u32).to_be_bytes();
-        writer.write_all(&length_bytes)?;
-
-        // Send the serialized request data
-        writer.write_all(&request_bytes)?;
+        writer.write_all(&frame)?;
         writer.flush()?;
 
         let mut reader = self.reader.borrow_mut();
-
-        // Read the response length (4 bytes)
-        let mut length_buffer = [0u8; 4];
-        reader.read_exact(&mut length_buffer)?;
-        let response_length = u32::from_be_bytes(length_buffer) as usize;
+        let mut header = [0u8; FRAME_HEADER_LEN];
+        reader.read_exact(&mut header)?;
 
         // Read the response data into reusable buffer
         let mut response_buffer = self.response_buffer.borrow_mut();
         response_buffer.clear();
-        response_buffer.resize(response_length, 0);
+        response_buffer.resize(frame_len(header), 0);
         reader.read_exact(&mut response_buffer)?;
 
-        // Deserialize the response
-        let response: Response = from_bytes(&response_buffer)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
-        Ok(response)
+        decode_frame(&response_buffer)
     }
 }

@@ -1,13 +1,13 @@
 //! Request handling for the proxy server.
 
 use log::{error, info};
-use postcard::{from_bytes, to_stdvec};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
 use crate::BridgeError;
 use crate::bridge::AsyncBridge;
+use crate::bridge::remote::frame::{FRAME_HEADER_LEN, decode_frame, encode_frame, frame_len};
 use crate::bridge::remote::{Request, RequestType, Response};
 
 /// Handles a single client connection.
@@ -21,26 +21,25 @@ pub(super) async fn handle_client<B: AsyncBridge>(
     let (read_half, write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
     let mut writer = BufWriter::new(write_half);
-    let mut length_buffer = [0u8; 4];
+    let mut header = [0u8; FRAME_HEADER_LEN];
+    let mut buffer = Vec::new();
 
     loop {
         tokio::select! {
             _ = cancel.cancelled() => {
                 break;
             }
-            result = reader.read_exact(&mut length_buffer) => {
+            result = reader.read_exact(&mut header) => {
                 if result.is_err() {
                     break; // Client disconnected
                 }
 
-                let msg_length = u32::from_be_bytes(length_buffer) as usize;
-
-                // Read the request data
-                let mut buffer = vec![0u8; msg_length];
+                // Read the request data into reusable buffer
+                buffer.clear();
+                buffer.resize(frame_len(header), 0);
                 reader.read_exact(&mut buffer).await?;
 
-                // Deserialize the request
-                let request: Request = match from_bytes(&buffer) {
+                let request: Request = match decode_frame(&buffer) {
                     Ok(req) => req,
                     Err(e) => {
                         error!("Failed to deserialize request: {}", e);
@@ -64,12 +63,7 @@ async fn send_response(
     writer: &mut BufWriter<tokio::net::tcp::OwnedWriteHalf>,
     response: Response,
 ) -> Result<(), BridgeError> {
-    let response_bytes = to_stdvec(&response)
-        .map_err(|e| BridgeError::SoapFault(format!("Failed to serialize response: {}", e)))?;
-    let length_bytes = (response_bytes.len() as u32).to_be_bytes();
-
-    writer.write_all(&length_bytes).await?;
-    writer.write_all(&response_bytes).await?;
+    writer.write_all(&encode_frame(&response)?).await?;
     writer.flush().await?;
 
     Ok(())
