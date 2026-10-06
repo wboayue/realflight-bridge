@@ -6,13 +6,11 @@ use std::time::Duration;
 
 use crate::bridge::AsyncBridge;
 use crate::defaults;
-use crate::soap_client::AsyncSoapClient;
 use crate::soap_client::tcp_async::AsyncTcpSoapClient;
+use crate::soap_client::{AsyncSoapClient, SoapResponse};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 
-use super::encode_control_inputs;
-
-const EMPTY_BODY: &str = "";
+use super::ops::{Op, decode_exchange, decode_unit};
 
 /// Builder for AsyncLocalBridge.
 ///
@@ -130,37 +128,28 @@ pub struct AsyncLocalBridge {
 
 impl AsyncBridge for AsyncLocalBridge {
     async fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
-        let body = encode_control_inputs(control);
-        let response = self.soap_client.send_action("ExchangeData", &body).await?;
-        match response.status_code {
-            200 => crate::decoders::decode_simulator_state(&response.body),
-            _ => Err(BridgeError::SoapFault(response.fault_message())),
-        }
+        decode_exchange(self.call(Op::Exchange(control)).await?)
     }
 
     async fn enable_rc(&self) -> Result<(), BridgeError> {
-        self.soap_client
-            .send_action("RestoreOriginalControllerDevice", EMPTY_BODY)
-            .await?
-            .into()
+        decode_unit(self.call(Op::EnableRc).await?)
     }
 
     async fn disable_rc(&self) -> Result<(), BridgeError> {
-        self.soap_client
-            .send_action("InjectUAVControllerInterface", EMPTY_BODY)
-            .await?
-            .into()
+        decode_unit(self.call(Op::DisableRc).await?)
     }
 
     async fn reset_aircraft(&self) -> Result<(), BridgeError> {
-        self.soap_client
-            .send_action("ResetAircraft", EMPTY_BODY)
-            .await?
-            .into()
+        decode_unit(self.call(Op::Reset).await?)
     }
 }
 
 impl AsyncLocalBridge {
+    /// Sends an operation to the simulator.
+    async fn call(&self, op: Op<'_>) -> Result<SoapResponse, BridgeError> {
+        self.soap_client.send_action(op.action(), &op.body()).await
+    }
+
     /// Creates a new AsyncLocalBridge with default settings.
     pub async fn new() -> Result<Self, BridgeError> {
         AsyncLocalBridgeBuilder::default().build().await
