@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
 use crate::defaults;
@@ -267,14 +267,7 @@ impl RealFlightLocalBridge {
     ///
     /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
     pub fn new() -> Result<RealFlightLocalBridge, BridgeError> {
-        let statistics = Arc::new(StatisticsEngine::new());
-        let soap_client = TcpSoapClient::new(Configuration::default(), statistics.clone())?;
-        soap_client.ensure_pool_initialized()?;
-
-        Ok(RealFlightLocalBridge {
-            statistics: statistics.clone(),
-            soap_client: Box::new(soap_client),
-        })
+        Self::with_configuration(&Configuration::default())
     }
 
     /// Creates a new [RealFlightBridge] instance configured to communicate
@@ -321,12 +314,24 @@ impl RealFlightLocalBridge {
     pub fn with_configuration(
         configuration: &Configuration,
     ) -> Result<RealFlightLocalBridge, BridgeError> {
+        let addr: SocketAddr = configuration.simulator_host.parse().map_err(|e| {
+            BridgeError::Initialization(format!(
+                "Invalid simulator host '{}': {}",
+                configuration.simulator_host, e
+            ))
+        })?;
+
         let statistics = Arc::new(StatisticsEngine::new());
-        let soap_client = TcpSoapClient::new(configuration.clone(), statistics.clone())?;
-        soap_client.ensure_pool_initialized()?;
+        let soap_client = TcpSoapClient::new(
+            addr,
+            configuration.connect_timeout,
+            configuration.pool_size,
+            statistics.clone(),
+        )?;
+        soap_client.ensure_pool_initialized(defaults::INIT_TIMEOUT)?;
 
         Ok(RealFlightLocalBridge {
-            statistics: statistics.clone(),
+            statistics,
             soap_client: Box::new(soap_client),
         })
     }
