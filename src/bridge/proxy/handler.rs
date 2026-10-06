@@ -71,37 +71,22 @@ async fn send_response(
 
 /// Processes a request using the async bridge.
 async fn process_request<B: AsyncBridge>(request: Request, bridge: &B) -> Response {
-    match request.request_type {
-        RequestType::EnableRC => match bridge.enable_rc().await {
-            Ok(()) => Response::success(),
-            Err(e) => {
-                error!("Error enabling RC: {}", e);
-                Response::error()
-            }
+    let result = match &request.request_type {
+        RequestType::EnableRC => bridge.enable_rc().await.map(|()| None),
+        RequestType::DisableRC => bridge.disable_rc().await.map(|()| None),
+        RequestType::ResetAircraft => bridge.reset_aircraft().await.map(|()| None),
+        RequestType::ExchangeData => match &request.payload {
+            Some(control) => bridge.exchange_data(control).await.map(Some),
+            None => Err(BridgeError::SoapFault("Missing control inputs".into())),
         },
-        RequestType::DisableRC => match bridge.disable_rc().await {
-            Ok(()) => Response::success(),
-            Err(e) => {
-                error!("Error disabling RC: {}", e);
-                Response::error()
-            }
-        },
-        RequestType::ResetAircraft => match bridge.reset_aircraft().await {
-            Ok(()) => Response::success(),
-            Err(e) => {
-                error!("Error resetting aircraft: {}", e);
-                Response::error()
-            }
-        },
-        RequestType::ExchangeData => match request.payload {
-            Some(payload) => match bridge.exchange_data(&payload).await {
-                Ok(state) => Response::success_with(state),
-                Err(e) => {
-                    error!("Error exchanging data: {}", e);
-                    Response::error()
-                }
-            },
-            None => Response::error(),
-        },
+    };
+
+    match result {
+        Ok(Some(state)) => Response::success_with(state),
+        Ok(None) => Response::success(),
+        Err(e) => {
+            error!("{:?} failed: {}", request.request_type, e);
+            Response::error()
+        }
     }
 }

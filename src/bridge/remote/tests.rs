@@ -330,3 +330,47 @@ fn handle_mock_malformed_response(mut stream: TcpStream) {
     let _ = stream.write_all(&malformed_data.as_slice());
     let _ = stream.flush();
 }
+
+// ============================================================================
+// Response / address helpers (no I/O)
+// ============================================================================
+
+mod response_helpers {
+    use super::super::resolve;
+    use super::*;
+
+    fn response(status: ResponseStatus, payload: Option<SimulatorState>) -> Response {
+        Response { status, payload }
+    }
+
+    #[test]
+    fn into_state_returns_payload() {
+        let state = SimulatorState::default();
+        let result = response(ResponseStatus::Success, Some(state.clone())).into_state();
+        assert_eq!(result.unwrap(), state);
+    }
+
+    #[test]
+    fn into_state_without_payload_is_error() {
+        match response(ResponseStatus::Success, None).into_state() {
+            Err(BridgeError::SoapFault(msg)) => assert!(msg.contains("No payload")),
+            other => panic!("expected SoapFault, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn into_unit_ok_on_success() {
+        assert!(response(ResponseStatus::Success, None).into_unit().is_ok());
+    }
+
+    #[test]
+    fn resolve_parses_socket_addr() {
+        let addr = resolve("127.0.0.1:18083").unwrap();
+        assert_eq!(addr.to_string(), "127.0.0.1:18083");
+    }
+
+    #[test]
+    fn resolve_rejects_invalid_address() {
+        assert!(resolve("not-a-valid-address").is_err());
+    }
+}

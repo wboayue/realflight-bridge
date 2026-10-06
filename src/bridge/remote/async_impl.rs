@@ -1,9 +1,7 @@
 //! Async implementation of the remote bridge for RealFlight simulator.
 
-use std::net::ToSocketAddrs;
 use std::time::Duration;
 
-use log::error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -14,7 +12,7 @@ use crate::defaults;
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::frame::{FRAME_HEADER_LEN, decode_frame, encode_frame, frame_len};
-use super::{RequestRef, RequestType, Response};
+use super::{RequestRef, RequestType, Response, resolve};
 
 /// Builder for AsyncRemoteBridge.
 ///
@@ -43,12 +41,9 @@ impl AsyncRemoteBridgeBuilder {
 
     /// Builds the AsyncRemoteBridge, connecting to the server.
     pub async fn build(self) -> Result<AsyncRemoteBridge, BridgeError> {
-        let addr = self
-            .address
-            .to_socket_addrs()
-            .map_err(|e| BridgeError::Initialization(format!("Invalid address: {}", e)))?
-            .next()
-            .ok_or_else(|| BridgeError::Initialization("Invalid address".into()))?;
+        let addr = resolve(&self.address).map_err(|e| {
+            BridgeError::Initialization(format!("Invalid address '{}': {}", self.address, e))
+        })?;
 
         let stream = timeout(self.connect_timeout, TcpStream::connect(addr))
             .await
@@ -111,30 +106,23 @@ pub struct AsyncRemoteBridge {
 
 impl AsyncBridge for AsyncRemoteBridge {
     async fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
-        let response = self
-            .send_request(RequestType::ExchangeData, Some(control))
-            .await?;
-        if let Some(state) = response.payload {
-            Ok(state)
-        } else {
-            error!("No payload in response: {:?}", response.status);
-            Err(BridgeError::SoapFault("No payload in response".to_string()))
-        }
+        self.call(RequestType::ExchangeData, Some(control))
+            .await?
+            .into_state()
     }
 
     async fn enable_rc(&self) -> Result<(), BridgeError> {
-        self.send_request(RequestType::EnableRC, None).await?;
-        Ok(())
+        self.call(RequestType::EnableRC, None).await?.into_unit()
     }
 
     async fn disable_rc(&self) -> Result<(), BridgeError> {
-        self.send_request(RequestType::DisableRC, None).await?;
-        Ok(())
+        self.call(RequestType::DisableRC, None).await?.into_unit()
     }
 
     async fn reset_aircraft(&self) -> Result<(), BridgeError> {
-        self.send_request(RequestType::ResetAircraft, None).await?;
-        Ok(())
+        self.call(RequestType::ResetAircraft, None)
+            .await?
+            .into_unit()
     }
 }
 
@@ -150,7 +138,7 @@ impl AsyncRemoteBridge {
     }
 
     /// Sends a request to the server and receives a response.
-    async fn send_request(
+    async fn call(
         &self,
         request_type: RequestType,
         payload: Option<&ControlInputs>,

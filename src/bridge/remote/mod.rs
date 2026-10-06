@@ -32,7 +32,7 @@ use std::io::{BufReader, BufWriter};
 use std::time::Duration;
 use std::{
     io::{Read, Write},
-    net::{TcpStream, ToSocketAddrs},
+    net::{SocketAddr, TcpStream, ToSocketAddrs},
 };
 
 use log::error;
@@ -96,6 +96,24 @@ pub enum ResponseStatus {
     Error,
 }
 
+impl Response {
+    /// Extracts the simulator state from an `ExchangeData` response.
+    pub(crate) fn into_state(self) -> Result<SimulatorState, BridgeError> {
+        match self.payload {
+            Some(state) => Ok(state),
+            None => {
+                error!("No payload in response: {:?}", self.status);
+                Err(BridgeError::SoapFault("No payload in response".to_string()))
+            }
+        }
+    }
+
+    /// Interprets a response to an operation without a payload.
+    pub(crate) fn into_unit(self) -> Result<(), BridgeError> {
+        Ok(())
+    }
+}
+
 #[cfg(feature = "rt-tokio")]
 impl Response {
     pub(crate) fn success() -> Self {
@@ -120,6 +138,14 @@ impl Response {
     }
 }
 
+/// Resolves `address` to its first socket address.
+pub(crate) fn resolve(address: &str) -> std::io::Result<SocketAddr> {
+    address
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid address"))
+}
+
 /// Client struct for managing TCP communication with the simulator server.
 pub struct RealFlightRemoteBridge {
     reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
@@ -130,20 +156,17 @@ pub struct RealFlightRemoteBridge {
 impl RealFlightBridge for RealFlightRemoteBridge {
     /// Enables remote control on the simulator.
     fn enable_rc(&self) -> Result<(), BridgeError> {
-        self.send_request(RequestType::EnableRC, None)?;
-        Ok(())
+        self.call(RequestType::EnableRC, None)?.into_unit()
     }
 
     /// Disables remote control on the simulator. (Enables control by the RealFlight link.)
     fn disable_rc(&self) -> Result<(), BridgeError> {
-        self.send_request(RequestType::DisableRC, None)?;
-        Ok(())
+        self.call(RequestType::DisableRC, None)?.into_unit()
     }
 
     /// Resets the aircraft state in the simulator.
     fn reset_aircraft(&self) -> Result<(), BridgeError> {
-        self.send_request(RequestType::ResetAircraft, None)?;
-        Ok(())
+        self.call(RequestType::ResetAircraft, None)?.into_unit()
     }
 
     /// Sends [ControlInputs] to the simulator and receives the updated [SimulatorState].
@@ -154,13 +177,8 @@ impl RealFlightBridge for RealFlightRemoteBridge {
     /// # Returns
     /// The [SimulatorState] or an error if no state is returned.
     fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
-        let response = self.send_request(RequestType::ExchangeData, Some(control))?;
-        if let Some(state) = response.payload {
-            Ok(state)
-        } else {
-            error!("No payload in response: {:?}", response.status);
-            Err(BridgeError::SoapFault("No payload in response".to_string()))
-        }
+        self.call(RequestType::ExchangeData, Some(control))?
+            .into_state()
     }
 }
 
@@ -185,11 +203,7 @@ impl RealFlightRemoteBridge {
     /// # Returns
     /// A `Result` containing the new client instance or an I/O error.
     pub fn with_timeout(address: &str, timeout: Duration) -> std::io::Result<Self> {
-        let addr = address.to_socket_addrs()?.next().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid address")
-        })?;
-
-        let stream = TcpStream::connect_timeout(&addr, timeout)?;
+        let stream = TcpStream::connect_timeout(&resolve(address)?, timeout)?;
         stream.set_nodelay(true)?;
 
         Ok(RealFlightRemoteBridge {
@@ -207,7 +221,7 @@ impl RealFlightRemoteBridge {
     ///
     /// # Returns
     /// A `Result` containing the server's response or an error.
-    fn send_request(
+    fn call(
         &self,
         request_type: RequestType,
         payload: Option<&ControlInputs>,
