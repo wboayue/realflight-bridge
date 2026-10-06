@@ -4,7 +4,7 @@ use crate::bridge::wire::{Request, RequestRef, RequestType};
 
 fn split(frame: &[u8]) -> (usize, &[u8]) {
     let (header, payload) = frame.split_at(FRAME_HEADER_LEN);
-    (frame_len(header.try_into().unwrap()), payload)
+    (frame_len(header.try_into().unwrap()).unwrap(), payload)
 }
 
 #[test]
@@ -73,4 +73,58 @@ fn truncated_payload_is_invalid_data() {
         decode_frame::<Request>(payload),
         Err(BridgeError::Connection(_))
     ));
+}
+
+fn header(len: usize) -> [u8; FRAME_HEADER_LEN] {
+    (len as u32).to_be_bytes()
+}
+
+#[test]
+fn frame_len_accepts_max() {
+    assert_eq!(frame_len(header(MAX_FRAME_LEN)).unwrap(), MAX_FRAME_LEN);
+}
+
+#[test]
+fn frame_len_rejects_oversize() {
+    let err = frame_len(header(MAX_FRAME_LEN + 1)).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+    let err = frame_len([0xFF; FRAME_HEADER_LEN]).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+}
+
+#[test]
+fn encode_frame_into_matches_encode_frame() {
+    let request = Request {
+        request_type: RequestType::ExchangeData,
+        payload: Some(ControlInputs::default()),
+    };
+    let mut buf = b"stale contents".to_vec();
+
+    encode_frame_into(&request, &mut buf).unwrap();
+
+    assert_eq!(buf, encode_frame(&request).unwrap());
+}
+
+#[test]
+fn encode_frame_into_reuses_buffer() {
+    let mut buf = Vec::with_capacity(1024);
+    let ptr = buf.as_ptr();
+
+    encode_frame_into(&RequestType::EnableRC, &mut buf).unwrap();
+    encode_frame_into(&RequestType::ResetAircraft, &mut buf).unwrap();
+
+    assert_eq!(buf.as_ptr(), ptr);
+    assert_eq!(buf, encode_frame(&RequestType::ResetAircraft).unwrap());
+}
+
+#[test]
+fn encode_rejects_oversize_payload() {
+    // Byte-sequence length varint plus content pushes the payload over the limit
+    let payload = vec![0u8; MAX_FRAME_LEN];
+
+    match encode_frame(&payload) {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), io::ErrorKind::InvalidData),
+        other => panic!("expected Connection(InvalidData), got {:?}", other),
+    }
 }

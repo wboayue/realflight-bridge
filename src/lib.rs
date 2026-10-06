@@ -58,6 +58,9 @@ pub use decoders::extract_element;
 #[cfg(any(test, feature = "bench-internals"))]
 pub use encoders::encode_control_inputs;
 
+#[cfg(any(test, feature = "bench-internals"))]
+pub use bridge::wire::frame::{decode_frame, encode_frame, encode_frame_into};
+
 pub mod bridge;
 mod decoders;
 mod defaults;

@@ -172,6 +172,19 @@ async fn malformed_response_is_invalid_data() {
 }
 
 #[tokio::test]
+async fn oversized_response_is_invalid_data() {
+    let proxy = MockProxy::reply_header(u32::MAX);
+    let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
+
+    match bridge.enable_rc().await {
+        Err(BridgeError::Connection(e)) => {
+            assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+        }
+        other => panic!("expected Connection(InvalidData), got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn unit_ops_fail_on_proxy_error() {
     let proxy = MockProxy::respond(Response::error(&BridgeError::Protocol("bad".into())));
     let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();

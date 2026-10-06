@@ -9,7 +9,7 @@ pub(crate) fn read_frame<R: Read>(reader: &mut R, buf: &mut Vec<u8>) -> io::Resu
     let mut header = [0u8; FRAME_HEADER_LEN];
     reader.read_exact(&mut header)?;
     buf.clear();
-    buf.resize(frame_len(header), 0);
+    buf.resize(frame_len(header)?, 0);
     reader.read_exact(buf)
 }
 
@@ -24,7 +24,7 @@ where
     let mut header = [0u8; FRAME_HEADER_LEN];
     reader.read_exact(&mut header).await?;
     buf.clear();
-    buf.resize(frame_len(header), 0);
+    buf.resize(frame_len(header)?, 0);
     reader.read_exact(buf).await?;
     Ok(())
 }

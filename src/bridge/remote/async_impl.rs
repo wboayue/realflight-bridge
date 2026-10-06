@@ -13,7 +13,7 @@ use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::{RequestType, Response, resolve};
 use crate::bridge::wire::RequestRef;
-use crate::bridge::wire::frame::{decode_frame, encode_frame};
+use crate::bridge::wire::frame::{decode_frame, encode_frame_into};
 use crate::bridge::wire::frame_io::read_frame_async;
 
 /// Builder for AsyncRemoteBridge.
@@ -67,6 +67,7 @@ impl AsyncRemoteBridgeBuilder {
             connection: Mutex::new(Connection {
                 reader: BufReader::new(read_half),
                 writer: BufWriter::new(write_half),
+                request_buffer: Vec::with_capacity(256),
                 response_buffer: Vec::with_capacity(4096),
                 in_flight: false,
             }),
@@ -117,6 +118,7 @@ pub struct AsyncRemoteBridge {
 struct Connection {
     reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
     writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
+    request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
     /// Set while a round trip is in progress. Still set at the start of a call
     /// means a previous call was cancelled or failed mid-exchange, leaving the
@@ -163,11 +165,6 @@ impl AsyncRemoteBridge {
         request_type: RequestType,
         payload: Option<&ControlInputs>,
     ) -> Result<Response, BridgeError> {
-        let frame = encode_frame(&RequestRef {
-            request_type,
-            payload,
-        })?;
-
         let mut guard = self.connection.lock().await;
         let conn = &mut *guard;
         if conn.in_flight {
@@ -176,8 +173,16 @@ impl AsyncRemoteBridge {
             )));
         }
 
+        encode_frame_into(
+            &RequestRef {
+                request_type,
+                payload,
+            },
+            &mut conn.request_buffer,
+        )?;
+
         conn.in_flight = true;
-        conn.writer.write_all(&frame).await?;
+        conn.writer.write_all(&conn.request_buffer).await?;
         conn.writer.flush().await?;
 
         read_frame_async(&mut conn.reader, &mut conn.response_buffer).await?;

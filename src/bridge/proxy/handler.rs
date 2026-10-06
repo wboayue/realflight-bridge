@@ -1,5 +1,7 @@
 //! Request handling for the proxy server.
 
+use std::io;
+
 use log::{error, info};
 use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
@@ -7,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::BridgeError;
 use crate::bridge::AsyncBridge;
-use crate::bridge::wire::frame::{decode_frame, encode_frame};
+use crate::bridge::wire::frame::{decode_frame, encode_frame_into};
 use crate::bridge::wire::frame_io::read_frame_async;
 use crate::bridge::wire::{Request, RequestType, Response};
 
@@ -23,6 +25,7 @@ pub(super) async fn handle_client<B: AsyncBridge>(
     let mut reader = BufReader::new(read_half);
     let mut writer = BufWriter::new(write_half);
     let mut buffer = Vec::new();
+    let mut response_buffer = Vec::new();
 
     loop {
         tokio::select! {
@@ -30,8 +33,12 @@ pub(super) async fn handle_client<B: AsyncBridge>(
                 break;
             }
             result = read_frame_async(&mut reader, &mut buffer) => {
-                if result.is_err() {
-                    break; // Client disconnected
+                if let Err(e) = result {
+                    // A bad frame (e.g. oversized) leaves the stream out of sync; drop the client
+                    if e.kind() == io::ErrorKind::InvalidData {
+                        error!("Invalid frame, dropping client: {}", e);
+                    }
+                    break; // Disconnect or invalid frame
                 }
 
                 let request: Request = match decode_frame(&buffer) {
@@ -44,7 +51,7 @@ pub(super) async fn handle_client<B: AsyncBridge>(
 
                 // Process request
                 let response = process_request(request, bridge).await;
-                send_response(&mut writer, response).await?;
+                send_response(&mut writer, &response, &mut response_buffer).await?;
             }
         }
     }
@@ -53,12 +60,19 @@ pub(super) async fn handle_client<B: AsyncBridge>(
     Ok(())
 }
 
-/// Sends a response to the client.
+/// Sends a response to the client. A response that can't be framed (e.g. an
+/// oversized relayed error message) is replaced by a `Protocol` error.
 async fn send_response(
     writer: &mut BufWriter<tokio::net::tcp::OwnedWriteHalf>,
-    response: Response,
+    response: &Response,
+    buf: &mut Vec<u8>,
 ) -> Result<(), BridgeError> {
-    writer.write_all(&encode_frame(&response)?).await?;
+    if let Err(e) = encode_frame_into(response, buf) {
+        error!("Failed to encode response: {}", e);
+        let fallback = BridgeError::Protocol(format!("proxy failed to encode response: {e}"));
+        encode_frame_into(&Response::error(&fallback), buf)?;
+    }
+    writer.write_all(buf).await?;
     writer.flush().await?;
 
     Ok(())

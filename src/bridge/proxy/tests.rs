@@ -473,3 +473,104 @@ async fn malformed_request_continues_handling() {
     cancel.cancel();
     let _ = handle.await;
 }
+
+#[tokio::test]
+async fn oversized_request_drops_client() {
+    let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+    let addr = server.local_addr().to_string();
+    let cancel = CancellationToken::new();
+    let bridge = StubBridge::new();
+    let enable_count = bridge.enable_rc_count.clone();
+
+    let server_cancel = cancel.clone();
+    let handle = tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+    // Announce a ~4 GiB frame; server must close the connection without reading it
+    let closed = tokio::task::spawn_blocking({
+        let addr = addr.clone();
+        move || {
+            use std::io::{Read, Write};
+
+            let mut stream = std::net::TcpStream::connect(&addr).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            stream.write_all(&u32::MAX.to_be_bytes()).unwrap();
+            stream.flush().unwrap();
+            matches!(stream.read(&mut [0u8; 1]), Ok(0))
+        }
+    })
+    .await
+    .unwrap();
+    assert!(closed, "server should close the connection");
+
+    // Server still serves new clients
+    let response = send_request_async(
+        addr,
+        Request {
+            request_type: RequestType::EnableRC,
+            payload: None,
+        },
+    )
+    .await;
+    assert_eq!(response.status, ResponseStatus::Success);
+    assert_eq!(enable_count.load(Ordering::SeqCst), 1);
+
+    cancel.cancel();
+    let _ = handle.await;
+}
+
+/// Bridge whose faults are too large to fit in a frame.
+struct OversizedFaultBridge;
+
+fn oversized_fault() -> BridgeError {
+    BridgeError::SoapFault("x".repeat(crate::bridge::wire::frame::MAX_FRAME_LEN + 1))
+}
+
+impl AsyncBridge for OversizedFaultBridge {
+    async fn exchange_data(
+        &self,
+        _control: &ControlInputs,
+    ) -> Result<crate::SimulatorState, BridgeError> {
+        Err(oversized_fault())
+    }
+
+    async fn enable_rc(&self) -> Result<(), BridgeError> {
+        Err(oversized_fault())
+    }
+
+    async fn disable_rc(&self) -> Result<(), BridgeError> {
+        Err(oversized_fault())
+    }
+
+    async fn reset_aircraft(&self) -> Result<(), BridgeError> {
+        Err(oversized_fault())
+    }
+}
+
+#[tokio::test]
+async fn oversized_response_returns_protocol_error() {
+    let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+    let addr = server.local_addr().to_string();
+    let cancel = CancellationToken::new();
+    let bridge = OversizedFaultBridge;
+
+    let server_cancel = cancel.clone();
+    let handle = tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+    let request = Request {
+        request_type: RequestType::EnableRC,
+        payload: None,
+    };
+    let response = send_request_async(addr, request).await;
+
+    match response.status {
+        ResponseStatus::Error(RemoteError::Protocol(msg)) => {
+            assert!(msg.contains("exceeds limit"), "unexpected message: {msg}")
+        }
+        other => panic!("expected Protocol error, got {:?}", other),
+    }
+
+    cancel.cancel();
+    let _ = handle.await;
+}

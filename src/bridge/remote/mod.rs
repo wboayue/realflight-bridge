@@ -28,7 +28,7 @@ mod async_impl;
 #[cfg(feature = "rt-tokio")]
 pub use async_impl::{AsyncRemoteBridge, AsyncRemoteBridgeBuilder};
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::{BufReader, BufWriter};
 use std::time::Duration;
 use std::{
@@ -41,7 +41,7 @@ use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::RealFlightBridge;
 use super::wire::RequestRef;
-use super::wire::frame::{decode_frame, encode_frame};
+use super::wire::frame::{decode_frame, encode_frame_into};
 use super::wire::frame_io::read_frame;
 pub use super::wire::{RemoteError, Request, RequestType, Response, ResponseStatus};
 
@@ -57,10 +57,16 @@ pub(crate) fn resolve(address: &str) -> std::io::Result<SocketAddr> {
 }
 
 /// Client struct for managing TCP communication with the simulator server.
+///
+/// If a call fails mid-exchange (e.g. I/O error or invalid response frame), the
+/// connection is out of sync and later calls return [BridgeError::Connection];
+/// create a new bridge to recover.
 pub struct RealFlightRemoteBridge {
     reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
     writer: RefCell<BufWriter<TcpStream>>, // Buffered writer for outgoing data
+    request_buffer: RefCell<Vec<u8>>,      // Reusable buffer for requests
     response_buffer: RefCell<Vec<u8>>,     // Reusable buffer for responses
+    in_flight: Cell<bool>,                 // Set while a round trip is in progress
 }
 
 impl RealFlightBridge for RealFlightRemoteBridge {
@@ -119,7 +125,9 @@ impl RealFlightRemoteBridge {
         Ok(RealFlightRemoteBridge {
             reader: RefCell::new(BufReader::new(stream.try_clone()?)),
             writer: RefCell::new(BufWriter::new(stream)),
+            request_buffer: RefCell::new(Vec::with_capacity(256)),
             response_buffer: RefCell::new(Vec::with_capacity(4096)),
+            in_flight: Cell::new(false),
         })
     }
 
@@ -136,17 +144,29 @@ impl RealFlightRemoteBridge {
         request_type: RequestType,
         payload: Option<&ControlInputs>,
     ) -> Result<Response, BridgeError> {
-        let frame = encode_frame(&RequestRef {
-            request_type,
-            payload,
-        })?;
+        if self.in_flight.get() {
+            return Err(BridgeError::Connection(std::io::Error::other(
+                "connection out of sync after failed request; reconnect",
+            )));
+        }
 
+        let mut request_buffer = self.request_buffer.borrow_mut();
+        encode_frame_into(
+            &RequestRef {
+                request_type,
+                payload,
+            },
+            &mut request_buffer,
+        )?;
+
+        self.in_flight.set(true);
         let mut writer = self.writer.borrow_mut();
-        writer.write_all(&frame)?;
+        writer.write_all(&request_buffer)?;
         writer.flush()?;
 
         let mut response_buffer = self.response_buffer.borrow_mut();
         read_frame(&mut *self.reader.borrow_mut(), &mut response_buffer)?;
+        self.in_flight.set(false);
         decode_frame(&response_buffer)
     }
 }

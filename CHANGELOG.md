@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Coordinate frame documentation for `SimulatorState` fields
 - `BridgeError::Protocol` for malformed or unexpected responses from the simulator or proxy ([#60](https://github.com/wboayue/realflight-bridge/issues/60))
 - Remote bridges return the proxy-side error (e.g. a simulator `SoapFault`) instead of a generic failure. Relayed `Connection` / `Initialization` messages are prefixed with `proxy: `
+- Remote frames are capped at 64 KiB. Oversized frames return `BridgeError::Connection` (`InvalidData`); the proxy drops clients that send one ([#56](https://github.com/wboayue/realflight-bridge/issues/56))
 
 ### Changed
 - **Breaking:** `SimulatorState` physical fields renamed with unit suffixes (e.g. `airspeed` → `airspeed_mps`, `altitude_agl` → `altitude_agl_m`, `azimuth` → `azimuth_deg`, `pitch_rate` → `pitch_rate_dps`, `fuel_remaining` → `fuel_remaining_oz`, `current_physics_time` → `current_physics_time_s`)
@@ -24,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented the unit of every `SimulatorState` field
 - Decoder reads leaf elements that carry XML attributes (previously skipped)
 - Decoder ~33% faster: tokenizer reuses buffers instead of allocating per tag
+- Remote bridges and proxy reuse frame encode buffers instead of allocating per request ([#61](https://github.com/wboayue/realflight-bridge/issues/61))
+- `RealFlightRemoteBridge` returns `BridgeError::Connection` after a call fails mid-exchange instead of reading out-of-sync data; create a new bridge to recover
+- Proxy replies with `BridgeError::Protocol` when a response exceeds the frame limit, instead of dropping the client
 
 ### Removed
 - **Breaking:** `uom` feature and dependency. `SimulatorState` fields are now always `f32` ([#52](https://github.com/wboayue/realflight-bridge/issues/52))
