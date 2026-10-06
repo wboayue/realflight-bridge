@@ -14,6 +14,8 @@
 //!
 //! See [README](https://github.com/wboayue/realflight-bridge) for examples and usage.
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -146,8 +148,8 @@ pub struct ControlInputs {
 /// [`SimulatorState`].
 ///
 /// Converts to and from `[x, y, z]`, and with the `mint` feature to and from
-/// `mint::Vector3<f32>`, which nalgebra, glam, cgmath, etc. convert from. Conversions copy
-/// components only; the frame is unchanged.
+/// `mint::Vector3<f32>`, which nalgebra, glam, cgmath, etc. convert from.
+/// Conversions copy components only; the frame is unchanged.
 ///
 #[cfg_attr(
     feature = "mint",
@@ -220,12 +222,19 @@ impl mint::IntoMint for Vector3 {
 #[cfg_attr(
     feature = "mint",
     doc = r#"```
+use std::f32::consts::FRAC_1_SQRT_2;
 use realflight_bridge::Quaternion;
 
-let q = Quaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
-let m: mint::Quaternion<f32> = q.into();
-let n = nalgebra::UnitQuaternion::from_quaternion(m.into());
-assert_eq!(n, nalgebra::UnitQuaternion::identity());
+// 90° rotation about RealFlight's z axis
+let rf = Quaternion { x: 0.0, y: 0.0, z: FRAC_1_SQRT_2, w: FRAC_1_SQRT_2 };
+
+// Remap to body-to-NED before converting, as ArduPilot does
+let ned = Quaternion { x: rf.y, y: rf.x, z: -rf.z, w: rf.w };
+let m: mint::Quaternion<f32> = ned.into();
+let attitude = nalgebra::UnitQuaternion::from_quaternion(m.into());
+
+let (_roll, _pitch, yaw) = attitude.euler_angles();
+assert!((yaw.to_degrees() + 90.0).abs() < 1e-4);
 ```"#
 )]
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

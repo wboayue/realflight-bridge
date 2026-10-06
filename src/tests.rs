@@ -76,15 +76,4 @@ mod mint_conversions {
         );
         assert_eq!(Quaternion::from(m), q);
     }
-
-    #[test]
-    fn converts_into_nalgebra_via_mint() {
-        let m: mint::Vector3<f32> = Vector3::from([1.0, 2.0, 3.0]).into();
-        let v: nalgebra::Vector3<f32> = m.into();
-        assert_eq!(v, nalgebra::Vector3::new(1.0, 2.0, 3.0));
-
-        let m: mint::Quaternion<f32> = Quaternion::from([1.0, 2.0, 3.0, 4.0]).into();
-        let q: nalgebra::Quaternion<f32> = m.into();
-        assert_eq!(q, nalgebra::Quaternion::new(4.0, 1.0, 2.0, 3.0));
-    }
 }

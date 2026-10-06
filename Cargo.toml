@@ -16,6 +16,7 @@ include = ["src/", "README.md", "LICENSE", "examples/", "benches/", "testdata/",
 
 [package.metadata.docs.rs]
 features = ["rt-tokio", "mint"]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []

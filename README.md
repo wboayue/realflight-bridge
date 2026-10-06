@@ -153,11 +153,14 @@ cargo add realflight-bridge --features mint
 let v: mint::Vector3<f32> = state.velocity_world_mps.into();
 let v: nalgebra::Vector3<f32> = v.into();
 
-let q: mint::Quaternion<f32> = state.orientation.into();
-let q = nalgebra::UnitQuaternion::from_quaternion(q.into());
+// orientation is in RealFlight's convention; remap to body-to-NED first, as ArduPilot does
+let o = state.orientation;
+let ned = Quaternion { x: o.y, y: o.x, z: -o.z, w: o.w };
+let q: mint::Quaternion<f32> = ned.into();
+let attitude = nalgebra::UnitQuaternion::from_quaternion(q.into());
 ```
 
-Conversions copy components only. Frames are unchanged; the orientation quaternion is in RealFlight's convention, not NED (see `SimulatorState` docs).
+Conversions copy components only and never change frames (see `SimulatorState` docs).
 
 ## Async Support
 
