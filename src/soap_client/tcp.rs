@@ -10,8 +10,8 @@ use std::{
 use crate::BridgeError;
 use crate::StatisticsEngine;
 
+use super::http::{Next, ResponseParser, build_http_request};
 use super::pool::ConnectionPool;
-use super::xml::{build_http_request, create_response, parse_content_length, parse_status_line};
 use super::{SoapClient, SoapResponse, encode_envelope};
 
 /// Implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
@@ -80,30 +80,19 @@ impl TcpSoapClient {
         &self,
         stream: &mut BufReader<TcpStream>,
     ) -> Result<SoapResponse, BridgeError> {
-        let mut status_line = String::new();
-        stream.read_line(&mut status_line)?;
-
-        let status_code = parse_status_line(&status_line)?;
-
-        // Read headers
-        let mut content_length: Option<usize> = None;
-        loop {
-            let mut line = String::new();
+        let mut parser = ResponseParser::new();
+        let mut line = String::new();
+        let length = loop {
+            line.clear();
             stream.read_line(&mut line)?;
-            if line == "\r\n" {
-                break; // End of headers
+            if let Next::Body(length) = parser.feed_line(&line)? {
+                break length;
             }
-            if let Some(length) = parse_content_length(&line) {
-                content_length = Some(length);
-            }
-        }
+        };
 
-        // Read the body based on Content-Length
-        let length = content_length
-            .ok_or_else(|| BridgeError::SoapFault("Missing Content-Length header".into()))?;
         let mut body = vec![0; length];
         stream.read_exact(&mut body)?;
 
-        Ok(create_response(status_code, body))
+        Ok(parser.finish(body))
     }
 }

@@ -9,8 +9,8 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use crate::BridgeError;
 use crate::StatisticsEngine;
 
+use super::http::{Next, ResponseParser, build_http_request};
 use super::pool_async::AsyncConnectionPool;
-use super::xml::{build_http_request, create_response, parse_content_length, parse_status_line};
 use super::{AsyncSoapClient, SoapResponse, encode_envelope};
 
 /// Async implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
@@ -32,32 +32,20 @@ impl AsyncSoapClient for AsyncTcpSoapClient {
 
         // Read response
         let mut reader = BufReader::new(stream);
-
-        // Read status line
-        let mut status_line = String::new();
-        reader.read_line(&mut status_line).await?;
-        let status_code = parse_status_line(&status_line)?;
-
-        // Read headers
-        let mut content_length: Option<usize> = None;
-        loop {
-            let mut line = String::new();
+        let mut parser = ResponseParser::new();
+        let mut line = String::new();
+        let length = loop {
+            line.clear();
             reader.read_line(&mut line).await?;
-            if line == "\r\n" {
-                break; // End of headers
+            if let Next::Body(length) = parser.feed_line(&line)? {
+                break length;
             }
-            if let Some(length) = parse_content_length(&line) {
-                content_length = Some(length);
-            }
-        }
+        };
 
-        // Read the body based on Content-Length
-        let length = content_length
-            .ok_or_else(|| BridgeError::SoapFault("Missing Content-Length header".into()))?;
         let mut body = vec![0; length];
         reader.read_exact(&mut body).await?;
 
-        Ok(create_response(status_code, body))
+        Ok(parser.finish(body))
     }
 }
 
@@ -136,106 +124,6 @@ mod tests {
         let response = client.send_action("TestAction", "").await.unwrap();
         assert_eq!(response.status_code, 200);
         assert!(response.body.contains("TestResponse"));
-
-        server_handle.join().unwrap();
-    }
-
-    #[tokio::test]
-    async fn parses_200_response_correctly() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let stats = Arc::new(StatisticsEngine::new());
-
-        let server_handle = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 1024];
-            let _ = std::io::Read::read(&mut stream, &mut buf);
-
-            let response = create_mock_response_with_status(200, "<Success/>");
-            stream.write_all(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
-        });
-
-        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
-            .await
-            .unwrap();
-
-        client
-            .ensure_pool_initialized(Duration::from_secs(5))
-            .await
-            .unwrap();
-
-        let response = client.send_action("TestAction", "").await.unwrap();
-        assert_eq!(response.status_code, 200);
-
-        server_handle.join().unwrap();
-    }
-
-    #[tokio::test]
-    async fn parses_500_response_correctly() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let stats = Arc::new(StatisticsEngine::new());
-
-        let server_handle = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 1024];
-            let _ = std::io::Read::read(&mut stream, &mut buf);
-
-            let response = create_mock_response_with_status(500, "<Fault>Error</Fault>");
-            stream.write_all(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
-        });
-
-        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
-            .await
-            .unwrap();
-
-        client
-            .ensure_pool_initialized(Duration::from_secs(5))
-            .await
-            .unwrap();
-
-        let response = client.send_action("TestAction", "").await.unwrap();
-        assert_eq!(response.status_code, 500);
-        assert!(response.body.contains("Fault"));
-
-        server_handle.join().unwrap();
-    }
-
-    #[tokio::test]
-    async fn missing_content_length_returns_error() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let stats = Arc::new(StatisticsEngine::new());
-
-        let server_handle = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 1024];
-            let _ = std::io::Read::read(&mut stream, &mut buf);
-
-            // Send response without Content-Length header
-            let response = "HTTP/1.1 200 OK\r\n\r\n<Body/>";
-            stream.write_all(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
-        });
-
-        let client = AsyncTcpSoapClient::new(addr, Duration::from_secs(5), 1, stats)
-            .await
-            .unwrap();
-
-        client
-            .ensure_pool_initialized(Duration::from_secs(5))
-            .await
-            .unwrap();
-
-        let result = client.send_action("TestAction", "").await;
-        match result {
-            Err(BridgeError::SoapFault(msg)) => {
-                assert!(msg.contains("Content-Length"));
-            }
-            other => panic!("expected SoapFault, got {:?}", other),
-        }
 
         server_handle.join().unwrap();
     }

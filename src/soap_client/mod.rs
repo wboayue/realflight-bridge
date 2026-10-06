@@ -4,6 +4,7 @@ use crate::decoders::extract_element;
 #[cfg(feature = "rt-tokio")]
 use std::future::Future;
 
+pub(crate) mod http;
 pub(crate) mod pool;
 #[cfg(test)]
 pub(crate) mod stub;
