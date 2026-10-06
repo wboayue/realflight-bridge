@@ -1,87 +1,61 @@
-//! Provides an implementation of a SOAP client that returns stubbed responses.
-//! Useful for testing.
+//! Stub SOAP client returning canned responses. Implements both the sync and
+//! async client traits, so it backs tests of either local bridge.
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
+use std::sync::Mutex;
 
 use crate::BridgeError;
-use crate::StatisticsEngine;
 
+use super::test_support::canned_response;
 use super::{SoapClient, SoapResponse, encode_envelope};
 
 pub(crate) struct StubSoapClient {
-    responses: Vec<String>,
-    pub(crate) statistics: Option<Arc<StatisticsEngine>>,
+    responses: Mutex<VecDeque<String>>,
     requests: Mutex<Vec<String>>,
 }
 
 impl StubSoapClient {
-    pub fn new(responses: Vec<String>) -> Self {
+    /// Serves `testdata/responses/{key}.xml` for each key, in order.
+    pub fn new(keys: &[&str]) -> Self {
         StubSoapClient {
-            responses,
-            statistics: None,
+            responses: Mutex::new(keys.iter().map(|key| key.to_string()).collect()),
             requests: Mutex::new(Vec::new()),
         }
     }
 
-    fn add_request(&self, request: &str) {
-        let mut requests = self.requests.lock().unwrap();
-        requests.push(request.to_string());
+    /// Returns the SOAP envelopes received so far.
+    pub fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
     }
 
-    fn next_response(&self) -> String {
-        self.responses.first().unwrap().clone()
+    fn respond(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
+        self.requests
+            .lock()
+            .unwrap()
+            .push(encode_envelope(action, body));
+
+        let key = self
+            .responses
+            .lock()
+            .unwrap()
+            .pop_front()
+            .ok_or_else(|| BridgeError::Protocol("No more stubbed responses".into()))?;
+        Ok(canned_response(&key))
     }
 }
 
 impl SoapClient for StubSoapClient {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
-        eprintln!("Sending action: {}", action);
-
-        let envelope = encode_envelope(action, body);
-
-        if let Some(statistics) = &self.statistics {
-            statistics.increment_request_count();
-        }
-        self.add_request(&envelope);
-
-        let response_key = self.next_response();
-        let code = response_key.rsplit('-').next().unwrap();
-
-        Ok(SoapResponse {
-            status_code: code.parse().unwrap(),
-            body: load_response(&response_key),
-        })
-    }
-
-    fn requests(&self) -> Vec<String> {
-        self.requests.lock().unwrap().clone()
+        self.respond(action, body)
     }
 }
 
-fn load_response(response_key: &str) -> String {
-    let response_path: PathBuf = [
-        env!("CARGO_MANIFEST_DIR"),
-        "testdata",
-        "responses",
-        &format!("{}.xml", response_key),
-    ]
-    .iter()
-    .collect();
-    eprintln!("Response path: {:?}", response_path);
-    let body = std::fs::read_to_string(response_path).unwrap();
-
-    let mut buffer = String::new();
-
-    let code = response_key.rsplit('-').next().unwrap();
-
-    buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
-    buffer.push_str("Server: gSOAP/2.7\r\n");
-    buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
-    buffer.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    buffer.push_str("Connection: close\r\n");
-    buffer.push_str("\r\n");
-    buffer.push_str(&body);
-
-    buffer
+#[cfg(feature = "rt-tokio")]
+impl super::AsyncSoapClient for StubSoapClient {
+    async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
+        self.respond(action, body)
+    }
 }
+
+#[cfg(test)]
+mod tests;

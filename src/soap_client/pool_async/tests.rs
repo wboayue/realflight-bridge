@@ -157,28 +157,6 @@ async fn drop_cancels_background_task() {
 }
 
 #[tokio::test]
-async fn statistics_reference_returned() {
-    let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let stats = Arc::new(StatisticsEngine::new());
-    let stats_clone = stats.clone();
-
-    let accept_handle = tokio::spawn(async move {
-        let _ = listener.accept().await;
-    });
-
-    let pool = AsyncConnectionPool::new(addr, Duration::from_secs(1), 1, stats)
-        .await
-        .unwrap();
-
-    // Verify statistics() returns the same Arc
-    assert!(Arc::ptr_eq(pool.statistics(), &stats_clone));
-
-    drop(pool);
-    let _ = accept_handle.await;
-}
-
-#[tokio::test]
 async fn background_task_increments_error_on_connection_failure() {
     let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

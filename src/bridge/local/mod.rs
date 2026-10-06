@@ -2,14 +2,17 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
 use crate::defaults;
+use crate::soap_client::pool::ConnectionPool;
 use crate::soap_client::{SoapClient, SoapResponse, tcp::TcpSoapClient};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 use ops::{Op, decode_exchange, decode_unit};
+use session::Session;
 
 #[cfg(test)]
 use crate::soap_client::stub::StubSoapClient;
 
 mod ops;
+mod session;
 
 #[cfg(feature = "rt-tokio")]
 mod async_impl;
@@ -76,8 +79,7 @@ pub use async_impl::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
 /// such as request count, errors, and average frame rate. This is useful for profiling
 /// real-time loops or detecting dropped messages.
 pub struct RealFlightLocalBridge {
-    statistics: Arc<StatisticsEngine>,
-    soap_client: Box<dyn SoapClient>,
+    session: Session<TcpSoapClient>,
 }
 
 impl RealFlightBridge for RealFlightLocalBridge {
@@ -119,7 +121,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn exchange_data(&self, control: &ControlInputs) -> Result<SimulatorState, BridgeError> {
-        decode_exchange(self.call(Op::Exchange(control))?)
+        self.call(Op::Exchange(control), decode_exchange)
     }
 
     /// Reverts the RealFlight simulator to use its original Spektrum (or built-in) RC input.
@@ -151,7 +153,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn enable_rc(&self) -> Result<(), BridgeError> {
-        decode_unit(self.call(Op::EnableRc)?)
+        self.call(Op::EnableRc, decode_unit)
     }
 
     /// Switches the RealFlight simulator's input to the external RealFlight Link controller,
@@ -184,7 +186,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn disable_rc(&self) -> Result<(), BridgeError> {
-        decode_unit(self.call(Op::DisableRc)?)
+        self.call(Op::DisableRc, decode_unit)
     }
 
     /// Resets the currently loaded aircraft in the RealFlight simulator, analogous
@@ -217,14 +219,23 @@ impl RealFlightBridge for RealFlightLocalBridge {
     /// }
     /// ```
     fn reset_aircraft(&self) -> Result<(), BridgeError> {
-        decode_unit(self.call(Op::Reset)?)
+        self.call(Op::Reset, decode_unit)
     }
 }
 
 impl RealFlightLocalBridge {
-    /// Sends an operation to the simulator.
-    fn call(&self, op: Op) -> Result<SoapResponse, BridgeError> {
-        self.soap_client.send_action(op.action(), &op.body())
+    /// Sends an operation to the simulator and decodes the response.
+    fn call<R>(
+        &self,
+        op: Op,
+        decode: fn(SoapResponse) -> Result<R, BridgeError>,
+    ) -> Result<R, BridgeError> {
+        let result = self
+            .session
+            .client
+            .send_action(op.action(), &op.body())
+            .and_then(decode);
+        self.session.record(result)
     }
 
     /// Creates a new [RealFlightBridge] instance configured to communicate
@@ -316,42 +327,30 @@ impl RealFlightLocalBridge {
         })?;
 
         let statistics = Arc::new(StatisticsEngine::new());
-        let soap_client = TcpSoapClient::new(
+        let pool = ConnectionPool::new(
             addr,
             configuration.connect_timeout,
             configuration.pool_size,
             statistics.clone(),
         )?;
-        soap_client.ensure_pool_initialized(defaults::INIT_TIMEOUT)?;
+        pool.ensure_initialized(defaults::INIT_TIMEOUT)?;
 
         Ok(RealFlightLocalBridge {
-            statistics,
-            soap_client: Box::new(soap_client),
+            session: Session::new(TcpSoapClient::new(pool), statistics),
         })
     }
 
-    /// Creates a new RealFlightLink client
-    /// simulator_url: the url to the RealFlight simulator
+    /// Creates a bridge backed by a stub SOAP client (no network).
     #[cfg(test)]
-    pub(crate) fn stub(mut soap_client: StubSoapClient) -> RealFlightLocalBridge {
-        let statistics = Arc::new(StatisticsEngine::new());
-
-        soap_client.statistics = Some(statistics.clone());
-
+    pub(crate) fn stub(soap_client: StubSoapClient) -> RealFlightLocalBridge {
         RealFlightLocalBridge {
-            statistics,
-            soap_client: Box::new(soap_client),
+            session: Session::stub(soap_client),
         }
-    }
-
-    #[cfg(test)]
-    pub fn requests(&self) -> Vec<String> {
-        self.soap_client.requests().clone()
     }
 
     /// Get statistics for the RealFlightBridge
     pub fn statistics(&self) -> Statistics {
-        self.statistics.snapshot()
+        self.session.statistics()
     }
 }
 

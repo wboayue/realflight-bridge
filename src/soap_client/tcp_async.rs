@@ -1,13 +1,8 @@
 //! Async implementation of a SOAP client that uses the TCP protocol.
 
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::Duration;
-
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 use crate::BridgeError;
-use crate::StatisticsEngine;
 
 use super::http::{Next, ResponseParser};
 use super::pool_async::AsyncConnectionPool;
@@ -26,8 +21,6 @@ impl AsyncSoapClient for AsyncTcpSoapClient {
         // Send request
         stream.write_all(request.as_bytes()).await?;
         stream.flush().await?;
-
-        self.connection_pool.statistics().increment_request_count();
 
         // Read response
         let mut reader = BufReader::new(stream);
@@ -49,27 +42,9 @@ impl AsyncSoapClient for AsyncTcpSoapClient {
 }
 
 impl AsyncTcpSoapClient {
-    /// Creates a new async TCP SOAP client.
-    pub async fn new(
-        addr: SocketAddr,
-        connect_timeout: Duration,
-        pool_size: usize,
-        statistics: Arc<StatisticsEngine>,
-    ) -> Result<Self, BridgeError> {
-        let connection_pool =
-            AsyncConnectionPool::new(addr, connect_timeout, pool_size, statistics).await?;
-        Ok(AsyncTcpSoapClient { connection_pool })
-    }
-
-    /// Ensures the connection pool is initialized.
-    pub async fn ensure_pool_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
-        self.connection_pool.ensure_initialized(init_timeout).await
-    }
-
-    /// Returns a reference to the statistics engine.
-    #[allow(dead_code)]
-    pub fn statistics(&self) -> &Arc<StatisticsEngine> {
-        self.connection_pool.statistics()
+    /// Creates an async TCP SOAP client sending over connections from `connection_pool`.
+    pub fn new(connection_pool: AsyncConnectionPool) -> Self {
+        AsyncTcpSoapClient { connection_pool }
     }
 }
 

@@ -12,9 +12,10 @@ use std::time::{Duration, Instant};
 /// # Fields
 ///
 /// - `runtime`: The total elapsed time since the `RealFlightBridge` instance was created.
-/// - `error_count`: The number of errors (e.g., connection errors, SOAP faults) encountered so far.
+/// - `error_count`: The number of failed requests (e.g., I/O errors, SOAP faults, parse errors),
+///   plus failed background connection attempts.
 /// - `frequency`: An approximate request rate, calculated as `(request_count / runtime)`.
-/// - `request_count`: The total number of SOAP requests sent to the simulator. Loops back to 0 after `u32::MAX`.
+/// - `request_count`: The total number of SOAP requests attempted, including failed ones. Loops back to 0 after `u32::MAX`.
 ///
 /// ```no_run
 /// use realflight_bridge::{RealFlightLocalBridge, BridgeError};

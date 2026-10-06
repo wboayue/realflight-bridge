@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote bridges and proxy reuse frame encode buffers instead of allocating per request ([#61](https://github.com/wboayue/realflight-bridge/issues/61))
 - `RealFlightRemoteBridge` returns `BridgeError::Connection` after a call fails mid-exchange instead of reading out-of-sync data; create a new bridge to recover
 - Proxy replies with `BridgeError::Protocol` when a response exceeds the frame limit, instead of dropping the client
+- Local bridges' `Statistics::request_count` counts every attempted request, including ones that fail to send (previously only requests written successfully)
+- Local bridges' `Statistics::error_count` counts failed requests (I/O errors, SOAP faults, parse errors), as documented. Previously only failed background connection attempts were counted
 
 ### Removed
 - **Breaking:** `uom` feature and dependency. `SimulatorState` fields are now always `f32` ([#52](https://github.com/wboayue/realflight-bridge/issues/52))

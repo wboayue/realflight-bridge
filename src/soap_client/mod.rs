@@ -15,8 +15,6 @@ pub(crate) mod xml;
 
 #[cfg(feature = "rt-tokio")]
 pub(crate) mod pool_async;
-#[cfg(all(test, feature = "rt-tokio"))]
-pub(crate) mod stub_async;
 #[cfg(feature = "rt-tokio")]
 pub(crate) mod tcp_async;
 
@@ -47,10 +45,6 @@ impl SoapResponse {
 /// Trait for sending SOAP requests to the RealFlight simulator
 pub(crate) trait SoapClient: Send {
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError>;
-    #[cfg(test)]
-    fn requests(&self) -> Vec<String> {
-        Vec::new()
-    }
 }
 
 /// Async trait for sending SOAP requests to the RealFlight simulator
@@ -61,6 +55,45 @@ pub(crate) trait AsyncSoapClient: Send + Sync {
         action: &str,
         body: &str,
     ) -> impl Future<Output = Result<SoapResponse, BridgeError>> + Send;
+}
+
+/// The SOAP client a local bridge talks through: the TCP client `T`, or a stub in tests.
+pub(crate) enum Client<T> {
+    Tcp(T),
+    #[cfg(test)]
+    Stub(stub::StubSoapClient),
+}
+
+impl<T> Client<T> {
+    /// Returns the stub client, if this is one.
+    #[cfg(test)]
+    pub(crate) fn as_stub(&self) -> Option<&stub::StubSoapClient> {
+        match self {
+            Client::Stub(stub) => Some(stub),
+            Client::Tcp(_) => None,
+        }
+    }
+}
+
+impl<T: SoapClient> SoapClient for Client<T> {
+    fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
+        match self {
+            Client::Tcp(client) => client.send_action(action, body),
+            #[cfg(test)]
+            Client::Stub(stub) => SoapClient::send_action(stub, action, body),
+        }
+    }
+}
+
+#[cfg(feature = "rt-tokio")]
+impl<T: AsyncSoapClient> AsyncSoapClient for Client<T> {
+    async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
+        match self {
+            Client::Tcp(client) => client.send_action(action, body).await,
+            #[cfg(test)]
+            Client::Stub(stub) => AsyncSoapClient::send_action(stub, action, body).await,
+        }
+    }
 }
 
 #[cfg(test)]
