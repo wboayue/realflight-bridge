@@ -185,7 +185,6 @@ mod tests {
     use super::*;
     use crate::bridge::AsyncBridge;
     use crate::tests::soap_stub::Server;
-    use approx::assert_relative_eq;
     use std::net::TcpListener;
 
     fn get_available_port() -> u16 {
@@ -399,7 +398,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn parses_boolean_fields() {
+        async fn returns_decoded_state() {
             let port = get_available_port();
             let _server = Server::new(port, vec!["return-data-200".to_string()]);
             let bridge = create_bridge(port).await.unwrap();
@@ -409,26 +408,11 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert!(!state.is_locked);
-            assert!(!state.has_lost_components);
-            assert!(state.an_engine_is_running);
-            assert!(!state.is_touching_ground);
-            assert!(state.flight_axis_controller_is_active);
-        }
-
-        #[tokio::test]
-        async fn parses_velocity_fields() {
-            let port = get_available_port();
-            let _server = Server::new(port, vec!["return-data-200".to_string()]);
-            let bridge = create_bridge(port).await.unwrap();
-
-            let state = bridge
-                .exchange_data(&ControlInputs::default())
-                .await
-                .unwrap();
-
-            assert_relative_eq!(state.airspeed_mps, 0.040872246);
-            assert_relative_eq!(state.groundspeed_mps, 4.643444754E-06);
+            let expected = crate::decode_simulator_state(include_str!(
+                "../../../testdata/responses/return-data-200.xml"
+            ))
+            .unwrap();
+            assert_eq!(state, expected);
         }
     }
 

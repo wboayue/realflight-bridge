@@ -2,7 +2,8 @@
 //!
 //! Organized into submodules:
 //! - `extract_element_tests`: Tests for XML element extraction
-//! - `decode_state_tests`: Tests for full simulator state decoding
+//! - `for_each_leaf_tests`: Tests for the leaf-element scanner
+//! - `decode_state_fields`: Tests for full simulator state decoding
 //! - `error_handling`: Tests for parse error handling
 
 use approx::assert_relative_eq;
@@ -157,6 +158,17 @@ mod error_handling {
     }
 
     #[test]
+    fn returns_error_for_too_many_channels() {
+        let xml = "<item>0.5</item>".repeat(13);
+        let result = decode_simulator_state(&xml);
+
+        match result {
+            Err(BridgeError::Parse { field, .. }) => assert_eq!(field, "channel[12]"),
+            other => panic!("expected Parse error, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn ignores_unknown_fields() {
         let xml = r#"<unknown-field>some value</unknown-field><m-propRPM>100.0</m-propRPM>"#;
         let result = decode_simulator_state(xml);
@@ -168,10 +180,62 @@ mod error_handling {
 }
 
 // ============================================================================
+// for_each_leaf Tests
+// ============================================================================
+
+mod for_each_leaf_tests {
+    use super::*;
+
+    fn collect(xml: &str) -> Vec<(String, String)> {
+        let mut leaves = Vec::new();
+        for_each_leaf(xml, |tag, content| {
+            leaves.push((tag.to_string(), content.to_string()));
+            Ok(())
+        })
+        .unwrap();
+        leaves
+    }
+
+    #[test]
+    fn yields_leaf_elements_only() {
+        let leaves = collect("<?xml version='1.0'?><a><b>1</b><c>two</c></a>");
+        assert_eq!(
+            leaves,
+            vec![("b".into(), "1".into()), ("c".into(), "two".into())]
+        );
+    }
+
+    #[test]
+    fn yields_empty_content() {
+        assert_eq!(collect("<a></a>"), vec![("a".into(), "".into())]);
+    }
+
+    #[test]
+    fn returns_empty_for_no_tags() {
+        assert!(collect("plain text").is_empty());
+    }
+
+    #[test]
+    fn propagates_callback_error() {
+        let result = for_each_leaf("<a>1</a><b>2</b>", |tag, _| {
+            if tag == "b" {
+                Err(BridgeError::Parse {
+                    field: tag.to_string(),
+                    message: "stop".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        });
+        assert!(matches!(result, Err(BridgeError::Parse { field, .. }) if field == "b"));
+    }
+}
+
+// ============================================================================
 // decode_simulator_state Full Parsing Tests
 // ============================================================================
 
-mod decode_state_raw_values {
+mod decode_state_fields {
     use super::*;
 
     #[test]
@@ -199,12 +263,12 @@ mod decode_state_raw_values {
 
         assert_relative_eq!(state.airspeed_mps, 0.040872246);
         assert_relative_eq!(state.groundspeed_mps, 4.6434447540377732E-06);
-        assert_relative_eq!(state.velocity_world_u_mps, -2.005582700E-06);
-        assert_relative_eq!(state.velocity_world_v_mps, 4.187984814E-06);
-        assert_relative_eq!(state.velocity_world_w_mps, 0.040872246);
-        assert_relative_eq!(state.velocity_body_u_mps, -0.001089469);
-        assert_relative_eq!(state.velocity_body_v_mps, -0.000530726);
-        assert_relative_eq!(state.velocity_body_w_mps, 0.040854275);
+        assert_relative_eq!(state.velocity_world_mps.x, -2.005582700E-06);
+        assert_relative_eq!(state.velocity_world_mps.y, 4.187984814E-06);
+        assert_relative_eq!(state.velocity_world_mps.z, 0.040872246);
+        assert_relative_eq!(state.velocity_body_mps.x, -0.001089469);
+        assert_relative_eq!(state.velocity_body_mps.y, -0.000530726);
+        assert_relative_eq!(state.velocity_body_mps.z, 0.040854275);
     }
 
     #[test]
@@ -239,31 +303,31 @@ mod decode_state_raw_values {
     fn parses_quaternion_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.orientation_quaternion_x, 0.004899279);
-        assert_relative_eq!(state.orientation_quaternion_y, -0.014053969);
-        assert_relative_eq!(state.orientation_quaternion_z, -0.704661786);
-        assert_relative_eq!(state.orientation_quaternion_w, 0.709387302);
+        assert_relative_eq!(state.orientation.x, 0.004899279);
+        assert_relative_eq!(state.orientation.y, -0.014053969);
+        assert_relative_eq!(state.orientation.z, -0.704661786);
+        assert_relative_eq!(state.orientation.w, 0.709387302);
     }
 
     #[test]
     fn parses_acceleration_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.acceleration_world_ax_mps2, -0.000483050);
-        assert_relative_eq!(state.acceleration_world_ay_mps2, 0.001008689);
-        assert_relative_eq!(state.acceleration_world_az_mps2, 9.844209671);
-        assert_relative_eq!(state.acceleration_body_ax_mps2, -0.000176936);
-        assert_relative_eq!(state.acceleration_body_ay_mps2, -0.000086620);
-        assert_relative_eq!(state.acceleration_body_az_mps2, 0.044223785);
+        assert_relative_eq!(state.acceleration_world_mps2.x, -0.000483050);
+        assert_relative_eq!(state.acceleration_world_mps2.y, 0.001008689);
+        assert_relative_eq!(state.acceleration_world_mps2.z, 9.844209671);
+        assert_relative_eq!(state.acceleration_body_mps2.x, -0.000176936);
+        assert_relative_eq!(state.acceleration_body_mps2.y, -0.000086620);
+        assert_relative_eq!(state.acceleration_body_mps2.z, 0.044223785);
     }
 
     #[test]
     fn parses_wind_fields() {
         let state = decode_simulator_state(SIM_STATE_RESPONSE).unwrap();
 
-        assert_relative_eq!(state.wind_x_mps, 0.0);
-        assert_relative_eq!(state.wind_y_mps, 0.0);
-        assert_relative_eq!(state.wind_z_mps, 0.0);
+        assert_relative_eq!(state.wind_mps.x, 0.0);
+        assert_relative_eq!(state.wind_mps.y, 0.0);
+        assert_relative_eq!(state.wind_mps.z, 0.0);
     }
 
     #[test]

@@ -131,6 +131,26 @@ pub struct ControlInputs {
     pub channels: [f32; 12],
 }
 
+/// Three-component vector.
+///
+/// For body- and world-frame velocities RealFlight names the components u/v/w;
+/// these map to x/y/z respectively.
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Vector3 {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+/// Orientation quaternion (unitless).
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Quaternion {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
+
 /// Represents the complete state of the simulated aircraft in RealFlight.
 ///
 /// # Units
@@ -138,6 +158,10 @@ pub struct ControlInputs {
 /// Values are passed through unconverted from RealFlight. Field names carry a unit
 /// suffix: `_m` meters, `_mps` m/s, `_mps2` m/s², `_deg` degrees, `_dps` deg/s,
 /// `_v` volts, `_a` amps, `_mah` milliamp-hours, `_oz` ounces, `_s` seconds.
+///
+/// # Frames
+///
+/// World frame: X north, Y east, Z down. Body frame: X forward, Y right, Z down.
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
@@ -166,36 +190,16 @@ pub struct SimulatorState {
     pub aircraft_position_x_m: f32,
     /// Aircraft position along world Y axis (East) (m)
     pub aircraft_position_y_m: f32,
-    /// Velocity component along world X axis (North) (m/s)
-    pub velocity_world_u_mps: f32,
-    /// Velocity component along world Y axis (East) (m/s)
-    pub velocity_world_v_mps: f32,
-    /// Velocity component along world Z axis (Down) (m/s)
-    pub velocity_world_w_mps: f32,
-    /// Forward velocity in body frame (m/s)
-    pub velocity_body_u_mps: f32,
-    /// Lateral velocity in body frame (m/s)
-    pub velocity_body_v_mps: f32,
-    /// Vertical velocity in body frame (m/s)
-    pub velocity_body_w_mps: f32,
-    /// Acceleration along world X axis (North) (m/s²)
-    pub acceleration_world_ax_mps2: f32,
-    /// Acceleration along world Y axis (East) (m/s²)
-    pub acceleration_world_ay_mps2: f32,
-    /// Acceleration along world Z axis (Down) (m/s²)
-    pub acceleration_world_az_mps2: f32,
-    /// Acceleration along body X axis (Forward) (m/s²)
-    pub acceleration_body_ax_mps2: f32,
-    /// Acceleration along body Y axis (Right) (m/s²)
-    pub acceleration_body_ay_mps2: f32,
-    /// Acceleration along body Z axis (Down) (m/s²)
-    pub acceleration_body_az_mps2: f32,
-    /// Wind velocity along world X axis (m/s)
-    pub wind_x_mps: f32,
-    /// Wind velocity along world Y axis (m/s)
-    pub wind_y_mps: f32,
-    /// Wind velocity along world Z axis (m/s)
-    pub wind_z_mps: f32,
+    /// Velocity in world frame (m/s)
+    pub velocity_world_mps: Vector3,
+    /// Velocity in body frame (m/s)
+    pub velocity_body_mps: Vector3,
+    /// Acceleration in world frame (m/s²)
+    pub acceleration_world_mps2: Vector3,
+    /// Acceleration in body frame (m/s²)
+    pub acceleration_body_mps2: Vector3,
+    /// Wind velocity in world frame (m/s)
+    pub wind_mps: Vector3,
     /// Propeller RPM for piston/electric aircraft (rpm)
     pub prop_rpm: f32,
     /// Main rotor RPM for helicopters (rpm)
@@ -206,7 +210,7 @@ pub struct SimulatorState {
     pub battery_current_draw_a: f32,
     /// Remaining battery capacity (mAh)
     pub battery_remaining_capacity_mah: f32,
-    /// Remaining fuel volume (oz)
+    /// Remaining fuel volume (US fl oz)
     pub fuel_remaining_oz: f32,
     /// True if aircraft is in a frozen/paused state
     pub is_locked: bool,
@@ -222,14 +226,8 @@ pub struct SimulatorState {
     pub current_physics_time_s: f32,
     /// Current time acceleration factor (unitless)
     pub current_physics_speed_multiplier: f32,
-    /// Quaternion X component (unitless)
-    pub orientation_quaternion_x: f32,
-    /// Quaternion Y component (unitless)
-    pub orientation_quaternion_y: f32,
-    /// Quaternion Z component (unitless)
-    pub orientation_quaternion_z: f32,
-    /// Quaternion W component (unitless)
-    pub orientation_quaternion_w: f32,
+    /// Aircraft orientation
+    pub orientation: Quaternion,
     /// True if external flight controller is active
     pub flight_axis_controller_is_active: bool,
     /// True if reset button was pressed

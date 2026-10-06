@@ -58,7 +58,7 @@ The following example demonstrates how to connect to RealFlight Link, set up the
 ```rust
 use std::error::Error;
 
-use realflight_bridge::{Configuration, ControlInputs, RealFlightBridge, RealFlightLocalBridge};
+use realflight_bridge::{ControlInputs, RealFlightBridge, RealFlightLocalBridge};
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Creates bridge with default configuration (connects to 127.0.0.1:18083)
@@ -80,13 +80,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         let state = bridge.exchange_data(&controls)?;
 
         // Update control values based on state...
-        controls.channels[0] = 0.5; // Example: set first channel to 50%
+        if state.altitude_agl_m < 10.0 {
+            controls.channels[2] = 1.0; // Example: full throttle below 10 m AGL
+        }
 
         if sim_complete {
-          bridge.enable_rc()?;
-          break;
+            bridge.enable_rc()?;
+            break;
         }
     }
+
+    Ok(())
 }
 ```
 
@@ -203,29 +207,28 @@ The ControlInputs struct provides 12 channels for aircraft control. Each channel
 
 ## SimulatorState
 
-The SimulatorState struct provides comprehensive flight data including:
+`SimulatorState` provides flight data as reported by RealFlight. Values are `f32` and passed through unconverted. Field names carry their unit as a suffix:
 
-* Position and Orientation
-  - Aircraft position (X, Y coordinates)
-  - Orientation quaternion (X, Y, Z, W)
-  - Heading, pitch, and roll angles
+| Suffix | Unit | Examples |
+|--------|------|----------|
+| `_m` | meters | `altitude_asl_m`, `altitude_agl_m`, `aircraft_position_x_m` |
+| `_mps` | m/s | `airspeed_mps`, `groundspeed_mps`, `velocity_world_mps`, `velocity_body_mps`, `wind_mps` |
+| `_mps2` | m/s² | `acceleration_world_mps2`, `acceleration_body_mps2` |
+| `_deg` | degrees | `azimuth_deg`, `inclination_deg`, `roll_deg` |
+| `_dps` | deg/s | `pitch_rate_dps`, `roll_rate_dps`, `yaw_rate_dps` |
+| `_v`, `_a`, `_mah` | volts, amps, mAh | `battery_voltage_v`, `battery_current_draw_a`, `battery_remaining_capacity_mah` |
+| `_oz` | US fl oz | `fuel_remaining_oz` |
+| `_s` | seconds | `current_physics_time_s` |
 
-* Velocities and Accelerations
-  - Airspeed and groundspeed
-  - Body and world frame velocities
-  - Linear and angular accelerations
+Vector quantities are grouped as `Vector3 { x, y, z }` and orientation as `Quaternion { x, y, z, w }`. World frame is X north, Y east, Z down; body frame is X forward, Y right, Z down. Also included: engine RPM, engine/ground-contact/lock flags, and the aircraft status message.
 
-* Environment
-  - Altitude (ASL and AGL)
-  - Wind conditions (X, Y, Z components)
-
-* System Status
-  - Battery voltage and current
-  - Fuel remaining
-  - Engine state
-  - Aircraft status messages
-
-All values are `f32`, passed through unconverted from RealFlight. Physical quantities use metric units (meters, m/s, m/s²) and degrees; fuel remaining is in ounces and battery capacity in milliamp-hours. See `SimulatorState` docs for per-field units.
+```rust
+let state = bridge.exchange_data(&controls)?;
+println!(
+    "AGL {:.1} m, airspeed {:.1} m/s, climb {:.1} m/s",
+    state.altitude_agl_m, state.airspeed_mps, -state.velocity_world_mps.z
+);
+```
 
 All bridge implementations provide a `statistics()` method for performance monitoring (request count, error count, frame rate).
 
