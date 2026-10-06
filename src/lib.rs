@@ -191,7 +191,7 @@ impl From<Quaternion> for [f32; 4] {
 ///
 /// Values are passed through unconverted from RealFlight. Field names carry a unit
 /// suffix: `_m` meters, `_mps` m/s, `_mps2` m/s², `_deg` degrees, `_dps` deg/s,
-/// `_v` volts, `_a` amps, `_mah` milliamp-hours, `_oz` ounces, `_s` seconds.
+/// `_v` volts, `_a` amps, `_mah` milliamp-hours, `_oz` US fluid ounces, `_s` seconds.
 ///
 /// # Frames
 ///
@@ -202,11 +202,12 @@ impl From<Quaternion> for [f32; 4] {
 /// * `velocity_world_mps`: x north, y east, z down (NED)
 /// * `aircraft_position_x_m`, `aircraft_position_y_m`, `wind_mps`: x east, y north
 ///   (wind z down)
-/// * `velocity_body_mps`, `acceleration_body_mps2`: x forward, y right, z down
+/// * `acceleration_body_mps2`: x forward, y right, z down
 /// * `yaw_rate_dps`: positive is nose left, opposite to NED
 /// * `orientation`: see field docs
 ///
-/// `acceleration_world_mps2` is not used by ArduPilot; its axes are unverified.
+/// `velocity_body_mps` and `acceleration_world_mps2` are not used by ArduPilot;
+/// their axes are unverified.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SimulatorState {
     /// Previous control inputs that led to this state
@@ -237,7 +238,7 @@ pub struct SimulatorState {
     pub aircraft_position_y_m: f32,
     /// Velocity in world frame, NED (m/s)
     pub velocity_world_mps: Vector3,
-    /// Velocity in body frame, forward/right/down (m/s)
+    /// Velocity in body frame (m/s). Axes unverified
     pub velocity_body_mps: Vector3,
     /// Acceleration in world frame (m/s²). Axes unverified
     pub acceleration_world_mps2: Vector3,

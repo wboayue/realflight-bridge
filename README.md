@@ -222,7 +222,7 @@ The ControlInputs struct provides 12 channels for aircraft control. Each channel
 
 Vector quantities are grouped as `Vector3 { x, y, z }` and orientation as `Quaternion { x, y, z, w }`; both convert to and from arrays. Also included: engine RPM, engine/ground-contact/lock flags, and the aircraft status message.
 
-RealFlight does not document its axes, and they differ between fields. Values are passed through unchanged; the `SimulatorState` docs give each field's frame, following ArduPilot's RealFlight integration. In short: `velocity_world_mps` is north/east/down, position and wind are east/north, body-frame values are forward/right/down, and yaw rate is positive nose-left.
+RealFlight does not document its axes, and they differ between fields. Values are passed through unchanged; the `SimulatorState` docs give each field's frame, following ArduPilot's RealFlight integration. In short: `velocity_world_mps` is north/east/down, position and wind are east/north, body acceleration is forward/right/down, and yaw rate is positive nose-left. `velocity_body_mps` and `acceleration_world_mps2` axes are unverified.
 
 ```rust
 let state = bridge.exchange_data(&controls)?;

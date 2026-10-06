@@ -33,8 +33,9 @@ enum ParseState {
 /// (an element whose close tag matches the most recent open tag).
 ///
 /// Lightweight, allocation-reusing scanner tailored to RealFlight responses.
-/// Attributes (anything after the first space in a tag) are dropped, so `tag`
-/// is the bare element name.
+/// Attributes (anything after the first ASCII whitespace in a tag) are dropped, so
+/// `tag` is the bare element name. Empty elements that carry attributes (e.g.
+/// `xsi:nil="true"`) are skipped rather than reported with empty content.
 fn for_each_leaf<F>(xml: &str, mut on_leaf: F) -> Result<(), BridgeError>
 where
     F: FnMut(&str, &str) -> Result<(), BridgeError>,
@@ -42,6 +43,7 @@ where
     let mut state = ParseState::FindTag;
     let mut key = String::new();
     let mut open_tag = String::new();
+    let mut open_tag_has_attrs = false;
     let mut content = String::new();
 
     for ch in xml.chars() {
@@ -64,10 +66,17 @@ where
                 state = ParseState::OpenTag;
             }
             ParseState::OpenTag if ch == '>' => {
-                if let Some(end) = key.find(' ') {
-                    key.truncate(end);
-                }
-                open_tag = std::mem::take(&mut key);
+                // XML only allows ASCII whitespace before attributes
+                open_tag_has_attrs = match key.bytes().position(|b| b.is_ascii_whitespace()) {
+                    Some(end) => {
+                        key.truncate(end);
+                        true
+                    }
+                    None => false,
+                };
+                // Swap rather than take so both buffers keep their capacity
+                std::mem::swap(&mut open_tag, &mut key);
+                key.clear();
                 content.clear();
                 state = ParseState::Content;
             }
@@ -81,7 +90,7 @@ where
                 content.push(ch);
             }
             ParseState::CloseTag if ch == '>' => {
-                if open_tag == key {
+                if open_tag == key && !(open_tag_has_attrs && content.is_empty()) {
                     on_leaf(&open_tag, &content)?;
                 }
                 state = ParseState::FindTag;

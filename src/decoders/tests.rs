@@ -212,8 +212,25 @@ mod for_each_leaf_tests {
     }
 
     #[test]
+    fn strips_attributes_after_any_whitespace() {
+        for xml in [
+            "<a\tx=\"1\">1</a>",
+            "<a\nx=\"1\">1</a>",
+            "<a\r\n  x=\"1\">1</a>",
+        ] {
+            assert_eq!(collect(xml), vec![("a".into(), "1".into())], "{xml:?}");
+        }
+    }
+
+    #[test]
     fn yields_empty_content() {
         assert_eq!(collect("<a></a>"), vec![("a".into(), "".into())]);
+    }
+
+    #[test]
+    fn skips_empty_element_with_attributes() {
+        let leaves = collect(r#"<a xsi:nil="true"></a><b>2</b>"#);
+        assert_eq!(leaves, vec![("b".into(), "2".into())]);
     }
 
     #[test]
@@ -243,6 +260,99 @@ mod for_each_leaf_tests {
 
 mod decode_state_fields {
     use super::*;
+
+    /// Each numeric tag gets a unique value so swapped mappings are caught.
+    #[test]
+    fn maps_each_numeric_tag_to_its_field() {
+        type Getter = fn(&SimulatorState) -> f32;
+        let cases: &[(&str, Getter)] = &[
+            ("m-currentPhysicsTime-SEC", |s| s.current_physics_time_s),
+            ("m-currentPhysicsSpeedMultiplier", |s| {
+                s.current_physics_speed_multiplier
+            }),
+            ("m-airspeed-MPS", |s| s.airspeed_mps),
+            ("m-altitudeASL-MTR", |s| s.altitude_asl_m),
+            ("m-altitudeAGL-MTR", |s| s.altitude_agl_m),
+            ("m-groundspeed-MPS", |s| s.groundspeed_mps),
+            ("m-pitchRate-DEGpSEC", |s| s.pitch_rate_dps),
+            ("m-rollRate-DEGpSEC", |s| s.roll_rate_dps),
+            ("m-yawRate-DEGpSEC", |s| s.yaw_rate_dps),
+            ("m-azimuth-DEG", |s| s.azimuth_deg),
+            ("m-inclination-DEG", |s| s.inclination_deg),
+            ("m-roll-DEG", |s| s.roll_deg),
+            ("m-orientationQuaternion-X", |s| s.orientation.x),
+            ("m-orientationQuaternion-Y", |s| s.orientation.y),
+            ("m-orientationQuaternion-Z", |s| s.orientation.z),
+            ("m-orientationQuaternion-W", |s| s.orientation.w),
+            ("m-aircraftPositionX-MTR", |s| s.aircraft_position_x_m),
+            ("m-aircraftPositionY-MTR", |s| s.aircraft_position_y_m),
+            ("m-velocityWorldU-MPS", |s| s.velocity_world_mps.x),
+            ("m-velocityWorldV-MPS", |s| s.velocity_world_mps.y),
+            ("m-velocityWorldW-MPS", |s| s.velocity_world_mps.z),
+            ("m-velocityBodyU-MPS", |s| s.velocity_body_mps.x),
+            ("m-velocityBodyV-MPS", |s| s.velocity_body_mps.y),
+            ("m-velocityBodyW-MPS", |s| s.velocity_body_mps.z),
+            ("m-accelerationWorldAX-MPS2", |s| {
+                s.acceleration_world_mps2.x
+            }),
+            ("m-accelerationWorldAY-MPS2", |s| {
+                s.acceleration_world_mps2.y
+            }),
+            ("m-accelerationWorldAZ-MPS2", |s| {
+                s.acceleration_world_mps2.z
+            }),
+            ("m-accelerationBodyAX-MPS2", |s| s.acceleration_body_mps2.x),
+            ("m-accelerationBodyAY-MPS2", |s| s.acceleration_body_mps2.y),
+            ("m-accelerationBodyAZ-MPS2", |s| s.acceleration_body_mps2.z),
+            ("m-windX-MPS", |s| s.wind_mps.x),
+            ("m-windY-MPS", |s| s.wind_mps.y),
+            ("m-windZ-MPS", |s| s.wind_mps.z),
+            ("m-propRPM", |s| s.prop_rpm),
+            ("m-heliMainRotorRPM", |s| s.heli_main_rotor_rpm),
+            ("m-batteryVoltage-VOLTS", |s| s.battery_voltage_v),
+            ("m-batteryCurrentDraw-AMPS", |s| s.battery_current_draw_a),
+            ("m-batteryRemainingCapacity-MAH", |s| {
+                s.battery_remaining_capacity_mah
+            }),
+            ("m-fuelRemaining-OZ", |s| s.fuel_remaining_oz),
+        ];
+
+        let xml: String = cases
+            .iter()
+            .enumerate()
+            .map(|(i, (tag, _))| format!("<{tag}>{}</{tag}>", i + 1))
+            .collect();
+        let state = decode_simulator_state(&xml).unwrap();
+
+        for (i, (tag, get)) in cases.iter().enumerate() {
+            assert_eq!(get(&state), (i + 1) as f32, "{tag}");
+        }
+    }
+
+    #[test]
+    fn maps_each_boolean_tag_to_its_field() {
+        type Getter = fn(&SimulatorState) -> bool;
+        let cases: &[(&str, Getter)] = &[
+            ("m-isLocked", |s| s.is_locked),
+            ("m-hasLostComponents", |s| s.has_lost_components),
+            ("m-anEngineIsRunning", |s| s.an_engine_is_running),
+            ("m-isTouchingGround", |s| s.is_touching_ground),
+            ("m-flightAxisControllerIsActive", |s| {
+                s.flight_axis_controller_is_active
+            }),
+            ("m-resetButtonHasBeenPressed", |s| {
+                s.reset_button_has_been_pressed
+            }),
+        ];
+
+        // Set one flag at a time so a swapped mapping shows up as a wrong field
+        for (tag, get) in cases {
+            let state = decode_simulator_state(&format!("<{tag}>true</{tag}>")).unwrap();
+            assert!(get(&state), "{tag}");
+            let set = cases.iter().filter(|(_, g)| g(&state)).count();
+            assert_eq!(set, 1, "{tag} set other flags");
+        }
+    }
 
     #[test]
     fn parses_previous_channel_inputs() {
