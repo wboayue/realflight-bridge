@@ -27,8 +27,6 @@ impl AsyncSoapClient for AsyncTcpSoapClient {
         stream.write_all(request.as_bytes()).await?;
         stream.flush().await?;
 
-        self.connection_pool.statistics().increment_request_count();
-
         // Read response
         let mut reader = BufReader::new(stream);
         let mut parser = ResponseParser::new();
@@ -49,7 +47,7 @@ impl AsyncSoapClient for AsyncTcpSoapClient {
 }
 
 impl AsyncTcpSoapClient {
-    /// Creates a new async TCP SOAP client.
+    /// Creates a new async TCP SOAP client. `statistics` records connection errors.
     pub async fn new(
         addr: SocketAddr,
         connect_timeout: Duration,
@@ -64,12 +62,6 @@ impl AsyncTcpSoapClient {
     /// Ensures the connection pool is initialized.
     pub async fn ensure_pool_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
         self.connection_pool.ensure_initialized(init_timeout).await
-    }
-
-    /// Returns a reference to the statistics engine.
-    #[allow(dead_code)]
-    pub fn statistics(&self) -> &Arc<StatisticsEngine> {
-        self.connection_pool.statistics()
     }
 }
 

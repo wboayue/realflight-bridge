@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::bridge::AsyncBridge;
 use crate::defaults;
 use crate::soap_client::tcp_async::AsyncTcpSoapClient;
-use crate::soap_client::{AsyncSoapClient, SoapResponse};
+use crate::soap_client::{AsyncSoapClient, Client, SoapResponse};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 
 use super::ops::{Op, decode_exchange, decode_unit};
@@ -85,7 +85,7 @@ impl AsyncLocalBridgeBuilder {
 
         Ok(AsyncLocalBridge {
             statistics,
-            soap_client,
+            soap_client: Client::Tcp(soap_client),
         })
     }
 }
@@ -123,7 +123,7 @@ impl AsyncLocalBridgeBuilder {
 /// ```
 pub struct AsyncLocalBridge {
     statistics: Arc<StatisticsEngine>,
-    soap_client: AsyncTcpSoapClient,
+    soap_client: Client<AsyncTcpSoapClient>,
 }
 
 impl AsyncBridge for AsyncLocalBridge {
@@ -147,7 +147,23 @@ impl AsyncBridge for AsyncLocalBridge {
 impl AsyncLocalBridge {
     /// Sends an operation to the simulator.
     async fn call(&self, op: Op<'_>) -> Result<SoapResponse, BridgeError> {
+        self.statistics.increment_request_count();
         self.soap_client.send_action(op.action(), &op.body()).await
+    }
+
+    /// Creates a bridge backed by a stub SOAP client (no network).
+    #[cfg(test)]
+    pub(crate) fn stub(soap_client: crate::soap_client::stub::StubSoapClient) -> Self {
+        AsyncLocalBridge {
+            statistics: Arc::new(StatisticsEngine::new()),
+            soap_client: Client::Stub(soap_client),
+        }
+    }
+
+    /// Returns the SOAP envelopes received by the stub client.
+    #[cfg(test)]
+    pub(crate) fn requests(&self) -> Vec<String> {
+        self.soap_client.requests()
     }
 
     /// Creates a new AsyncLocalBridge with default settings.

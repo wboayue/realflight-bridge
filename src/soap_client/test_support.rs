@@ -28,6 +28,8 @@ use std::sync::{
 };
 use std::thread;
 
+use super::SoapResponse;
+
 /// A mock TCP server for testing SOAP client interactions.
 pub struct Server {
     port: u16,
@@ -158,21 +160,28 @@ fn content_length(reader: &mut BufReader<TcpStream>) -> usize {
     content_length.unwrap_or(0)
 }
 
-fn send_response(mut stream: &TcpStream, response_key: &str) {
-    let response_path: PathBuf = [
+/// Loads `testdata/responses/{key}.xml`; the status code is the key's last segment.
+pub(crate) fn canned_response(key: &str) -> SoapResponse {
+    let path: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "testdata",
         "responses",
-        &format!("{}.xml", response_key),
+        &format!("{key}.xml"),
     ]
     .iter()
     .collect();
-    let body = std::fs::read_to_string(response_path).unwrap();
 
-    let code = response_key.rsplit('-').next().unwrap();
+    SoapResponse {
+        status_code: key.rsplit('-').next().unwrap().parse().unwrap(),
+        body: std::fs::read_to_string(path).unwrap(),
+    }
+}
+
+fn send_response(mut stream: &TcpStream, response_key: &str) {
+    let SoapResponse { status_code, body } = canned_response(response_key);
 
     let mut buffer = String::new();
-    buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", code));
+    buffer.push_str(&format!("HTTP/1.1 {} OK\r\n", status_code));
     buffer.push_str("Server: gSOAP/2.7\r\n");
     buffer.push_str("Content-Type: text/xml; charset=utf-8\r\n");
     buffer.push_str(&format!("Content-Length: {}\r\n", body.len()));

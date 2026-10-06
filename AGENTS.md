@@ -78,8 +78,8 @@ Rust 2024 edition library providing SOAP-based communication with RealFlight Lin
 - Shared helpers go in a `#[cfg(test)] pub(crate) mod test_support;` of the owning component. Don't add helper modules elsewhere
   - `soap_client::test_support::Server`: TCP server replaying canned SOAP responses
   - `bridge::wire::test_support`: `MockProxy`, `send`/`recv`/`write_raw_frame` for remote/proxy protocol tests
-- `soap_client::stub::StubSoapClient` + `RealFlightLocalBridge::stub()`: sync local bridge without network
-- `soap_client::stub_async::AsyncStubSoapClient`: queued-response async SOAP stub
+- `soap_client::stub::StubSoapClient`: queued canned-response SOAP stub implementing both `SoapClient` and `AsyncSoapClient`. Back a bridge with it via `RealFlightLocalBridge::stub()` / `AsyncLocalBridge::stub()`; inspect sent envelopes with `requests()`
+- `soap_client::test_support::canned_response(key)`: loads a `testdata/responses` file as a `SoapResponse`
 - Test-only items in non-test modules use `#[cfg(test)]`; don't repeat it on items inside an already test-gated module
 - Canned simulator responses live in `testdata/responses/{action}-{status}.xml` (e.g. `return-data-200.xml`). Stubs pick the file by key; reference from tests via `include_str!` relative path or `env!("CARGO_MANIFEST_DIR")`
 

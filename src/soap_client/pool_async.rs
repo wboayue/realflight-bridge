@@ -37,7 +37,6 @@ pub(crate) struct AsyncConnectionPool {
     connections: Mutex<mpsc::Receiver<TcpStream>>,
     cancel: CancellationToken,
     init_result: watch::Receiver<Option<Result<(), String>>>,
-    statistics: Arc<StatisticsEngine>,
 }
 
 impl AsyncConnectionPool {
@@ -59,7 +58,6 @@ impl AsyncConnectionPool {
 
         // Channel for communicating initialization result
         let (init_tx, init_rx) = watch::channel(None);
-        let stats_clone = Arc::clone(&statistics);
         let task_cancel = cancel.clone();
 
         debug!("Creating {} async connections in pool.", pool_size);
@@ -110,12 +108,12 @@ impl AsyncConnectionPool {
                             }
                             Ok(Err(e)) => {
                                 error!("Error creating connection: {}", e);
-                                stats_clone.increment_error_count();
+                                statistics.increment_error_count();
                                 tokio::time::sleep(connect_timeout).await;
                             }
                             Err(_) => {
                                 error!("Connection timeout");
-                                stats_clone.increment_error_count();
+                                statistics.increment_error_count();
                                 tokio::time::sleep(connect_timeout).await;
                             }
                         }
@@ -128,7 +126,6 @@ impl AsyncConnectionPool {
             connections: Mutex::new(rx),
             cancel,
             init_result: init_rx,
-            statistics,
         })
     }
 
@@ -179,11 +176,6 @@ impl AsyncConnectionPool {
         rx.recv()
             .await
             .ok_or_else(|| BridgeError::Initialization("Connection pool closed".into()))
-    }
-
-    /// Returns a reference to the statistics engine.
-    pub fn statistics(&self) -> &Arc<StatisticsEngine> {
-        &self.statistics
     }
 }
 

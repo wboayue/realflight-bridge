@@ -44,8 +44,7 @@ mod fixtures {
         <soap:Body><RestoreOriginalControllerDevice></RestoreOriginalControllerDevice></soap:Body></soap:Envelope>";
 }
 
-fn stub_bridge(responses: Vec<&str>) -> RealFlightLocalBridge {
-    let responses: Vec<String> = responses.into_iter().map(String::from).collect();
+fn stub_bridge(responses: &[&str]) -> RealFlightLocalBridge {
     RealFlightLocalBridge::stub(StubSoapClient::new(responses))
 }
 
@@ -134,7 +133,7 @@ mod bridge_operations {
         ];
 
         for (op, response, expected_request) in cases {
-            let bridge = stub_bridge(vec![response]);
+            let bridge = stub_bridge(&[response]);
             op(&bridge).unwrap();
             assert_eq!(bridge.requests(), [expected_request]);
         }
@@ -142,7 +141,7 @@ mod bridge_operations {
 
     #[test]
     fn increments_request_count() {
-        let bridge = stub_bridge(vec!["reset-aircraft-200"]);
+        let bridge = stub_bridge(&["reset-aircraft-200"]);
         bridge.reset_aircraft().unwrap();
 
         let stats = bridge.statistics();
@@ -151,7 +150,7 @@ mod bridge_operations {
 
     #[test]
     fn returns_soap_fault_on_500() {
-        let bridge = stub_bridge(vec!["inject-uav-controller-interface-500"]);
+        let bridge = stub_bridge(&["inject-uav-controller-interface-500"]);
 
         match bridge.disable_rc() {
             Err(BridgeError::SoapFault(msg)) => {
@@ -171,7 +170,7 @@ mod exchange_data {
 
     #[test]
     fn returns_decoded_state() {
-        let bridge = stub_bridge(vec!["return-data-200"]);
+        let bridge = stub_bridge(&["return-data-200"]);
 
         let state = bridge.exchange_data(&ControlInputs::default()).unwrap();
 
@@ -182,7 +181,7 @@ mod exchange_data {
 
     #[test]
     fn returns_soap_fault_on_500() {
-        let bridge = stub_bridge(vec!["return-data-500"]);
+        let bridge = stub_bridge(&["return-data-500"]);
 
         match bridge.exchange_data(&ControlInputs::default()) {
             Err(BridgeError::SoapFault(msg)) => {

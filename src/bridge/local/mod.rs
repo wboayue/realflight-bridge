@@ -2,7 +2,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use super::RealFlightBridge;
 use crate::defaults;
-use crate::soap_client::{SoapClient, SoapResponse, tcp::TcpSoapClient};
+use crate::soap_client::{Client, SoapClient, SoapResponse, tcp::TcpSoapClient};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 use ops::{Op, decode_exchange, decode_unit};
 
@@ -77,7 +77,7 @@ pub use async_impl::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
 /// real-time loops or detecting dropped messages.
 pub struct RealFlightLocalBridge {
     statistics: Arc<StatisticsEngine>,
-    soap_client: Box<dyn SoapClient>,
+    soap_client: Client<TcpSoapClient>,
 }
 
 impl RealFlightBridge for RealFlightLocalBridge {
@@ -224,6 +224,7 @@ impl RealFlightBridge for RealFlightLocalBridge {
 impl RealFlightLocalBridge {
     /// Sends an operation to the simulator.
     fn call(&self, op: Op) -> Result<SoapResponse, BridgeError> {
+        self.statistics.increment_request_count();
         self.soap_client.send_action(op.action(), &op.body())
     }
 
@@ -326,27 +327,23 @@ impl RealFlightLocalBridge {
 
         Ok(RealFlightLocalBridge {
             statistics,
-            soap_client: Box::new(soap_client),
+            soap_client: Client::Tcp(soap_client),
         })
     }
 
-    /// Creates a new RealFlightLink client
-    /// simulator_url: the url to the RealFlight simulator
+    /// Creates a bridge backed by a stub SOAP client (no network).
     #[cfg(test)]
-    pub(crate) fn stub(mut soap_client: StubSoapClient) -> RealFlightLocalBridge {
-        let statistics = Arc::new(StatisticsEngine::new());
-
-        soap_client.statistics = Some(statistics.clone());
-
+    pub(crate) fn stub(soap_client: StubSoapClient) -> RealFlightLocalBridge {
         RealFlightLocalBridge {
-            statistics,
-            soap_client: Box::new(soap_client),
+            statistics: Arc::new(StatisticsEngine::new()),
+            soap_client: Client::Stub(soap_client),
         }
     }
 
+    /// Returns the SOAP envelopes received by the stub client.
     #[cfg(test)]
-    pub fn requests(&self) -> Vec<String> {
-        self.soap_client.requests().clone()
+    pub(crate) fn requests(&self) -> Vec<String> {
+        self.soap_client.requests()
     }
 
     /// Get statistics for the RealFlightBridge
