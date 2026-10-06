@@ -101,6 +101,7 @@ pub enum ResponseStatus {
 impl Response {
     /// Extracts the simulator state from an `ExchangeData` response.
     pub(crate) fn into_state(self) -> Result<SimulatorState, BridgeError> {
+        self.check_status()?;
         match self.payload {
             Some(state) => Ok(state),
             None => {
@@ -112,7 +113,17 @@ impl Response {
 
     /// Interprets a response to an operation without a payload.
     pub(crate) fn into_unit(self) -> Result<(), BridgeError> {
-        Ok(())
+        self.check_status()
+    }
+
+    /// Maps an error status to a fault. The proxy logs the underlying cause.
+    fn check_status(&self) -> Result<(), BridgeError> {
+        match self.status {
+            ResponseStatus::Success => Ok(()),
+            ResponseStatus::Error => Err(BridgeError::SoapFault(
+                "Proxy reported operation failure".to_string(),
+            )),
+        }
     }
 }
 

@@ -116,6 +116,19 @@ fn malformed_response_is_invalid_data() {
 }
 
 #[test]
+fn unit_ops_fail_on_proxy_error() {
+    let proxy = MockProxy::respond(Response {
+        status: ResponseStatus::Error,
+        payload: None,
+    });
+    let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
+
+    assert!(client.enable_rc().is_err());
+    assert!(client.disable_rc().is_err());
+    assert!(client.reset_aircraft().is_err());
+}
+
+#[test]
 fn server_disconnect_returns_error() {
     let proxy = MockProxy::hang_up();
     let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
@@ -154,6 +167,22 @@ mod response_helpers {
     #[test]
     fn into_unit_ok_on_success() {
         assert!(response(ResponseStatus::Success, None).into_unit().is_ok());
+    }
+
+    #[test]
+    fn into_unit_fault_on_error_status() {
+        match response(ResponseStatus::Error, None).into_unit() {
+            Err(BridgeError::SoapFault(msg)) => assert!(msg.contains("Proxy reported")),
+            other => panic!("expected SoapFault, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn into_state_fault_on_error_status() {
+        match response(ResponseStatus::Error, None).into_state() {
+            Err(BridgeError::SoapFault(msg)) => assert!(msg.contains("Proxy reported")),
+            other => panic!("expected SoapFault, got {:?}", other),
+        }
     }
 
     #[test]

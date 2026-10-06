@@ -287,6 +287,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unit_ops_fail_on_proxy_error() {
+        let proxy = MockProxy::respond(Response::error());
+        let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
+
+        assert!(bridge.enable_rc().await.is_err());
+        assert!(bridge.disable_rc().await.is_err());
+        assert!(bridge.reset_aircraft().await.is_err());
+    }
+
+    #[tokio::test]
     async fn server_disconnect_returns_error() {
         let proxy = MockProxy::hang_up();
         let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
