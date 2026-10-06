@@ -222,3 +222,39 @@ async fn init_fails_on_connection_timeout() {
         other => panic!("expected Initialization error, got {:?}", other),
     }
 }
+
+#[tokio::test]
+async fn holds_at_most_pool_size_idle_connections() {
+    let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let stats = Arc::new(StatisticsEngine::new());
+
+    let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = accepted.clone();
+    let accept_handle = tokio::spawn(async move {
+        let mut streams = Vec::new();
+        while let Ok((stream, _)) = listener.accept().await {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            streams.push(stream);
+        }
+    });
+
+    let pool = AsyncConnectionPool::new(addr, Duration::from_secs(1), 1, stats)
+        .await
+        .unwrap();
+    pool.ensure_initialized(Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // Idle pool must not open a connection beyond pool_size
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    // Taking a connection frees a slot, so exactly one replacement is opened
+    let _conn = pool.get_connection().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+    drop(pool);
+    accept_handle.abort();
+}

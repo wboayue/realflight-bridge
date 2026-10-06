@@ -92,8 +92,21 @@ impl AsyncConnectionPool {
 
             let _ = init_tx.send(Some(Ok(())));
 
-            // Continue creating connections as needed
+            // Continue creating connections as needed. Reserve a slot before
+            // connecting so at most `pool_size` idle connections are held open;
+            // the simulator may stall on idle accepted connections.
             loop {
+                let permit = tokio::select! {
+                    _ = task_cancel.cancelled() => {
+                        debug!("Connection pool shutting down");
+                        break;
+                    }
+                    permit = tx.reserve() => match permit {
+                        Ok(permit) => permit,
+                        Err(_) => break, // Receiver dropped
+                    },
+                };
+
                 tokio::select! {
                     _ = task_cancel.cancelled() => {
                         debug!("Connection pool shutting down");
@@ -101,11 +114,7 @@ impl AsyncConnectionPool {
                     }
                     result = timeout(connect_timeout, TcpStream::connect(addr)) => {
                         match result {
-                            Ok(Ok(stream)) => {
-                                if tx.send(stream).await.is_err() {
-                                    break; // Receiver dropped
-                                }
-                            }
+                            Ok(Ok(stream)) => permit.send(stream),
                             Ok(Err(e)) => {
                                 error!("Error creating connection: {}", e);
                                 statistics.increment_error_count();

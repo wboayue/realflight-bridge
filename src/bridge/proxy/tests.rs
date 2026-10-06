@@ -114,6 +114,24 @@ async fn shutdown_via_cancellation_token() {
     assert!(result.is_ok());
 }
 
+#[tokio::test]
+async fn run_does_not_connect_to_simulator_before_client() {
+    let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+    let cancel = CancellationToken::new();
+
+    let server_cancel = cancel.clone();
+    let handle = tokio::spawn(async move { server.run(server_cancel).await });
+
+    // With no client connected, run must not touch the simulator, so it keeps
+    // serving even when none is reachable
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert!(!handle.is_finished());
+
+    cancel.cancel();
+    let result = handle.await.unwrap();
+    assert!(result.is_ok());
+}
+
 // ========================================================================
 // Request Routing Tests
 // ========================================================================

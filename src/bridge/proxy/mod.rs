@@ -13,7 +13,7 @@ mod tests;
 use std::net::SocketAddr;
 
 use log::{error, info};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
 
 use crate::BridgeError;
@@ -32,7 +32,7 @@ pub struct AsyncProxyServer {
 }
 
 impl AsyncProxyServer {
-    /// Creates a new async server instance with a connection to the local simulator.
+    /// Creates a new async server bound to `bind_address`.
     ///
     /// # Arguments
     /// * `bind_address` - The address to bind to (e.g., "0.0.0.0:8080").
@@ -56,14 +56,20 @@ impl AsyncProxyServer {
 
     /// Runs the server until the cancellation token is triggered.
     ///
+    /// A simulator connection is opened when a client connects and closed when it
+    /// disconnects, so the proxy holds no idle connections to the simulator.
+    ///
     /// # Arguments
     /// * `cancel` - Cancellation token for graceful shutdown.
     ///
     /// # Returns
     /// A `Result` indicating success or an error.
     pub async fn run(&self, cancel: CancellationToken) -> Result<(), BridgeError> {
-        let bridge = AsyncLocalBridge::new().await?;
-        self.run_with_bridge(&bridge, cancel).await
+        self.serve(cancel, |stream, cancel| async move {
+            let bridge = AsyncLocalBridge::new().await?;
+            handle_client(stream, &bridge, cancel).await
+        })
+        .await
     }
 
     /// Runs the server with a custom bridge implementation.
@@ -74,6 +80,22 @@ impl AsyncProxyServer {
         bridge: &B,
         cancel: CancellationToken,
     ) -> Result<(), BridgeError> {
+        self.serve(cancel, |stream, cancel| {
+            handle_client(stream, bridge, cancel)
+        })
+        .await
+    }
+
+    /// Accepts clients until cancelled, handling each serially with `on_client`.
+    async fn serve<F, Fut>(
+        &self,
+        cancel: CancellationToken,
+        on_client: F,
+    ) -> Result<(), BridgeError>
+    where
+        F: Fn(TcpStream, CancellationToken) -> Fut,
+        Fut: Future<Output = Result<(), BridgeError>>,
+    {
         info!("Async server listening on {}", self.local_addr);
 
         loop {
@@ -86,10 +108,8 @@ impl AsyncProxyServer {
                     match result {
                         Ok((stream, addr)) => {
                             info!("New client connected: {}", addr);
-                            let client_cancel = cancel.clone();
-                            // For now, handle clients serially like the sync version
-                            // Could be changed to spawn tasks for concurrent clients
-                            if let Err(e) = handle_client(stream, bridge, client_cancel).await {
+                            // Clients are handled serially; could spawn tasks for concurrent clients
+                            if let Err(e) = on_client(stream, cancel.clone()).await {
                                 error!("Error handling client: {}", e);
                             }
                         }
