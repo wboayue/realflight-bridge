@@ -14,6 +14,11 @@ struct Args {
     /// Address to bind the server to
     #[arg(long, default_value = "0.0.0.0:8080")]
     bind_address: String,
+
+    /// Open a new simulator connection per request instead of pre-connecting.
+    /// Use if the simulator stalls while a client is connected.
+    #[arg(long)]
+    no_preconnect: bool,
 }
 
 #[tokio::main]
@@ -22,7 +27,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let args = Args::parse();
 
-    let server = AsyncProxyServer::new(&args.bind_address).await?;
+    let server = AsyncProxyServer::new(&args.bind_address)
+        .await?
+        .preconnect(!args.no_preconnect);
     let cancel = CancellationToken::new();
 
     // Set up Ctrl+C handler for graceful shutdown

@@ -64,6 +64,10 @@ impl AsyncLocalBridgeBuilder {
     }
 
     /// Sets the connection pool size.
+    ///
+    /// 0 disables pre-connecting: each request opens its own connection, so no
+    /// idle connection is held open (slightly higher latency per request). The
+    /// simulator isn't contacted until the first request.
     #[must_use]
     pub fn pool_size(mut self, size: usize) -> Self {
         self.pool_size = size;

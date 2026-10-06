@@ -34,7 +34,10 @@ use crate::StatisticsEngine;
 /// If cancel-safety is required, wrap calls in `tokio::select!` with care or
 /// use a dedicated cancellation token rather than dropping the future.
 pub(crate) struct AsyncConnectionPool {
-    connections: Mutex<mpsc::Receiver<TcpStream>>,
+    addr: SocketAddr,
+    connect_timeout: Duration,
+    /// `None` when `pool_size` is 0: connections are opened on demand.
+    connections: Option<Mutex<mpsc::Receiver<TcpStream>>>,
     cancel: CancellationToken,
     init_result: watch::Receiver<Option<Result<(), String>>>,
 }
@@ -45,7 +48,8 @@ impl AsyncConnectionPool {
     /// # Arguments
     /// * `addr` - The address to connect to
     /// * `connect_timeout` - Timeout for establishing connections
-    /// * `pool_size` - Number of connections to pre-create
+    /// * `pool_size` - Number of connections to pre-create; 0 opens each
+    ///   connection on demand, holding none idle
     /// * `statistics` - Statistics engine for tracking errors
     pub async fn new(
         addr: SocketAddr,
@@ -54,6 +58,19 @@ impl AsyncConnectionPool {
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, BridgeError> {
         let cancel = CancellationToken::new();
+
+        if pool_size == 0 {
+            debug!("Connection pool disabled, connecting on demand.");
+            let (_, init_rx) = watch::channel(Some(Ok(())));
+            return Ok(Self {
+                addr,
+                connect_timeout,
+                connections: None,
+                cancel,
+                init_result: init_rx,
+            });
+        }
+
         let (tx, rx) = mpsc::channel(pool_size);
 
         // Channel for communicating initialization result
@@ -132,7 +149,9 @@ impl AsyncConnectionPool {
         });
 
         Ok(Self {
-            connections: Mutex::new(rx),
+            addr,
+            connect_timeout,
+            connections: Some(Mutex::new(rx)),
             cancel,
             init_result: init_rx,
         })
@@ -181,7 +200,16 @@ impl AsyncConnectionPool {
 
     /// Gets a connection from the pool.
     pub async fn get_connection(&self) -> Result<TcpStream, BridgeError> {
-        let mut rx = self.connections.lock().await;
+        let Some(connections) = &self.connections else {
+            return match timeout(self.connect_timeout, TcpStream::connect(self.addr)).await {
+                Ok(result) => Ok(result?),
+                Err(_) => Err(BridgeError::Connection(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("Connection timeout to simulator at {}", self.addr),
+                ))),
+            };
+        };
+        let mut rx = connections.lock().await;
         rx.recv()
             .await
             .ok_or_else(|| BridgeError::Initialization("Connection pool closed".into()))

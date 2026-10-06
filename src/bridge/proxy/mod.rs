@@ -29,6 +29,7 @@ use handler::handle_client;
 pub struct AsyncProxyServer {
     listener: TcpListener,
     local_addr: SocketAddr,
+    preconnect: bool,
 }
 
 impl AsyncProxyServer {
@@ -46,7 +47,20 @@ impl AsyncProxyServer {
         Ok(AsyncProxyServer {
             listener,
             local_addr,
+            preconnect: true,
         })
+    }
+
+    /// Sets whether the next simulator connection is opened ahead of each request
+    /// (default `true`).
+    ///
+    /// Pre-connecting hides connect latency but holds one idle connection open to
+    /// the simulator, which some RealFlight versions stall on. With `false`, each
+    /// request opens its own connection.
+    #[must_use]
+    pub fn preconnect(mut self, preconnect: bool) -> Self {
+        self.preconnect = preconnect;
+        self
     }
 
     /// Returns the local address the server is bound to.
@@ -65,9 +79,16 @@ impl AsyncProxyServer {
     /// # Returns
     /// A `Result` indicating success or an error.
     pub async fn run(&self, cancel: CancellationToken) -> Result<(), BridgeError> {
-        self.serve(cancel, |stream, cancel| async move {
-            let bridge = AsyncLocalBridge::new().await?;
-            handle_client(stream, &bridge, cancel).await
+        let mut builder = AsyncLocalBridge::builder();
+        if !self.preconnect {
+            builder = builder.pool_size(0);
+        }
+        self.serve(cancel, |stream, cancel| {
+            let builder = builder.clone();
+            async move {
+                let bridge = builder.build().await?;
+                handle_client(stream, &bridge, cancel).await
+            }
         })
         .await
     }
