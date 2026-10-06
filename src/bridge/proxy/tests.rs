@@ -519,3 +519,58 @@ async fn oversized_request_drops_client() {
     cancel.cancel();
     let _ = handle.await;
 }
+
+/// Bridge whose faults are too large to fit in a frame.
+struct OversizedFaultBridge;
+
+fn oversized_fault() -> BridgeError {
+    BridgeError::SoapFault("x".repeat(crate::bridge::wire::frame::MAX_FRAME_LEN + 1))
+}
+
+impl AsyncBridge for OversizedFaultBridge {
+    async fn exchange_data(
+        &self,
+        _control: &ControlInputs,
+    ) -> Result<crate::SimulatorState, BridgeError> {
+        Err(oversized_fault())
+    }
+
+    async fn enable_rc(&self) -> Result<(), BridgeError> {
+        Err(oversized_fault())
+    }
+
+    async fn disable_rc(&self) -> Result<(), BridgeError> {
+        Err(oversized_fault())
+    }
+
+    async fn reset_aircraft(&self) -> Result<(), BridgeError> {
+        Err(oversized_fault())
+    }
+}
+
+#[tokio::test]
+async fn oversized_response_returns_protocol_error() {
+    let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+    let addr = server.local_addr().to_string();
+    let cancel = CancellationToken::new();
+    let bridge = OversizedFaultBridge;
+
+    let server_cancel = cancel.clone();
+    let handle = tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+    let request = Request {
+        request_type: RequestType::EnableRC,
+        payload: None,
+    };
+    let response = send_request_async(addr, request).await;
+
+    match response.status {
+        ResponseStatus::Error(RemoteError::Protocol(msg)) => {
+            assert!(msg.contains("exceeds limit"), "unexpected message: {msg}")
+        }
+        other => panic!("expected Protocol error, got {:?}", other),
+    }
+
+    cancel.cancel();
+    let _ = handle.await;
+}

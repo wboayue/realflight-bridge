@@ -26,6 +26,7 @@ pub fn encode_frame<T: Serialize>(message: &T) -> Result<Vec<u8>, BridgeError> {
 }
 
 /// Encodes a message as a complete frame into `buf`, replacing its contents.
+/// On error, `buf` is left empty.
 pub fn encode_frame_into<T: Serialize>(message: &T, buf: &mut Vec<u8>) -> Result<(), BridgeError> {
     let mut frame = std::mem::take(buf);
     frame.clear();

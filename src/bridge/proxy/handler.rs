@@ -38,7 +38,7 @@ pub(super) async fn handle_client<B: AsyncBridge>(
                     if e.kind() == io::ErrorKind::InvalidData {
                         error!("Invalid frame, dropping client: {}", e);
                     }
-                    break; // Client disconnected
+                    break; // Disconnect or invalid frame
                 }
 
                 let request: Request = match decode_frame(&buffer) {
@@ -60,13 +60,18 @@ pub(super) async fn handle_client<B: AsyncBridge>(
     Ok(())
 }
 
-/// Sends a response to the client.
+/// Sends a response to the client. A response that can't be framed (e.g. an
+/// oversized relayed error message) is replaced by a `Protocol` error.
 async fn send_response(
     writer: &mut BufWriter<tokio::net::tcp::OwnedWriteHalf>,
     response: &Response,
     buf: &mut Vec<u8>,
 ) -> Result<(), BridgeError> {
-    encode_frame_into(response, buf)?;
+    if let Err(e) = encode_frame_into(response, buf) {
+        error!("Failed to encode response: {}", e);
+        let fallback = BridgeError::Protocol(format!("proxy failed to encode response: {e}"));
+        encode_frame_into(&Response::error(&fallback), buf)?;
+    }
     writer.write_all(buf).await?;
     writer.flush().await?;
 
