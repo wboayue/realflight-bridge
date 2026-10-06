@@ -9,9 +9,9 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use crate::BridgeError;
 use crate::StatisticsEngine;
 
-use super::http::{Next, ResponseParser, build_http_request};
+use super::http::{Next, ResponseParser};
 use super::pool_async::AsyncConnectionPool;
-use super::{AsyncSoapClient, SoapResponse, encode_envelope};
+use super::{AsyncSoapClient, SoapResponse, encode_request};
 
 /// Async implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct AsyncTcpSoapClient {
@@ -20,11 +20,10 @@ pub(crate) struct AsyncTcpSoapClient {
 
 impl AsyncSoapClient for AsyncTcpSoapClient {
     async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
-        let envelope = encode_envelope(action, body);
+        let request = encode_request(action, body);
         let mut stream = self.connection_pool.get_connection().await?;
 
         // Send request
-        let request = build_http_request(action, &envelope);
         stream.write_all(request.as_bytes()).await?;
         stream.flush().await?;
 

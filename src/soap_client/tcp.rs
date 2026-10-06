@@ -10,9 +10,9 @@ use std::{
 use crate::BridgeError;
 use crate::StatisticsEngine;
 
-use super::http::{Next, ResponseParser, build_http_request};
+use super::http::{Next, ResponseParser};
 use super::pool::ConnectionPool;
-use super::{SoapClient, SoapResponse, encode_envelope};
+use super::{SoapClient, SoapResponse, encode_request};
 
 /// Implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct TcpSoapClient {
@@ -29,9 +29,9 @@ impl SoapClient for TcpSoapClient {
     /// * `action` - The SOAP action to send.
     /// * `body`   - The body of the SOAP request.
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
-        let envelope = encode_envelope(action, body);
+        let request = encode_request(action, body);
         let mut stream = self.connection_pool.get_connection()?;
-        self.send_request(&mut stream, action, &envelope)?;
+        self.send_request(&mut stream, &request)?;
         self.statistics.increment_request_count();
 
         self.read_response(&mut BufReader::new(stream))
@@ -63,13 +63,7 @@ impl TcpSoapClient {
     }
 
     /// Sends a request to the simulator.
-    fn send_request(
-        &self,
-        stream: &mut TcpStream,
-        action: &str,
-        envelope: &str,
-    ) -> Result<(), BridgeError> {
-        let request = build_http_request(action, envelope);
+    fn send_request(&self, stream: &mut TcpStream, request: &str) -> Result<(), BridgeError> {
         stream.write_all(request.as_bytes())?;
         stream.flush()?;
         Ok(())

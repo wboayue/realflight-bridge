@@ -20,6 +20,11 @@ pub(crate) mod tcp_async;
 
 pub(crate) use xml::encode_envelope;
 
+/// Encodes a complete HTTP request for a SOAP action.
+pub(crate) fn encode_request(action: &str, body: &str) -> String {
+    http::build_http_request(action, &encode_envelope(action, body))
+}
+
 /// Response from a SOAP request to the RealFlight simulator
 #[derive(Debug)]
 pub(crate) struct SoapResponse {
@@ -59,6 +64,17 @@ pub(crate) trait AsyncSoapClient: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encode_request_wraps_envelope_in_http() {
+        let envelope = encode_envelope("ResetAircraft", "");
+        let request = encode_request("ResetAircraft", "");
+
+        assert!(request.starts_with("POST / HTTP/1.1\r\n"));
+        assert!(request.contains("Soapaction: 'ResetAircraft'\r\n"));
+        assert!(request.contains(&format!("Content-Length: {}\r\n", envelope.len())));
+        assert!(request.ends_with(&envelope));
+    }
 
     mod soap_response_tests {
         use super::*;
