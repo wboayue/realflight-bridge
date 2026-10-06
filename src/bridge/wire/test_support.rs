@@ -7,7 +7,8 @@ use std::thread::{self, JoinHandle};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use super::frame::{FRAME_HEADER_LEN, decode_frame, encode_frame, frame_len};
+use super::frame::{decode_frame, encode_frame};
+use super::frame_io::read_frame;
 use super::{Request, Response};
 
 /// Writes `payload` as a frame without encoding it (for malformed data).
@@ -26,10 +27,8 @@ pub(crate) fn send<T: Serialize>(stream: &mut impl Write, message: &T) -> io::Re
 
 /// Reads one frame and decodes it.
 pub(crate) fn recv<T: DeserializeOwned>(stream: &mut impl Read) -> io::Result<T> {
-    let mut header = [0u8; FRAME_HEADER_LEN];
-    stream.read_exact(&mut header)?;
-    let mut payload = vec![0u8; frame_len(header)];
-    stream.read_exact(&mut payload)?;
+    let mut payload = Vec::new();
+    read_frame(stream, &mut payload)?;
     decode_frame(&payload).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 

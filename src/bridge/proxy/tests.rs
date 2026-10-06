@@ -1,7 +1,7 @@
 use super::*;
 use crate::ControlInputs;
-use crate::bridge::remote::test_support::{recv, send, write_raw_frame};
-use crate::bridge::remote::{Request, RequestType, Response, ResponseStatus};
+use crate::bridge::wire::test_support::{recv, send, write_raw_frame};
+use crate::bridge::wire::{Request, RequestType, Response, ResponseStatus};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

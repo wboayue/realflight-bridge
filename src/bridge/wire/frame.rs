@@ -44,7 +44,7 @@ where
 mod tests {
     use super::*;
     use crate::ControlInputs;
-    use crate::bridge::remote::{Request, RequestRef, RequestType};
+    use crate::bridge::wire::{Request, RequestRef, RequestType};
 
     fn split(frame: &[u8]) -> (usize, &[u8]) {
         let (header, payload) = frame.split_at(FRAME_HEADER_LEN);

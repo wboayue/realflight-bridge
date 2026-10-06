@@ -6,6 +6,7 @@ use std::future::Future;
 pub mod local;
 pub mod proxy;
 pub mod remote;
+pub(crate) mod wire;
 
 pub trait RealFlightBridge {
     /// Exchanges flight control data with the RealFlight simulator.

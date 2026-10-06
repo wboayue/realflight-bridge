@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -11,8 +11,10 @@ use crate::bridge::AsyncBridge;
 use crate::defaults;
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
-use super::frame::{FRAME_HEADER_LEN, decode_frame, encode_frame, frame_len};
-use super::{RequestRef, RequestType, Response, resolve};
+use super::{RequestType, Response, resolve};
+use crate::bridge::wire::RequestRef;
+use crate::bridge::wire::frame::{decode_frame, encode_frame};
+use crate::bridge::wire::frame_io::read_frame_async;
 
 /// Builder for AsyncRemoteBridge.
 ///
@@ -178,13 +180,7 @@ impl AsyncRemoteBridge {
         conn.writer.write_all(&frame).await?;
         conn.writer.flush().await?;
 
-        let mut header = [0u8; FRAME_HEADER_LEN];
-        conn.reader.read_exact(&mut header).await?;
-
-        // Read the response data into reusable buffer
-        conn.response_buffer.clear();
-        conn.response_buffer.resize(frame_len(header), 0);
-        conn.reader.read_exact(&mut conn.response_buffer).await?;
+        read_frame_async(&mut conn.reader, &mut conn.response_buffer).await?;
         conn.in_flight = false;
 
         decode_frame(&conn.response_buffer)
@@ -195,7 +191,7 @@ impl AsyncRemoteBridge {
 mod tests {
     use super::*;
     use crate::bridge::AsyncBridge;
-    use crate::bridge::remote::test_support::MockProxy;
+    use crate::bridge::wire::test_support::MockProxy;
     use std::net::TcpListener;
 
     // ========================================================================
@@ -296,9 +292,10 @@ mod tests {
     async fn concurrent_calls_receive_own_responses() {
         // Echo channel 0 back in the state so each caller can check its reply
         let proxy = MockProxy::handle(|request| {
-            let mut state = SimulatorState::default();
-            state.current_physics_time_s = request.payload.as_ref().unwrap().channels[0];
-            Response::success_with(state)
+            Response::success_with(SimulatorState {
+                current_physics_time_s: request.payload.as_ref().unwrap().channels[0],
+                ..SimulatorState::default()
+            })
         });
         let bridge = std::sync::Arc::new(AsyncRemoteBridge::new(&proxy.addr).await.unwrap());
 
@@ -327,9 +324,10 @@ mod tests {
             if std::mem::take(&mut first) {
                 std::thread::sleep(Duration::from_millis(200));
             }
-            let mut state = SimulatorState::default();
-            state.current_physics_time_s = request.payload.as_ref().unwrap().channels[0];
-            Response::success_with(state)
+            Response::success_with(SimulatorState {
+                current_physics_time_s: request.payload.as_ref().unwrap().channels[0],
+                ..SimulatorState::default()
+            })
         });
         let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
 
