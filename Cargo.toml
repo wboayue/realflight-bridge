@@ -15,12 +15,14 @@ categories = ["aerospace::simulation", "aerospace::drones", "game-development"]
 include = ["src/", "README.md", "LICENSE", "examples/", "benches/", "testdata/", "!**/.DS_Store"]
 
 [package.metadata.docs.rs]
-features = ["rt-tokio"]
+features = ["rt-tokio", "mint"]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
 bench-internals = []
 rt-tokio = ["dep:tokio", "dep:tokio-util"]
+mint = ["dep:mint"]
 
 [dependencies]
 env_logger = "0.11.8"
@@ -32,12 +34,14 @@ thiserror = "2.0"
 clap = { version = "4.5.54", features = ["derive"] }
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "time", "macros", "rt-multi-thread", "signal"], optional = true }
 tokio-util = { version = "0.7", features = ["io"], optional = true }
+mint = { version = "0.5", optional = true }
 
 [dev-dependencies]
 clap = "4.5.54"
 rand = "0.10"
 criterion = { version = "0.8", features = ["html_reports"] }
 approx = "0.5.1"
+nalgebra = { version = "0.34", features = ["mint"] }
 
 [[bin]]
 name = "realflight_bridge_proxy"

@@ -14,6 +14,8 @@
 //!
 //! See [README](https://github.com/wboayue/realflight-bridge) for examples and usage.
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -145,7 +147,21 @@ pub struct ControlInputs {
 /// Three-component vector. Frame and unit depend on the field holding it; see
 /// [`SimulatorState`].
 ///
-/// Converts to and from `[x, y, z]`.
+/// Converts to and from `[x, y, z]`, and with the `mint` feature to and from
+/// `mint::Vector3<f32>`, which nalgebra, glam, cgmath, etc. convert from.
+/// Conversions copy components only; the frame is unchanged.
+///
+#[cfg_attr(
+    feature = "mint",
+    doc = r#"```
+use realflight_bridge::Vector3;
+
+let v = Vector3 { x: 1.0, y: 2.0, z: 3.0 };
+let m: mint::Vector3<f32> = v.into();
+let n: nalgebra::Vector3<f32> = m.into();
+assert_eq!(n, nalgebra::Vector3::new(1.0, 2.0, 3.0));
+```"#
+)]
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Vector3 {
     /// X component (RealFlight U for velocities)
@@ -168,10 +184,59 @@ impl From<Vector3> for [f32; 3] {
     }
 }
 
+#[cfg(feature = "mint")]
+impl From<mint::Vector3<f32>> for Vector3 {
+    fn from(v: mint::Vector3<f32>) -> Self {
+        Self {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+        }
+    }
+}
+
+#[cfg(feature = "mint")]
+impl From<Vector3> for mint::Vector3<f32> {
+    fn from(v: Vector3) -> Self {
+        Self {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+        }
+    }
+}
+
+#[cfg(feature = "mint")]
+impl mint::IntoMint for Vector3 {
+    type MintType = mint::Vector3<f32>;
+}
+
 /// Orientation quaternion in RealFlight's convention (unitless).
 ///
 /// Converts to and from `[x, y, z, w]` (scalar last). RealFlight's axes differ
 /// from NED; see [`SimulatorState::orientation`].
+///
+/// With the `mint` feature, converts to and from `mint::Quaternion<f32>`
+/// (`w` ↔ `s`). Conversions copy components only and do not remap to NED.
+///
+#[cfg_attr(
+    feature = "mint",
+    doc = r#"```
+use std::f32::consts::FRAC_1_SQRT_2;
+use realflight_bridge::Quaternion;
+
+// 90° rotation about RealFlight's z axis
+let rf = Quaternion { x: 0.0, y: 0.0, z: FRAC_1_SQRT_2, w: FRAC_1_SQRT_2 };
+
+// Remap to body-to-NED before converting, as ArduPilot does
+let ned = Quaternion { x: rf.y, y: rf.x, z: -rf.z, w: rf.w };
+let m: mint::Quaternion<f32> = ned.into();
+let attitude = nalgebra::UnitQuaternion::from_quaternion(m.into());
+
+let (_roll, _pitch, yaw) = attitude.euler_angles();
+assert!((yaw.to_degrees() + 90.0).abs() < 1e-4);
+```"#
+)]
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Quaternion {
     /// X (i) component
@@ -194,6 +259,37 @@ impl From<Quaternion> for [f32; 4] {
     fn from(q: Quaternion) -> Self {
         [q.x, q.y, q.z, q.w]
     }
+}
+
+#[cfg(feature = "mint")]
+impl From<mint::Quaternion<f32>> for Quaternion {
+    fn from(q: mint::Quaternion<f32>) -> Self {
+        Self {
+            x: q.v.x,
+            y: q.v.y,
+            z: q.v.z,
+            w: q.s,
+        }
+    }
+}
+
+#[cfg(feature = "mint")]
+impl From<Quaternion> for mint::Quaternion<f32> {
+    fn from(q: Quaternion) -> Self {
+        Self {
+            v: mint::Vector3 {
+                x: q.x,
+                y: q.y,
+                z: q.z,
+            },
+            s: q.w,
+        }
+    }
+}
+
+#[cfg(feature = "mint")]
+impl mint::IntoMint for Quaternion {
+    type MintType = mint::Quaternion<f32>;
 }
 
 /// Represents the complete state of the simulated aircraft in RealFlight.

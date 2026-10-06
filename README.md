@@ -141,6 +141,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
+## Math Library Interop
+
+The `mint` feature converts `Vector3` and `Quaternion` to and from [`mint`](https://crates.io/crates/mint) types, which nalgebra, glam, cgmath and others accept:
+
+```bash
+cargo add realflight-bridge --features mint
+```
+
+```rust
+let v: mint::Vector3<f32> = state.velocity_world_mps.into();
+let v: nalgebra::Vector3<f32> = v.into();
+
+// orientation is in RealFlight's convention; remap to body-to-NED first, as ArduPilot does
+let o = state.orientation;
+let ned = Quaternion { x: o.y, y: o.x, z: -o.z, w: o.w };
+let q: mint::Quaternion<f32> = ned.into();
+let attitude = nalgebra::UnitQuaternion::from_quaternion(q.into());
+```
+
+Conversions copy components only and never change frames (see `SimulatorState` docs).
+
 ## Async Support
 
 Async versions of the bridge are available via the `rt-tokio` feature flag:
