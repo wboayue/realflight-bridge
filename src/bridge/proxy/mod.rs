@@ -29,6 +29,7 @@ use handler::handle_client;
 pub struct AsyncProxyServer {
     listener: TcpListener,
     local_addr: SocketAddr,
+    simulator_addr: SocketAddr,
     preconnect: bool,
 }
 
@@ -47,8 +48,17 @@ impl AsyncProxyServer {
         Ok(AsyncProxyServer {
             listener,
             local_addr,
+            simulator_addr: crate::DEFAULT_SIMULATOR_HOST.parse().unwrap(),
             preconnect: false,
         })
+    }
+
+    /// Sets the simulator address requests are forwarded to
+    /// (default [`DEFAULT_SIMULATOR_HOST`](crate::DEFAULT_SIMULATOR_HOST)).
+    #[must_use]
+    pub fn simulator_addr(mut self, addr: SocketAddr) -> Self {
+        self.simulator_addr = addr;
+        self
     }
 
     /// Sets whether the next simulator connection is opened ahead of each request
@@ -70,8 +80,10 @@ impl AsyncProxyServer {
 
     /// Runs the server until the cancellation token is triggered.
     ///
-    /// A simulator connection is opened when a client connects and closed when it
-    /// disconnects, so the proxy holds no idle connections to the simulator.
+    /// The simulator isn't contacted until a client connects, and all simulator
+    /// connections are closed when it disconnects. By default each request opens its
+    /// own connection; with [`preconnect`](Self::preconnect) one connection is held
+    /// open ahead of use while a client is connected.
     ///
     /// # Arguments
     /// * `cancel` - Cancellation token for graceful shutdown.
@@ -80,7 +92,9 @@ impl AsyncProxyServer {
     /// A `Result` indicating success or an error.
     pub async fn run(&self, cancel: CancellationToken) -> Result<(), BridgeError> {
         let pool_size = if self.preconnect { 1 } else { 0 };
-        let builder = AsyncLocalBridge::builder().pool_size(pool_size);
+        let builder = AsyncLocalBridge::builder()
+            .addr(self.simulator_addr)
+            .pool_size(pool_size);
         self.serve(cancel, |stream, cancel| {
             let builder = builder.clone();
             async move {

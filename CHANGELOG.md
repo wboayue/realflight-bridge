@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Proxy `--preconnect` flag / `AsyncProxyServer::preconnect(bool)` to opt into pre-opened connections on RealFlight versions that tolerate them
+- `AsyncProxyServer::simulator_addr(SocketAddr)` to forward to a non-default simulator address
 
 ## [2.0.0] - 2026-10-06
 
