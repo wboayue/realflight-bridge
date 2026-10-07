@@ -378,7 +378,7 @@ impl RealFlightLocalBridge {
 ///
 /// let default_config = Configuration {
 ///     simulator_host: "127.0.0.1:18083".to_string(),
-///     connect_timeout: Duration::from_millis(5),
+///     connect_timeout: Duration::from_millis(50),
 ///     pool_size: 0,
 /// };
 /// ```
@@ -413,7 +413,7 @@ impl RealFlightLocalBridge {
 /// let config = Configuration {
 ///     simulator_host: "192.168.1.100:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(100), // Longer timeout for network
-///     pool_size: 0,
+///     ..Default::default()
 /// };
 /// ```
 #[derive(Clone, Debug)]
@@ -437,7 +437,7 @@ pub struct Configuration {
     /// * Recommended range: 25-100ms for local connections
     ///
     /// # Default
-    /// 5 milliseconds
+    /// 50 milliseconds
     pub connect_timeout: Duration,
 
     /// Number of connections to pre-open.

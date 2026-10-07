@@ -79,7 +79,8 @@ impl AsyncProxyServer {
     /// # Returns
     /// A `Result` indicating success or an error.
     pub async fn run(&self, cancel: CancellationToken) -> Result<(), BridgeError> {
-        let builder = AsyncLocalBridge::builder().pool_size(usize::from(self.preconnect));
+        let pool_size = if self.preconnect { 1 } else { 0 };
+        let builder = AsyncLocalBridge::builder().pool_size(pool_size);
         self.serve(cancel, |stream, cancel| {
             let builder = builder.clone();
             async move {
