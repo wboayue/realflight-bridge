@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Default `pool_size` is 0 (sync and async): each request opens its own connection. Bridge construction no longer contacts the simulator; an unreachable simulator is reported by the first request
   - Proxy connects to the simulator only while a client is connected; it starts without RealFlight running
   - Async pool held `pool_size + 1` idle connections; now at most `pool_size`
-  - Default `connect_timeout` raised from 5ms to 50ms, since a connect timeout now fails the request instead of a background retry
+  - Default `connect_timeout` raised from 5ms to 10ms, since a connect timeout now fails the request instead of a background retry
 - `pool_size: 0` panicked in the async pool; it now connects on demand
 
 ### Added

@@ -53,7 +53,7 @@ mod configuration {
     #[test]
     fn default_connect_timeout_is_5ms() {
         let config = Configuration::default();
-        assert_eq!(config.connect_timeout, Duration::from_millis(50));
+        assert_eq!(config.connect_timeout, Duration::from_millis(10));
     }
 
     #[test]
