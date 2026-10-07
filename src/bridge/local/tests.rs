@@ -45,9 +45,9 @@ mod configuration {
     }
 
     #[test]
-    fn default_pool_size_is_one() {
+    fn default_pool_size_is_zero() {
         let config = Configuration::default();
-        assert_eq!(config.pool_size, 1);
+        assert_eq!(config.pool_size, 0);
     }
 
     #[test]

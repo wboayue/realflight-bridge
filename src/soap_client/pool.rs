@@ -25,7 +25,10 @@ use crate::StatisticsEngine;
 /// The idea for the pool is to create the next connection
 /// in the background while the current request is being processed.
 pub(crate) struct ConnectionPool {
-    next_socket: Receiver<TcpStream>,
+    addr: SocketAddr,
+    connect_timeout: Duration,
+    /// `None` when `pool_size` is 0: connections are opened on demand.
+    next_socket: Option<Receiver<TcpStream>>,
     creator_thread: Option<thread::JoinHandle<()>>,
     running: Arc<AtomicBool>,
     initialized: Arc<AtomicBool>,
@@ -40,10 +43,26 @@ impl ConnectionPool {
         pool_size: usize,
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, BridgeError> {
+        if pool_size == 0 {
+            debug!("Connection pool disabled, connecting on demand.");
+            return Ok(ConnectionPool {
+                addr,
+                connect_timeout,
+                next_socket: None,
+                creator_thread: None,
+                running: Arc::new(AtomicBool::new(false)),
+                initialized: Arc::new(AtomicBool::new(true)),
+                init_error: Arc::new(Mutex::new(None)),
+                statistics,
+            });
+        }
+
         let (sender, receiver) = bounded(pool_size);
 
         let mut pool = ConnectionPool {
-            next_socket: receiver,
+            addr,
+            connect_timeout,
+            next_socket: Some(receiver),
             creator_thread: None,
             running: Arc::new(AtomicBool::new(true)),
             initialized: Arc::new(AtomicBool::new(false)),
@@ -159,7 +178,13 @@ impl ConnectionPool {
 
     // Get a new connection, consuming it
     pub fn get_connection(&self) -> Result<TcpStream, BridgeError> {
-        self.next_socket.recv().map_err(|e| {
+        let Some(next_socket) = &self.next_socket else {
+            return Ok(TcpStream::connect_timeout(
+                &self.addr,
+                self.connect_timeout,
+            )?);
+        };
+        next_socket.recv().map_err(|e| {
             BridgeError::Initialization(format!("Failed to get connection from pool: {}", e))
         })
     }

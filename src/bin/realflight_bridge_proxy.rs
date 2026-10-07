@@ -15,10 +15,11 @@ struct Args {
     #[arg(long, default_value = "0.0.0.0:8080")]
     bind_address: String,
 
-    /// Open a new simulator connection per request instead of pre-connecting.
-    /// Use if the simulator stalls while a client is connected.
+    /// Pre-open the next simulator connection to hide connect latency.
+    /// Newer RealFlight versions stall on idle connections; only use with
+    /// versions that tolerate them.
     #[arg(long)]
-    no_preconnect: bool,
+    preconnect: bool,
 }
 
 #[tokio::main]
@@ -29,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let server = AsyncProxyServer::new(&args.bind_address)
         .await?
-        .preconnect(!args.no_preconnect);
+        .preconnect(args.preconnect);
     let cancel = CancellationToken::new();
 
     // Set up Ctrl+C handler for graceful shutdown

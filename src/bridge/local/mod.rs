@@ -243,9 +243,8 @@ impl RealFlightLocalBridge {
     ///
     /// # Returns
     ///
-    /// A [Result] containing a fully initialized [RealFlightBridge] if the TCP connection
-    /// pool is successfully created. Returns an error if the simulator address cannot be
-    /// resolved or if the pool could not be initialized.
+    /// A [Result] containing a [RealFlightBridge]. Returns an error if the simulator
+    /// address cannot be resolved or a non-zero connection pool could not be initialized.
     ///
     /// # Examples
     ///
@@ -254,7 +253,7 @@ impl RealFlightLocalBridge {
     ///
     /// fn main() -> Result<(), BridgeError> {
     ///     // Build a bridge to the RealFlight simulator.
-    ///     // Connects to simulator at 127.0.0.1:18083
+    ///     // Talks to simulator at 127.0.0.1:18083
     ///     let bridge = RealFlightLocalBridge::new()?;
     ///
     ///     // Now you can interact with RealFlight:
@@ -270,7 +269,9 @@ impl RealFlightLocalBridge {
     ///
     /// This function will return an error in the following situations:
     ///
-    /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
+    /// - If `pool_size` is non-zero and the connection pool cannot be established
+    ///   (e.g., RealFlight is not running). With the default `pool_size` of 0 the
+    ///   simulator isn't contacted until the first request, which reports the error.
     pub fn new() -> Result<RealFlightLocalBridge, BridgeError> {
         Self::with_configuration(&Configuration::default())
     }
@@ -285,9 +286,8 @@ impl RealFlightLocalBridge {
     ///
     /// # Returns
     ///
-    /// A [Result] containing a fully initialized [RealFlightBridge] if the TCP connection
-    /// pool is successfully created. Returns an error if the simulator address cannot be
-    /// resolved or if the pool could not be initialized.
+    /// A [Result] containing a [RealFlightBridge]. Returns an error if the simulator
+    /// address cannot be resolved or a non-zero connection pool could not be initialized.
     ///
     /// # Examples
     ///
@@ -315,7 +315,9 @@ impl RealFlightLocalBridge {
     /// This function will return an error in the following situations:
     ///
     /// - If the simulator address specified in `configuration` is invalid.
-    /// - If the TCP connection pool cannot be established (e.g., RealFlight is not running).
+    /// - If `pool_size` is non-zero and the connection pool cannot be established
+    ///   (e.g., RealFlight is not running). With the default `pool_size` of 0 the
+    ///   simulator isn't contacted until the first request, which reports the error.
     pub fn with_configuration(
         configuration: &Configuration,
     ) -> Result<RealFlightLocalBridge, BridgeError> {
@@ -362,9 +364,10 @@ impl RealFlightLocalBridge {
 ///
 /// # Connection Pool
 ///
-/// The bridge maintains a pool of TCP connections to improve performance when making
-/// frequent SOAP requests. The pool size and connection behavior can be tuned using
-/// the `buffer_size`, `connect_timeout`, and `retry_delay` parameters.
+/// RealFlight requires a new TCP connection per SOAP request. By default
+/// (`pool_size: 0`) each request opens its own. A non-zero `pool_size` pre-opens
+/// connections to hide connect latency, but newer RealFlight versions stall while
+/// a pre-opened connection sits idle.
 ///
 /// # Default Configuration
 ///
@@ -376,7 +379,7 @@ impl RealFlightLocalBridge {
 /// let default_config = Configuration {
 ///     simulator_host: "127.0.0.1:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(5),
-///     pool_size: 1,
+///     pool_size: 0,
 /// };
 /// ```
 ///
@@ -390,15 +393,15 @@ impl RealFlightLocalBridge {
 /// let config = Configuration::default();
 /// ```
 ///
-/// Configuration optimized for high-frequency control:
+/// Pre-connecting, for RealFlight versions that tolerate idle connections:
 /// ```rust
 /// use realflight_bridge::Configuration;
 /// use std::time::Duration;
 ///
 /// let config = Configuration {
 ///     simulator_host: "127.0.0.1:18083".to_string(),
-///     connect_timeout: Duration::from_millis(25),  // Faster timeout
-///     pool_size: 5,                                // Larger connection pool
+///     connect_timeout: Duration::from_millis(25),
+///     pool_size: 1,                                // Pre-open next connection
 /// };
 /// ```
 ///
@@ -410,7 +413,7 @@ impl RealFlightLocalBridge {
 /// let config = Configuration {
 ///     simulator_host: "192.168.1.100:18083".to_string(),
 ///     connect_timeout: Duration::from_millis(100), // Longer timeout for network
-///     pool_size: 2,
+///     pool_size: 0,
 /// };
 /// ```
 #[derive(Clone, Debug)]
@@ -437,24 +440,18 @@ pub struct Configuration {
     /// 5 milliseconds
     pub connect_timeout: Duration,
 
-    /// Size of the connection pool.
+    /// Number of connections to pre-open.
     ///
-    /// The connection pool maintains a set of pre-established TCP connections
-    /// to improve performance when making frequent requests to the simulator.
+    /// 0 connects on demand: each request opens its own connection and the
+    /// simulator isn't contacted until the first request. Non-zero values hide
+    /// connect latency by keeping that many connections open ahead of use.
     ///
-    /// # Performance Impact
-    /// * Larger values can improve throughput for frequent state updates
-    /// * Too large values may waste system resources
-    /// * Recommended range: 1-5 connections
-    ///
-    /// # Memory Usage
-    /// Each connection in the pool consumes system resources:
-    /// * TCP socket
-    /// * Memory for connection management
-    /// * System file descriptors
+    /// # Compatibility
+    /// Newer RealFlight versions stall while a pre-opened connection sits idle.
+    /// Only use a non-zero value with versions that tolerate idle connections.
     ///
     /// # Default
-    /// 1 connection
+    /// 0 (on demand)
     pub pool_size: usize,
 }
 

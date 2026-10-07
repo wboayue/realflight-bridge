@@ -80,6 +80,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
+By default each request opens its own connection (`pool_size: 0`); the simulator isn't contacted until the first request. A non-zero `pool_size` pre-opens connections to hide connect latency, but newer RealFlight versions stall while a pre-opened connection sits idle.
+
 To use a non-default address, timeout, or pool size, pass a `Configuration`:
 
 ```rust
@@ -107,7 +109,10 @@ A low-latency link is still required. Wired networks and a Mac talking to RealFl
 cargo install realflight-bridge --features rt-tokio
 realflight_bridge_proxy                     # binds 0.0.0.0:8080
 realflight_bridge_proxy --bind-address 127.0.0.1:9000
+realflight_bridge_proxy --preconnect        # pre-open sim connections (older RealFlight only)
 ```
+
+The proxy connects to the simulator only while a client is connected, opening a new connection per request. `--preconnect` hides connect latency by keeping the next connection open, but newer RealFlight versions stall while that connection sits idle.
 
 The proxy has no authentication; anyone who can reach the port can control the simulator. Run it only on trusted networks.
 

@@ -36,7 +36,7 @@ mod builder {
     #[test]
     fn builder_default_pool_size() {
         let builder = AsyncLocalBridgeBuilder::new();
-        assert_eq!(builder.pool_size, 1);
+        assert_eq!(builder.pool_size, 0);
     }
 
     #[test]

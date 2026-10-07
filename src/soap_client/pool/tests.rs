@@ -237,3 +237,48 @@ mod error_statistics {
         );
     }
 }
+
+mod on_demand {
+    use super::*;
+
+    #[test]
+    fn opens_no_connection_until_requested() {
+        let (listener, addr) = listen();
+        listener.set_nonblocking(true).unwrap();
+
+        let pool = make_pool(
+            addr,
+            Duration::from_secs(1),
+            0,
+            Arc::new(StatisticsEngine::new()),
+        )
+        .unwrap();
+        pool.ensure_initialized(INIT_TIMEOUT).unwrap();
+
+        thread::sleep(Duration::from_millis(100));
+        assert!(listener.accept().is_err(), "no connection expected yet");
+
+        // Each request opens exactly one connection, none held in reserve
+        let _first = pool.get_connection().unwrap();
+        let _second = pool.get_connection().unwrap();
+        thread::sleep(Duration::from_millis(100));
+        assert!(listener.accept().is_ok());
+        assert!(listener.accept().is_ok());
+        assert!(listener.accept().is_err(), "only two connections expected");
+    }
+
+    #[test]
+    fn returns_error_when_unreachable() {
+        let pool = make_pool(
+            UNREACHABLE_ADDR.parse().unwrap(),
+            Duration::from_millis(100),
+            0,
+            Arc::new(StatisticsEngine::new()),
+        )
+        .unwrap();
+        pool.ensure_initialized(INIT_TIMEOUT).unwrap();
+
+        let result = pool.get_connection();
+        assert!(matches!(result, Err(BridgeError::Connection(_))));
+    }
+}

@@ -47,16 +47,16 @@ impl AsyncProxyServer {
         Ok(AsyncProxyServer {
             listener,
             local_addr,
-            preconnect: true,
+            preconnect: false,
         })
     }
 
     /// Sets whether the next simulator connection is opened ahead of each request
-    /// (default `true`).
+    /// (default `false`: each request opens its own connection).
     ///
     /// Pre-connecting hides connect latency but holds one idle connection open to
-    /// the simulator, which some RealFlight versions stall on. With `false`, each
-    /// request opens its own connection.
+    /// the simulator, which newer RealFlight versions stall on. Only enable it for
+    /// versions that tolerate idle connections.
     #[must_use]
     pub fn preconnect(mut self, preconnect: bool) -> Self {
         self.preconnect = preconnect;
@@ -79,10 +79,7 @@ impl AsyncProxyServer {
     /// # Returns
     /// A `Result` indicating success or an error.
     pub async fn run(&self, cancel: CancellationToken) -> Result<(), BridgeError> {
-        let mut builder = AsyncLocalBridge::builder();
-        if !self.preconnect {
-            builder = builder.pool_size(0);
-        }
+        let builder = AsyncLocalBridge::builder().pool_size(usize::from(self.preconnect));
         self.serve(cancel, |stream, cancel| {
             let builder = builder.clone();
             async move {
