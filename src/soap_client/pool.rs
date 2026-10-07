@@ -1,7 +1,8 @@
-//! Connection pool for TCP connections to the RealFlight simulator.
+//! Connection source for TCP connections to the RealFlight simulator.
 //!
-//! The RealFlight SoapServer requires a new connection for each request.
-//! This pool pre-creates connections in the background to hide latency.
+//! The RealFlight SoapServer requires a new connection for each request. By
+//! default each request opens its own; a non-zero pool size pre-creates
+//! connections in the background to hide latency.
 
 use std::{
     net::{SocketAddr, TcpStream},
@@ -19,18 +20,15 @@ use log::{debug, error};
 use crate::BridgeError;
 use crate::StatisticsEngine;
 
-/// Pre-creates TCP connections in a background thread to hide connection latency.
-///
-/// The RealFlight SoapServer requires a new connection for each request.
-/// The idea for the pool is to create the next connection
-/// in the background while the current request is being processed.
-pub(crate) struct ConnectionPool {
-    next_socket: Receiver<TcpStream>,
-    creator_thread: Option<thread::JoinHandle<()>>,
-    running: Arc<AtomicBool>,
-    initialized: Arc<AtomicBool>,
-    init_error: Arc<Mutex<Option<String>>>,
-    statistics: Arc<StatisticsEngine>,
+/// Supplies a fresh TCP connection for each SOAP request.
+pub(crate) enum ConnectionPool {
+    /// `pool_size` 0: each request opens its own connection, none held idle.
+    OnDemand {
+        addr: SocketAddr,
+        connect_timeout: Duration,
+    },
+    /// Background thread keeps `pool_size` connections open ahead of use.
+    Prefetch(Prefetcher),
 }
 
 impl ConnectionPool {
@@ -40,9 +38,58 @@ impl ConnectionPool {
         pool_size: usize,
         statistics: Arc<StatisticsEngine>,
     ) -> Result<Self, BridgeError> {
+        if pool_size == 0 {
+            debug!("Connection pool disabled, connecting on demand.");
+            return Ok(Self::OnDemand {
+                addr,
+                connect_timeout,
+            });
+        }
+        Prefetcher::new(addr, connect_timeout, pool_size, statistics).map(Self::Prefetch)
+    }
+
+    pub(crate) fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
+        match self {
+            Self::OnDemand { .. } => Ok(()),
+            Self::Prefetch(prefetcher) => prefetcher.ensure_initialized(init_timeout),
+        }
+    }
+
+    /// Gets a new connection, consuming it.
+    pub fn get_connection(&self) -> Result<TcpStream, BridgeError> {
+        match self {
+            Self::OnDemand {
+                addr,
+                connect_timeout,
+            } => Ok(TcpStream::connect_timeout(addr, *connect_timeout)?),
+            Self::Prefetch(prefetcher) => prefetcher.get_connection(),
+        }
+    }
+}
+
+/// Pre-creates TCP connections in a background thread to hide connection latency.
+///
+/// The idea is to create the next connection in the background while the
+/// current request is being processed.
+pub(crate) struct Prefetcher {
+    next_socket: Receiver<TcpStream>,
+    creator_thread: Option<thread::JoinHandle<()>>,
+    running: Arc<AtomicBool>,
+    initialized: Arc<AtomicBool>,
+    init_error: Arc<Mutex<Option<String>>>,
+    statistics: Arc<StatisticsEngine>,
+}
+
+impl Prefetcher {
+    fn new(
+        addr: SocketAddr,
+        connect_timeout: Duration,
+        pool_size: usize,
+        statistics: Arc<StatisticsEngine>,
+    ) -> Result<Self, BridgeError> {
         let (sender, receiver) = bounded(pool_size);
 
-        let mut pool = ConnectionPool {
+        let mut pool = Prefetcher {
             next_socket: receiver,
             creator_thread: None,
             running: Arc::new(AtomicBool::new(true)),
@@ -56,7 +103,7 @@ impl ConnectionPool {
         Ok(pool)
     }
 
-    pub(crate) fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
+    fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
         let now = Instant::now();
         while !self.initialized.load(Ordering::Relaxed) {
             // Check for initialization error
@@ -157,15 +204,14 @@ impl ConnectionPool {
         Ok(())
     }
 
-    // Get a new connection, consuming it
-    pub fn get_connection(&self) -> Result<TcpStream, BridgeError> {
+    fn get_connection(&self) -> Result<TcpStream, BridgeError> {
         self.next_socket.recv().map_err(|e| {
             BridgeError::Initialization(format!("Failed to get connection from pool: {}", e))
         })
     }
 }
 
-impl Drop for ConnectionPool {
+impl Drop for Prefetcher {
     fn drop(&mut self) {
         // Signal the creator thread to stop
         self.running.store(false, Ordering::Relaxed);

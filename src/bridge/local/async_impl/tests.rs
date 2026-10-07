@@ -24,7 +24,7 @@ mod builder {
     #[test]
     fn builder_default_connect_timeout() {
         let builder = AsyncLocalBridgeBuilder::new();
-        assert_eq!(builder.connect_timeout, Duration::from_millis(5));
+        assert_eq!(builder.connect_timeout, Duration::from_millis(10));
     }
 
     #[test]
@@ -36,7 +36,7 @@ mod builder {
     #[test]
     fn builder_default_pool_size() {
         let builder = AsyncLocalBridgeBuilder::new();
-        assert_eq!(builder.pool_size, 1);
+        assert_eq!(builder.pool_size, 0);
     }
 
     #[test]

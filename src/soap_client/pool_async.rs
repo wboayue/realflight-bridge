@@ -1,7 +1,8 @@
-//! Async connection pool for TCP connections to the RealFlight simulator.
+//! Async connection source for TCP connections to the RealFlight simulator.
 //!
-//! The RealFlight SoapServer requires a new connection for each request.
-//! This pool pre-creates connections in the background to hide latency.
+//! The RealFlight SoapServer requires a new connection for each request. By
+//! default each request opens its own; a non-zero pool size pre-creates
+//! connections in the background to hide latency.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -16,11 +17,77 @@ use tokio_util::sync::CancellationToken;
 use crate::BridgeError;
 use crate::StatisticsEngine;
 
+/// Supplies a fresh TCP connection for each SOAP request.
+pub(crate) enum AsyncConnectionPool {
+    /// `pool_size` 0: each request opens its own connection, none held idle.
+    OnDemand {
+        addr: SocketAddr,
+        connect_timeout: Duration,
+    },
+    /// Background task keeps `pool_size` connections open ahead of use.
+    Prefetch(AsyncPrefetcher),
+}
+
+impl AsyncConnectionPool {
+    /// Creates a new async connection source.
+    ///
+    /// # Arguments
+    /// * `addr` - The address to connect to
+    /// * `connect_timeout` - Timeout for establishing connections
+    /// * `pool_size` - Number of connections to pre-create; 0 opens each
+    ///   connection on demand, holding none idle
+    /// * `statistics` - Statistics engine for tracking errors
+    pub async fn new(
+        addr: SocketAddr,
+        connect_timeout: Duration,
+        pool_size: usize,
+        statistics: Arc<StatisticsEngine>,
+    ) -> Result<Self, BridgeError> {
+        if pool_size == 0 {
+            debug!("Connection pool disabled, connecting on demand.");
+            return Ok(Self::OnDemand {
+                addr,
+                connect_timeout,
+            });
+        }
+        Ok(Self::Prefetch(AsyncPrefetcher::new(
+            addr,
+            connect_timeout,
+            pool_size,
+            statistics,
+        )))
+    }
+
+    /// Waits for pre-created connections; returns immediately when on demand.
+    pub async fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
+        match self {
+            Self::OnDemand { .. } => Ok(()),
+            Self::Prefetch(prefetcher) => prefetcher.ensure_initialized(init_timeout).await,
+        }
+    }
+
+    /// Gets a new connection, consuming it.
+    pub async fn get_connection(&self) -> Result<TcpStream, BridgeError> {
+        match self {
+            Self::OnDemand {
+                addr,
+                connect_timeout,
+            } => match timeout(*connect_timeout, TcpStream::connect(addr)).await {
+                Ok(result) => Ok(result?),
+                Err(_) => Err(BridgeError::Connection(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("Connection timeout to simulator at {}", addr),
+                ))),
+            },
+            Self::Prefetch(prefetcher) => prefetcher.get_connection().await,
+        }
+    }
+}
+
 /// Pre-creates TCP connections in a background task to hide connection latency.
 ///
-/// The RealFlight SoapServer requires a new connection for each request.
-/// The idea for the pool is to create the next connection
-/// in the background while the current request is being processed.
+/// The idea is to create the next connection in the background while the
+/// current request is being processed.
 ///
 /// # Cancellation Safety
 ///
@@ -33,26 +100,20 @@ use crate::StatisticsEngine;
 ///
 /// If cancel-safety is required, wrap calls in `tokio::select!` with care or
 /// use a dedicated cancellation token rather than dropping the future.
-pub(crate) struct AsyncConnectionPool {
+pub(crate) struct AsyncPrefetcher {
     connections: Mutex<mpsc::Receiver<TcpStream>>,
     cancel: CancellationToken,
     init_result: watch::Receiver<Option<Result<(), String>>>,
 }
 
-impl AsyncConnectionPool {
-    /// Creates a new async connection pool.
-    ///
-    /// # Arguments
-    /// * `addr` - The address to connect to
-    /// * `connect_timeout` - Timeout for establishing connections
-    /// * `pool_size` - Number of connections to pre-create
-    /// * `statistics` - Statistics engine for tracking errors
-    pub async fn new(
+impl AsyncPrefetcher {
+    /// Spawns the background task that pre-creates `pool_size` connections.
+    fn new(
         addr: SocketAddr,
         connect_timeout: Duration,
         pool_size: usize,
         statistics: Arc<StatisticsEngine>,
-    ) -> Result<Self, BridgeError> {
+    ) -> Self {
         let cancel = CancellationToken::new();
         let (tx, rx) = mpsc::channel(pool_size);
 
@@ -92,8 +153,21 @@ impl AsyncConnectionPool {
 
             let _ = init_tx.send(Some(Ok(())));
 
-            // Continue creating connections as needed
+            // Continue creating connections as needed. Reserve a slot before
+            // connecting so at most `pool_size` idle connections are held open;
+            // the simulator may stall on idle accepted connections.
             loop {
+                let permit = tokio::select! {
+                    _ = task_cancel.cancelled() => {
+                        debug!("Connection pool shutting down");
+                        break;
+                    }
+                    permit = tx.reserve() => match permit {
+                        Ok(permit) => permit,
+                        Err(_) => break, // Receiver dropped
+                    },
+                };
+
                 tokio::select! {
                     _ = task_cancel.cancelled() => {
                         debug!("Connection pool shutting down");
@@ -101,11 +175,7 @@ impl AsyncConnectionPool {
                     }
                     result = timeout(connect_timeout, TcpStream::connect(addr)) => {
                         match result {
-                            Ok(Ok(stream)) => {
-                                if tx.send(stream).await.is_err() {
-                                    break; // Receiver dropped
-                                }
-                            }
+                            Ok(Ok(stream)) => permit.send(stream),
                             Ok(Err(e)) => {
                                 error!("Error creating connection: {}", e);
                                 statistics.increment_error_count();
@@ -122,15 +192,15 @@ impl AsyncConnectionPool {
             }
         });
 
-        Ok(Self {
+        Self {
             connections: Mutex::new(rx),
             cancel,
             init_result: init_rx,
-        })
+        }
     }
 
     /// Waits for the pool to be initialized with initial connections.
-    pub async fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
+    async fn ensure_initialized(&self, init_timeout: Duration) -> Result<(), BridgeError> {
         let mut rx = self.init_result.clone();
         let start = std::time::Instant::now();
 
@@ -171,7 +241,7 @@ impl AsyncConnectionPool {
     }
 
     /// Gets a connection from the pool.
-    pub async fn get_connection(&self) -> Result<TcpStream, BridgeError> {
+    async fn get_connection(&self) -> Result<TcpStream, BridgeError> {
         let mut rx = self.connections.lock().await;
         rx.recv()
             .await
@@ -179,7 +249,7 @@ impl AsyncConnectionPool {
     }
 }
 
-impl Drop for AsyncConnectionPool {
+impl Drop for AsyncPrefetcher {
     fn drop(&mut self) {
         self.cancel.cancel();
     }

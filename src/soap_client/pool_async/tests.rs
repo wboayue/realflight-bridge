@@ -222,3 +222,92 @@ async fn init_fails_on_connection_timeout() {
         other => panic!("expected Initialization error, got {:?}", other),
     }
 }
+
+#[tokio::test]
+async fn holds_at_most_pool_size_idle_connections() {
+    let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let stats = Arc::new(StatisticsEngine::new());
+
+    let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = accepted.clone();
+    let accept_handle = tokio::spawn(async move {
+        let mut streams = Vec::new();
+        while let Ok((stream, _)) = listener.accept().await {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            streams.push(stream);
+        }
+    });
+
+    let pool = AsyncConnectionPool::new(addr, Duration::from_secs(1), 1, stats)
+        .await
+        .unwrap();
+    pool.ensure_initialized(Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // Idle pool must not open a connection beyond pool_size
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    // Taking a connection frees a slot, so exactly one replacement is opened
+    let _conn = pool.get_connection().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+    drop(pool);
+    accept_handle.abort();
+}
+
+mod on_demand {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn opens_no_connection_until_requested() {
+        let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stats = Arc::new(StatisticsEngine::new());
+
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let counter = accepted.clone();
+        let accept_handle = tokio::spawn(async move {
+            let mut streams = Vec::new();
+            while let Ok((stream, _)) = listener.accept().await {
+                counter.fetch_add(1, Ordering::SeqCst);
+                streams.push(stream);
+            }
+        });
+
+        let pool = AsyncConnectionPool::new(addr, Duration::from_secs(1), 0, stats)
+            .await
+            .unwrap();
+        pool.ensure_initialized(Duration::from_secs(1))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(accepted.load(Ordering::SeqCst), 0);
+
+        // Each request opens exactly one connection, none held in reserve
+        let _first = pool.get_connection().await.unwrap();
+        let _second = pool.get_connection().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(accepted.load(Ordering::SeqCst), 2);
+
+        accept_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn returns_error_when_unreachable() {
+        let stats = Arc::new(StatisticsEngine::new());
+        let addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
+
+        let pool = AsyncConnectionPool::new(addr, Duration::from_millis(100), 0, stats)
+            .await
+            .unwrap();
+
+        let result = pool.get_connection().await;
+        assert!(matches!(result, Err(BridgeError::Connection(_))));
+    }
+}

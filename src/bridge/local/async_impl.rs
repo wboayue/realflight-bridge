@@ -16,7 +16,7 @@ use super::session::Session;
 
 /// Builder for AsyncLocalBridge.
 ///
-/// Configure options synchronously, then call `build()` to connect.
+/// Configure options synchronously, then call `build()`.
 #[derive(Debug, Clone)]
 pub struct AsyncLocalBridgeBuilder {
     connect_timeout: Duration,
@@ -63,14 +63,20 @@ impl AsyncLocalBridgeBuilder {
         self
     }
 
-    /// Sets the connection pool size.
+    /// Sets the connection pool size (default 0).
+    ///
+    /// 0 connects on demand: each request opens its own connection and the
+    /// simulator isn't contacted until the first request. Larger values pre-open
+    /// connections to hide connect latency, but newer RealFlight versions stall
+    /// while a pre-opened connection sits idle.
     #[must_use]
     pub fn pool_size(mut self, size: usize) -> Self {
         self.pool_size = size;
         self
     }
 
-    /// Builds the AsyncLocalBridge, connecting to the simulator.
+    /// Builds the AsyncLocalBridge. With a non-zero pool size, waits for the pool
+    /// to connect; with 0, the simulator is contacted on the first request.
     pub async fn build(self) -> Result<AsyncLocalBridge, BridgeError> {
         let statistics = Arc::new(StatisticsEngine::new());
         let pool = AsyncConnectionPool::new(

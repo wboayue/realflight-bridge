@@ -45,15 +45,15 @@ mod configuration {
     }
 
     #[test]
-    fn default_pool_size_is_one() {
+    fn default_pool_size_is_zero() {
         let config = Configuration::default();
-        assert_eq!(config.pool_size, 1);
+        assert_eq!(config.pool_size, 0);
     }
 
     #[test]
     fn default_connect_timeout_is_5ms() {
         let config = Configuration::default();
-        assert_eq!(config.connect_timeout, Duration::from_millis(5));
+        assert_eq!(config.connect_timeout, Duration::from_millis(10));
     }
 
     #[test]

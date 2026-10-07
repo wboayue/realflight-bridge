@@ -114,6 +114,127 @@ async fn shutdown_via_cancellation_token() {
     assert!(result.is_ok());
 }
 
+/// Fake simulator that counts accepted connections and those the peer closed.
+struct CountingSimulator {
+    addr: std::net::SocketAddr,
+    opened: Arc<AtomicUsize>,
+    closed: Arc<AtomicUsize>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl CountingSimulator {
+    async fn start() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let opened = Arc::new(AtomicUsize::new(0));
+        let closed = Arc::new(AtomicUsize::new(0));
+        let (task_opened, task_closed) = (opened.clone(), closed.clone());
+        let task = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                task_opened.fetch_add(1, Ordering::SeqCst);
+                let closed = task_closed.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 64];
+                    while matches!(
+                        tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await,
+                        Ok(n) if n > 0
+                    ) {}
+                    closed.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+        });
+        Self {
+            addr,
+            opened,
+            closed,
+            task,
+        }
+    }
+
+    fn opened(&self) -> usize {
+        self.opened.load(Ordering::SeqCst)
+    }
+
+    fn closed(&self) -> usize {
+        self.closed.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for CountingSimulator {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// Polls `cond` until true, panicking after 2s.
+async fn wait_until(what: &str, cond: impl Fn() -> bool) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !cond() {
+        assert!(tokio::time::Instant::now() < deadline, "timed out: {what}");
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
+mod simulator_connections {
+    use super::*;
+
+    #[tokio::test]
+    async fn preconnect_opens_only_while_client_connected() {
+        let sim = CountingSimulator::start().await;
+        let server = AsyncProxyServer::new("127.0.0.1:0")
+            .await
+            .unwrap()
+            .simulator_addr(sim.addr)
+            .preconnect(true);
+        let proxy_addr = server.local_addr();
+        let cancel = CancellationToken::new();
+        let server_cancel = cancel.clone();
+        let handle = tokio::spawn(async move { server.run(server_cancel).await });
+
+        // No client: simulator untouched
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(sim.opened(), 0);
+
+        // Client connects: pool pre-opens a connection, but only pool_size of them
+        let client = tokio::net::TcpStream::connect(proxy_addr).await.unwrap();
+        wait_until("pre-opened connection", || sim.opened() >= 1).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(sim.opened(), 1);
+
+        // Client leaves: every simulator connection is closed
+        drop(client);
+        wait_until("simulator connections closed", || {
+            sim.closed() == sim.opened()
+        })
+        .await;
+
+        cancel.cancel();
+        assert!(handle.await.unwrap().is_ok());
+    }
+
+    #[tokio::test]
+    async fn default_opens_none_without_requests() {
+        let sim = CountingSimulator::start().await;
+        let server = AsyncProxyServer::new("127.0.0.1:0")
+            .await
+            .unwrap()
+            .simulator_addr(sim.addr);
+        let proxy_addr = server.local_addr();
+        let cancel = CancellationToken::new();
+        let server_cancel = cancel.clone();
+        let handle = tokio::spawn(async move { server.run(server_cancel).await });
+
+        // A connected client that sends nothing opens no simulator connection
+        let client = tokio::net::TcpStream::connect(proxy_addr).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(sim.opened(), 0);
+
+        drop(client);
+        cancel.cancel();
+        assert!(handle.await.unwrap().is_ok());
+    }
+}
+
 // ========================================================================
 // Request Routing Tests
 // ========================================================================
