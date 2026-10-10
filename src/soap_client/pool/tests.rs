@@ -2,6 +2,7 @@ use super::*;
 use std::net::TcpListener;
 
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
+const GET_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Address with no listener; connections are refused.
 const UNREACHABLE_ADDR: &str = "127.0.0.1:1";
@@ -104,7 +105,7 @@ mod get_connection {
         let _conn1 = listener.accept().unwrap();
         let _conn2 = listener.accept().unwrap();
 
-        let conn = pool.get_connection();
+        let conn = pool.get_connection(GET_TIMEOUT);
         assert!(conn.is_ok());
 
         // Verify the connection is usable
@@ -128,11 +129,33 @@ mod get_connection {
         let _conn2 = listener.accept().unwrap();
 
         // Get both connections from pool
-        let conn1 = pool.get_connection();
+        let conn1 = pool.get_connection(GET_TIMEOUT);
         assert!(conn1.is_ok());
 
-        let conn2 = pool.get_connection();
+        let conn2 = pool.get_connection(GET_TIMEOUT);
         assert!(conn2.is_ok());
+    }
+
+    #[test]
+    fn times_out_when_no_connection_ready() {
+        let (listener, addr) = listen();
+        let stats = Arc::new(StatisticsEngine::new());
+        let pool = make_pool(addr, Duration::from_millis(100), 1, stats).unwrap();
+        pool.ensure_initialized(INIT_TIMEOUT).unwrap();
+        let _taken = pool.get_connection(GET_TIMEOUT).unwrap();
+
+        // Refuse new connections; drain any refill that raced the drop
+        drop(listener);
+        let _ = pool.get_connection(Duration::from_millis(50));
+
+        let start = std::time::Instant::now();
+        match pool.get_connection(Duration::from_millis(50)) {
+            Err(BridgeError::Connection(e)) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::TimedOut)
+            }
+            other => panic!("expected Connection(TimedOut), got {:?}", other),
+        }
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 }
 
@@ -187,7 +210,7 @@ mod background_connection_creation {
         assert!(accepted >= 1, "should have accepted at least 1 connection");
 
         // Get a connection (consumes it)
-        let _conn = pool.get_connection().unwrap();
+        let _conn = pool.get_connection(GET_TIMEOUT).unwrap();
 
         // Wait for background thread to create a new one
         thread::sleep(Duration::from_millis(200));
@@ -223,7 +246,7 @@ mod error_statistics {
         drop(listener);
 
         // Consume the connection to trigger background creation
-        let _conn = pool.get_connection().unwrap();
+        let _conn = pool.get_connection(GET_TIMEOUT).unwrap();
 
         // Wait for background thread to try creating a connection and fail
         thread::sleep(Duration::from_millis(200));
@@ -259,8 +282,8 @@ mod on_demand {
         assert!(listener.accept().is_err(), "no connection expected yet");
 
         // Each request opens exactly one connection, none held in reserve
-        let _first = pool.get_connection().unwrap();
-        let _second = pool.get_connection().unwrap();
+        let _first = pool.get_connection(GET_TIMEOUT).unwrap();
+        let _second = pool.get_connection(GET_TIMEOUT).unwrap();
         thread::sleep(Duration::from_millis(100));
         assert!(listener.accept().is_ok());
         assert!(listener.accept().is_ok());
@@ -278,7 +301,7 @@ mod on_demand {
         .unwrap();
         pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
-        let result = pool.get_connection();
+        let result = pool.get_connection(GET_TIMEOUT);
         assert!(matches!(result, Err(BridgeError::Connection(_))));
     }
 }

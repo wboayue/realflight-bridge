@@ -91,15 +91,8 @@ impl AsyncConnectionPool {
 ///
 /// # Cancellation Safety
 ///
-/// `get_connection()` is **NOT cancel-safe**. If the future is dropped while
-/// awaiting `recv()`, a connection may be lost from the channel. This is an
-/// acceptable trade-off because:
-/// - The background task continuously creates replacement connections
-/// - Cancellation mid-receive is rare in practice (typically only on shutdown)
-/// - The pool self-heals within one connection-creation cycle
-///
-/// If cancel-safety is required, wrap calls in `tokio::select!` with care or
-/// use a dedicated cancellation token rather than dropping the future.
+/// `get_connection()` is cancel-safe: the lock and `mpsc::Receiver::recv` both
+/// are, so dropping the future (e.g. on a request timeout) loses no connection.
 pub(crate) struct AsyncPrefetcher {
     connections: Mutex<mpsc::Receiver<TcpStream>>,
     cancel: CancellationToken,

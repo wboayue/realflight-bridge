@@ -1,18 +1,20 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use super::RealFlightBridge;
 use crate::defaults;
-use crate::soap_client::pool::ConnectionPool;
 use crate::soap_client::{SoapClient, SoapResponse, tcp::TcpSoapClient};
-use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
+use crate::{BridgeError, ControlInputs, SimulatorState, Statistics};
 use ops::{Op, decode_exchange, decode_unit};
 use session::Session;
 
 #[cfg(test)]
 use crate::soap_client::stub::StubSoapClient;
 
+mod builder;
 mod ops;
 mod session;
+
+pub use builder::RealFlightLocalBridgeBuilder;
 
 #[cfg(feature = "rt-tokio")]
 mod async_impl;
@@ -328,18 +330,17 @@ impl RealFlightLocalBridge {
             ))
         })?;
 
-        let statistics = Arc::new(StatisticsEngine::new());
-        let pool = ConnectionPool::new(
-            addr,
-            configuration.connect_timeout,
-            configuration.pool_size,
-            statistics.clone(),
-        )?;
-        pool.ensure_initialized(defaults::INIT_TIMEOUT)?;
+        Self::builder()
+            .addr(addr)
+            .connect_timeout(configuration.connect_timeout)
+            .pool_size(configuration.pool_size)
+            .build()
+    }
 
-        Ok(RealFlightLocalBridge {
-            session: Session::new(TcpSoapClient::new(pool), statistics),
-        })
+    /// Returns a builder for custom configuration, including settings
+    /// [Configuration] lacks, such as the request timeout.
+    pub fn builder() -> RealFlightLocalBridgeBuilder {
+        RealFlightLocalBridgeBuilder::new()
     }
 
     /// Creates a bridge backed by a stub SOAP client (no network).

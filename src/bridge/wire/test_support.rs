@@ -91,6 +91,18 @@ impl MockProxy {
         })
     }
 
+    /// Reads requests but never replies, holding the connection until the
+    /// client disconnects.
+    pub(crate) fn silent() -> Self {
+        Self::spawn(|mut stream| {
+            let mut requests = Vec::new();
+            while let Ok(request) = recv::<Request>(&mut stream) {
+                requests.push(request);
+            }
+            requests
+        })
+    }
+
     /// Accepts the connection and closes it without replying.
     pub(crate) fn hang_up() -> Self {
         Self::spawn(|_stream| Vec::new())

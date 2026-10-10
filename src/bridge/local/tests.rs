@@ -210,4 +210,24 @@ mod tcp_integration {
 
         drop(server);
     }
+
+    #[test]
+    fn request_timeout_bounds_stalled_simulator() {
+        let server = crate::soap_client::test_support::SilentServer::new();
+        let bridge = RealFlightLocalBridge::builder()
+            .addr(server.addr())
+            .request_timeout(Duration::from_millis(50))
+            .build()
+            .unwrap();
+
+        let start = std::time::Instant::now();
+        match bridge.reset_aircraft() {
+            Err(BridgeError::Connection(e)) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::TimedOut)
+            }
+            other => panic!("expected Connection(TimedOut), got {:?}", other),
+        }
+        assert!(start.elapsed() < Duration::from_millis(400));
+        assert_eq!(bridge.statistics().error_count, 1);
+    }
 }

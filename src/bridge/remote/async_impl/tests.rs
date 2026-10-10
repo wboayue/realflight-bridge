@@ -35,6 +35,26 @@ async fn builder_sets_timeout() {
 }
 
 #[tokio::test]
+async fn builder_defaults_io_timeout() {
+    let builder = AsyncRemoteBridgeBuilder::new("127.0.0.1:12345");
+    assert_eq!(builder.io_timeout, defaults::REMOTE_IO_TIMEOUT);
+
+    let builder = builder.io_timeout(Duration::from_millis(20));
+    assert_eq!(builder.io_timeout, Duration::from_millis(20));
+}
+
+#[tokio::test]
+async fn rejects_zero_io_timeout() {
+    let proxy = MockProxy::respond(Response::success());
+    let result = AsyncRemoteBridge::builder(&proxy.addr)
+        .io_timeout(Duration::ZERO)
+        .build()
+        .await;
+
+    assert!(matches!(result, Err(BridgeError::Initialization(_))));
+}
+
+#[tokio::test]
 async fn connection_timeout_returns_error() {
     // Use a non-routable address to trigger timeout
     let result = AsyncRemoteBridge::builder("10.255.255.1:12345")
@@ -181,6 +201,28 @@ async fn oversized_response_is_invalid_data() {
             assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
         }
         other => panic!("expected Connection(InvalidData), got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn times_out_when_proxy_never_replies() {
+    let proxy = MockProxy::silent();
+    let bridge = AsyncRemoteBridge::builder(&proxy.addr)
+        .io_timeout(Duration::from_millis(50))
+        .build()
+        .await
+        .unwrap();
+
+    let start = std::time::Instant::now();
+    match bridge.exchange_data(&ControlInputs::default()).await {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
+        other => panic!("expected Connection(TimedOut), got {:?}", other),
+    }
+    assert!(start.elapsed() < Duration::from_secs(1));
+
+    match bridge.enable_rc().await {
+        Err(BridgeError::Connection(e)) => assert!(e.to_string().contains("out of sync")),
+        other => panic!("expected out-of-sync error, got {:?}", other),
     }
 }
 

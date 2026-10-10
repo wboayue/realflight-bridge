@@ -1,3 +1,6 @@
+use std::net::SocketAddr;
+use std::time::Duration;
+
 use super::*;
 use crate::bridge::AsyncBridge;
 use crate::soap_client::encode_envelope;
@@ -21,57 +24,14 @@ async fn create_bridge(port: u16) -> Result<AsyncLocalBridge, BridgeError> {
 mod builder {
     use super::*;
 
-    #[test]
-    fn builder_default_connect_timeout() {
-        let builder = AsyncLocalBridgeBuilder::new();
-        assert_eq!(builder.connect_timeout, Duration::from_millis(10));
-    }
-
-    #[test]
-    fn builder_default_init_timeout() {
-        let builder = AsyncLocalBridgeBuilder::new();
-        assert_eq!(builder.init_timeout, Duration::from_secs(5));
-    }
-
-    #[test]
-    fn builder_default_pool_size() {
-        let builder = AsyncLocalBridgeBuilder::new();
-        assert_eq!(builder.pool_size, 0);
-    }
-
-    #[test]
-    fn builder_connect_timeout_sets_value() {
-        let builder = AsyncLocalBridgeBuilder::new().connect_timeout(Duration::from_millis(100));
-        assert_eq!(builder.connect_timeout, Duration::from_millis(100));
-    }
-
-    #[test]
-    fn builder_init_timeout_sets_value() {
-        let builder = AsyncLocalBridgeBuilder::new().init_timeout(Duration::from_secs(10));
-        assert_eq!(builder.init_timeout, Duration::from_secs(10));
-    }
-
-    #[test]
-    fn builder_addr_sets_value() {
-        let addr: SocketAddr = "192.168.1.100:18083".parse().unwrap();
-        let builder = AsyncLocalBridgeBuilder::new().addr(addr);
-        assert_eq!(builder.addr, addr);
-    }
-
-    #[test]
-    fn builder_pool_size_sets_value() {
-        let builder = AsyncLocalBridgeBuilder::new().pool_size(5);
-        assert_eq!(builder.pool_size, 5);
-    }
-
-    #[test]
-    fn builder_is_cloneable() {
-        let builder = AsyncLocalBridgeBuilder::new()
-            .connect_timeout(Duration::from_millis(100))
-            .pool_size(3);
-        let cloned = builder.clone();
-        assert_eq!(cloned.connect_timeout, builder.connect_timeout);
-        assert_eq!(cloned.pool_size, builder.pool_size);
+    // Setters and defaults are shared with the sync builder and tested there
+    #[tokio::test]
+    async fn rejects_zero_request_timeout() {
+        let result = AsyncLocalBridgeBuilder::new()
+            .request_timeout(Duration::ZERO)
+            .build()
+            .await;
+        assert!(matches!(result, Err(BridgeError::Initialization(_))));
     }
 }
 

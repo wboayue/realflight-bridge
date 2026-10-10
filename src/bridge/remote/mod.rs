@@ -37,6 +37,7 @@ use std::{
 };
 
 use crate::defaults;
+use crate::timeout::{Deadline, DeadlineStream, ensure_nonzero};
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::RealFlightBridge;
@@ -48,6 +49,9 @@ pub use super::wire::{RemoteError, Request, RequestType, Response, ResponseStatu
 #[cfg(test)]
 mod tests;
 
+/// Peer name in timeout errors.
+const PEER: &str = "proxy";
+
 /// Resolves `address` to its first socket address.
 pub(crate) fn resolve(address: &str) -> std::io::Result<SocketAddr> {
     address
@@ -58,15 +62,19 @@ pub(crate) fn resolve(address: &str) -> std::io::Result<SocketAddr> {
 
 /// Client struct for managing TCP communication with the simulator server.
 ///
-/// If a call fails mid-exchange (e.g. I/O error or invalid response frame), the
+/// Each call's round trip is bounded by an I/O timeout (default 100 ms), so a
+/// stalled proxy returns an error rather than blocking the caller.
+///
+/// If a call fails mid-exchange (e.g. I/O error, timeout or invalid response frame), the
 /// connection is out of sync and later calls return [BridgeError::Connection];
 /// create a new bridge to recover.
 pub struct RealFlightRemoteBridge {
-    reader: RefCell<BufReader<TcpStream>>, // Buffered reader for incoming data
-    writer: RefCell<BufWriter<TcpStream>>, // Buffered writer for outgoing data
-    request_buffer: RefCell<Vec<u8>>,      // Reusable buffer for requests
-    response_buffer: RefCell<Vec<u8>>,     // Reusable buffer for responses
-    in_flight: Cell<bool>,                 // Set while a round trip is in progress
+    reader: RefCell<BufReader<DeadlineStream>>, // Buffered reader for incoming data
+    writer: RefCell<BufWriter<DeadlineStream>>, // Buffered writer for outgoing data
+    request_buffer: RefCell<Vec<u8>>,           // Reusable buffer for requests
+    response_buffer: RefCell<Vec<u8>>,          // Reusable buffer for responses
+    in_flight: Cell<bool>,                      // Set while a round trip is in progress
+    io_timeout: Duration,                       // Bound on each call's round trip
 }
 
 impl RealFlightBridge for RealFlightRemoteBridge {
@@ -101,16 +109,26 @@ impl RealFlightBridge for RealFlightRemoteBridge {
 impl RealFlightRemoteBridge {
     /// Creates a new client instance connected to the specified address.
     ///
+    /// Uses a 5 s connect timeout and a 100 ms I/O timeout; see
+    /// [`with_timeouts`](Self::with_timeouts).
+    ///
     /// # Arguments
     /// * `address` - The server address (e.g., "127.0.0.1:18083").
     ///
     /// # Returns
     /// A `Result` containing the new client instance or an I/O error.
     pub fn new(address: &str) -> std::io::Result<Self> {
-        Self::with_timeout(address, defaults::REMOTE_TIMEOUT)
+        Self::with_timeouts(
+            address,
+            defaults::REMOTE_TIMEOUT,
+            defaults::REMOTE_IO_TIMEOUT,
+        )
     }
 
-    /// Creates a new client instance with a custom timeout.
+    /// Creates a new client instance with a custom connect timeout.
+    ///
+    /// `timeout` bounds only the connect; the I/O timeout stays at the 100 ms
+    /// default. Use [`with_timeouts`](Self::with_timeouts) to set both.
     ///
     /// # Arguments
     /// * `address` - The server address (e.g., "127.0.0.1:18083").
@@ -119,15 +137,40 @@ impl RealFlightRemoteBridge {
     /// # Returns
     /// A `Result` containing the new client instance or an I/O error.
     pub fn with_timeout(address: &str, timeout: Duration) -> std::io::Result<Self> {
-        let stream = TcpStream::connect_timeout(&resolve(address)?, timeout)?;
+        Self::with_timeouts(address, timeout, defaults::REMOTE_IO_TIMEOUT)
+    }
+
+    /// Creates a new client instance with custom connect and I/O timeouts.
+    ///
+    /// `io` bounds each call's full round trip. A call that times out returns
+    /// [BridgeError::Connection] with kind [`TimedOut`](std::io::ErrorKind::TimedOut)
+    /// and leaves the connection out of sync; create a new bridge to recover.
+    /// Keep `io` above the proxy's request timeout so a stalled simulator comes
+    /// back as an error reply instead.
+    ///
+    /// # Arguments
+    /// * `address` - The server address (e.g., "127.0.0.1:18083").
+    /// * `connect` - Connection timeout duration.
+    /// * `io` - Round-trip timeout for each call. Must be non-zero;
+    ///   `Duration::MAX` disables it.
+    ///
+    /// # Returns
+    /// A `Result` containing the new client instance or an I/O error.
+    pub fn with_timeouts(address: &str, connect: Duration, io: Duration) -> std::io::Result<Self> {
+        ensure_nonzero("io timeout", io)?;
+        let stream = TcpStream::connect_timeout(&resolve(address)?, connect)?;
         stream.set_nodelay(true)?;
 
         Ok(RealFlightRemoteBridge {
-            reader: RefCell::new(BufReader::new(stream.try_clone()?)),
-            writer: RefCell::new(BufWriter::new(stream)),
+            reader: RefCell::new(BufReader::new(DeadlineStream::new(
+                stream.try_clone()?,
+                PEER,
+            ))),
+            writer: RefCell::new(BufWriter::new(DeadlineStream::new(stream, PEER))),
             request_buffer: RefCell::new(Vec::with_capacity(256)),
             response_buffer: RefCell::new(Vec::with_capacity(4096)),
             in_flight: Cell::new(false),
+            io_timeout: io,
         })
     }
 
@@ -160,13 +203,23 @@ impl RealFlightRemoteBridge {
         )?;
 
         self.in_flight.set(true);
-        let mut writer = self.writer.borrow_mut();
-        writer.write_all(&request_buffer)?;
-        writer.flush()?;
-
         let mut response_buffer = self.response_buffer.borrow_mut();
-        read_frame(&mut *self.reader.borrow_mut(), &mut response_buffer)?;
+        self.round_trip(&request_buffer, &mut response_buffer)?;
         self.in_flight.set(false);
         decode_frame(&response_buffer)
+    }
+
+    /// Writes `request` and reads the response frame into `response`, both
+    /// within one I/O timeout.
+    fn round_trip(&self, request: &[u8], response: &mut Vec<u8>) -> std::io::Result<()> {
+        let deadline = Deadline::after(self.io_timeout);
+        let mut writer = self.writer.borrow_mut();
+        let mut reader = self.reader.borrow_mut();
+        writer.get_mut().set_deadline(deadline);
+        reader.get_mut().set_deadline(deadline);
+
+        writer.write_all(request)?;
+        writer.flush()?;
+        read_frame(&mut *reader, response)
     }
 }

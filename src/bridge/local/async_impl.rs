@@ -1,39 +1,23 @@
 //! Async implementation of the local bridge for RealFlight simulator.
 
-use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::bridge::AsyncBridge;
-use crate::defaults;
 use crate::soap_client::pool_async::AsyncConnectionPool;
 use crate::soap_client::tcp_async::AsyncTcpSoapClient;
 use crate::soap_client::{AsyncSoapClient, SoapResponse};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 
+use super::builder::{Settings, settings_setters};
 use super::ops::{Op, decode_exchange, decode_unit};
 use super::session::Session;
 
 /// Builder for AsyncLocalBridge.
 ///
 /// Configure options synchronously, then call `build()`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AsyncLocalBridgeBuilder {
-    connect_timeout: Duration,
-    init_timeout: Duration,
-    addr: SocketAddr,
-    pool_size: usize,
-}
-
-impl Default for AsyncLocalBridgeBuilder {
-    fn default() -> Self {
-        Self {
-            connect_timeout: defaults::CONNECT_TIMEOUT,
-            init_timeout: defaults::INIT_TIMEOUT,
-            addr: crate::DEFAULT_SIMULATOR_HOST.parse().unwrap(),
-            pool_size: defaults::POOL_SIZE,
-        }
-    }
+    settings: Settings,
 }
 
 impl AsyncLocalBridgeBuilder {
@@ -42,54 +26,30 @@ impl AsyncLocalBridgeBuilder {
         Self::default()
     }
 
-    /// Sets the connection timeout for establishing TCP connections.
-    #[must_use]
-    pub fn connect_timeout(mut self, timeout: Duration) -> Self {
-        self.connect_timeout = timeout;
-        self
-    }
-
-    /// Sets the initialization timeout for waiting for the connection pool.
-    #[must_use]
-    pub fn init_timeout(mut self, timeout: Duration) -> Self {
-        self.init_timeout = timeout;
-        self
-    }
-
-    /// Sets the simulator address.
-    #[must_use]
-    pub fn addr(mut self, addr: SocketAddr) -> Self {
-        self.addr = addr;
-        self
-    }
-
-    /// Sets the connection pool size (default 0).
-    ///
-    /// 0 connects on demand: each request opens its own connection and the
-    /// simulator isn't contacted until the first request. Larger values pre-open
-    /// connections to hide connect latency, but newer RealFlight versions stall
-    /// while a pre-opened connection sits idle.
-    #[must_use]
-    pub fn pool_size(mut self, size: usize) -> Self {
-        self.pool_size = size;
-        self
-    }
+    settings_setters!();
 
     /// Builds the AsyncLocalBridge. With a non-zero pool size, waits for the pool
     /// to connect; with 0, the simulator is contacted on the first request.
+    /// Fails if the request timeout is zero.
     pub async fn build(self) -> Result<AsyncLocalBridge, BridgeError> {
+        let settings = self.settings;
+        settings.validate()?;
+
         let statistics = Arc::new(StatisticsEngine::new());
         let pool = AsyncConnectionPool::new(
-            self.addr,
-            self.connect_timeout,
-            self.pool_size,
+            settings.addr,
+            settings.connect_timeout,
+            settings.pool_size,
             statistics.clone(),
         )
         .await?;
-        pool.ensure_initialized(self.init_timeout).await?;
+        pool.ensure_initialized(settings.init_timeout).await?;
 
         Ok(AsyncLocalBridge {
-            session: Session::new(AsyncTcpSoapClient::new(pool), statistics),
+            session: Session::new(
+                AsyncTcpSoapClient::new(pool, settings.request_timeout),
+                statistics,
+            ),
         })
     }
 }

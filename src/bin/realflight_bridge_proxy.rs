@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::time::Duration;
 
 use clap::Parser;
 use realflight_bridge::AsyncProxyServer;
@@ -20,6 +21,11 @@ struct Args {
     /// versions that tolerate them.
     #[arg(long)]
     preconnect: bool,
+
+    /// Milliseconds allowed for each simulator request before the client gets
+    /// an error. Keep below the client's I/O timeout (default 100 ms).
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u64).range(1..))]
+    request_timeout_ms: u64,
 }
 
 #[tokio::main]
@@ -30,7 +36,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let server = AsyncProxyServer::new(&args.bind_address)
         .await?
-        .preconnect(args.preconnect);
+        .preconnect(args.preconnect)
+        .request_timeout(Duration::from_millis(args.request_timeout_ms));
     let cancel = CancellationToken::new();
 
     // Set up Ctrl+C handler for graceful shutdown
