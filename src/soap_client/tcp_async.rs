@@ -6,6 +6,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 
 use crate::BridgeError;
+use crate::timeout::timed_out;
 
 use super::http::{Next, ResponseParser};
 use super::pool_async::AsyncConnectionPool;
@@ -23,15 +24,7 @@ impl AsyncSoapClient for AsyncTcpSoapClient {
     async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         timeout(self.request_timeout, self.exchange(action, body))
             .await
-            .map_err(|_| {
-                BridgeError::Connection(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    format!(
-                        "no response from simulator within {:?}",
-                        self.request_timeout
-                    ),
-                ))
-            })?
+            .map_err(|_| timed_out("simulator", self.request_timeout))?
     }
 }
 

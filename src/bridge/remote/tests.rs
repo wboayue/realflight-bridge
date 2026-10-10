@@ -45,10 +45,16 @@ fn new_sets_default_io_timeout() {
     let proxy = MockProxy::respond(success(None));
     let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
 
-    let stream = client.writer.borrow();
-    let expected = Some(crate::defaults::REMOTE_IO_TIMEOUT);
-    assert_eq!(stream.get_ref().read_timeout().unwrap(), expected);
-    assert_eq!(stream.get_ref().write_timeout().unwrap(), expected);
+    assert_eq!(client.io_timeout, crate::defaults::REMOTE_IO_TIMEOUT);
+}
+
+#[test]
+fn rejects_zero_io_timeout() {
+    let proxy = MockProxy::respond(success(None));
+    let result =
+        RealFlightRemoteBridge::with_timeouts(&proxy.addr, Duration::from_secs(1), Duration::ZERO);
+
+    assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidInput);
 }
 
 /// Tests invalid address handling
@@ -170,6 +176,29 @@ fn times_out_when_proxy_never_replies() {
         Err(BridgeError::Connection(e)) => assert!(e.to_string().contains("out of sync")),
         other => panic!("expected out-of-sync error, got {:?}", other),
     }
+}
+
+#[test]
+fn io_timeout_bounds_whole_call() {
+    // Header arrives, then the payload never does: a per-read timeout would
+    // restart on the second read, a call deadline does not
+    let proxy = MockProxy::reply_header(64);
+    let client = RealFlightRemoteBridge::with_timeouts(
+        &proxy.addr,
+        Duration::from_secs(1),
+        Duration::from_millis(100),
+    )
+    .unwrap();
+
+    let start = std::time::Instant::now();
+    match client.enable_rc() {
+        Err(BridgeError::Connection(e)) => {
+            assert_eq!(e.kind(), ErrorKind::TimedOut);
+            assert!(e.to_string().contains("no response from proxy"), "{e}");
+        }
+        other => panic!("expected Connection(TimedOut), got {:?}", other),
+    }
+    assert!(start.elapsed() < Duration::from_millis(500));
 }
 
 #[test]

@@ -44,6 +44,17 @@ async fn builder_defaults_io_timeout() {
 }
 
 #[tokio::test]
+async fn rejects_zero_io_timeout() {
+    let proxy = MockProxy::respond(Response::success());
+    let result = AsyncRemoteBridge::builder(&proxy.addr)
+        .io_timeout(Duration::ZERO)
+        .build()
+        .await;
+
+    assert!(matches!(result, Err(BridgeError::Initialization(_))));
+}
+
+#[tokio::test]
 async fn connection_timeout_returns_error() {
     // Use a non-routable address to trigger timeout
     let result = AsyncRemoteBridge::builder("10.255.255.1:12345")

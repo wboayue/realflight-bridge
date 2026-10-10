@@ -24,7 +24,7 @@ struct Args {
 
     /// Milliseconds allowed for each simulator request before the client gets
     /// an error. Keep below the client's I/O timeout (default 100 ms).
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u64).range(1..))]
     request_timeout_ms: u64,
 }
 

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use super::*;
 use crate::StatisticsEngine;
-use crate::soap_client::test_support::Server;
+use crate::soap_client::test_support::{Server, SilentServer};
 
 #[tokio::test]
 async fn sends_request_and_receives_response() {
@@ -31,15 +31,9 @@ async fn sends_request_and_receives_response() {
 
 #[tokio::test]
 async fn times_out_when_simulator_never_replies() {
-    // Accepts and holds the connection without responding
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let silent = tokio::spawn(async move {
-        let (_stream, _) = listener.accept().await.unwrap();
-        std::future::pending::<()>().await;
-    });
+    let server = SilentServer::new();
     let pool = AsyncConnectionPool::new(
-        addr,
+        server.addr(),
         Duration::from_secs(1),
         0,
         Arc::new(StatisticsEngine::new()),
@@ -57,5 +51,4 @@ async fn times_out_when_simulator_never_replies() {
         ),
     }
     assert!(start.elapsed() < Duration::from_secs(1));
-    silent.abort();
 }

@@ -1,18 +1,20 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use super::RealFlightBridge;
 use crate::defaults;
-use crate::soap_client::pool::ConnectionPool;
-use crate::soap_client::{Client, SoapClient, SoapResponse, tcp::TcpSoapClient};
-use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
+use crate::soap_client::{SoapClient, SoapResponse, tcp::TcpSoapClient};
+use crate::{BridgeError, ControlInputs, SimulatorState, Statistics};
 use ops::{Op, decode_exchange, decode_unit};
 use session::Session;
 
 #[cfg(test)]
 use crate::soap_client::stub::StubSoapClient;
 
+mod builder;
 mod ops;
 mod session;
+
+pub use builder::RealFlightLocalBridgeBuilder;
 
 #[cfg(feature = "rt-tokio")]
 mod async_impl;
@@ -328,46 +330,17 @@ impl RealFlightLocalBridge {
             ))
         })?;
 
-        let statistics = Arc::new(StatisticsEngine::new());
-        let pool = ConnectionPool::new(
-            addr,
-            configuration.connect_timeout,
-            configuration.pool_size,
-            statistics.clone(),
-        )?;
-        pool.ensure_initialized(defaults::INIT_TIMEOUT)?;
-
-        Ok(RealFlightLocalBridge {
-            session: Session::new(
-                TcpSoapClient::new(pool, defaults::REQUEST_TIMEOUT),
-                statistics,
-            ),
-        })
+        Self::builder()
+            .addr(addr)
+            .connect_timeout(configuration.connect_timeout)
+            .pool_size(configuration.pool_size)
+            .build()
     }
 
-    /// Sets the time allowed for each request to the simulator (default 50 ms),
-    /// from getting a connection to reading the full response. A request that
-    /// takes longer fails with [BridgeError::Connection] of kind
-    /// [`TimedOut`](std::io::ErrorKind::TimedOut), so a stalled simulator can't
-    /// block the caller.
-    ///
-    /// ```no_run
-    /// use std::time::Duration;
-    /// use realflight_bridge::{BridgeError, RealFlightLocalBridge};
-    ///
-    /// fn main() -> Result<(), BridgeError> {
-    ///     let bridge = RealFlightLocalBridge::new()?.request_timeout(Duration::from_millis(20));
-    ///     Ok(())
-    /// }
-    /// ```
-    #[must_use]
-    pub fn request_timeout(mut self, timeout: Duration) -> Self {
-        match &mut self.session.client {
-            Client::Tcp(client) => client.set_request_timeout(timeout),
-            #[cfg(test)]
-            Client::Stub(_) => {}
-        }
-        self
+    /// Returns a builder for custom configuration, including settings
+    /// [Configuration] lacks, such as the request timeout.
+    pub fn builder() -> RealFlightLocalBridgeBuilder {
+        RealFlightLocalBridgeBuilder::new()
     }
 
     /// Creates a bridge backed by a stub SOAP client (no network).

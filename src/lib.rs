@@ -67,6 +67,7 @@ mod defaults;
 mod encoders;
 mod soap_client;
 mod statistics;
+mod timeout;
 
 pub use statistics::Statistics;
 pub(crate) use statistics::StatisticsEngine;
@@ -79,7 +80,7 @@ pub use bridge::RealFlightBridge;
 #[doc(inline)]
 pub use bridge::local::Configuration;
 #[doc(inline)]
-pub use bridge::local::RealFlightLocalBridge;
+pub use bridge::local::{RealFlightLocalBridge, RealFlightLocalBridgeBuilder};
 #[doc(inline)]
 pub use bridge::remote::RealFlightRemoteBridge;
 

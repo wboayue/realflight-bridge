@@ -9,6 +9,7 @@ use tokio::time::timeout;
 
 use crate::bridge::AsyncBridge;
 use crate::defaults;
+use crate::timeout::{ensure_nonzero, timed_out};
 use crate::{BridgeError, ControlInputs, SimulatorState};
 
 use super::{RequestType, Response, resolve};
@@ -43,7 +44,8 @@ impl AsyncRemoteBridgeBuilder {
         self
     }
 
-    /// Sets the timeout for each call's request/response round trip (default 100 ms).
+    /// Sets the timeout for each call's request/response round trip (default
+    /// 100 ms). Must be non-zero; `Duration::MAX` disables it.
     ///
     /// A call that times out returns [BridgeError::Connection] with kind
     /// [`TimedOut`](std::io::ErrorKind::TimedOut) and leaves the connection out of
@@ -55,8 +57,11 @@ impl AsyncRemoteBridgeBuilder {
         self
     }
 
-    /// Builds the AsyncRemoteBridge, connecting to the server.
+    /// Builds the AsyncRemoteBridge, connecting to the server. Fails if the I/O
+    /// timeout is zero.
     pub async fn build(self) -> Result<AsyncRemoteBridge, BridgeError> {
+        ensure_nonzero("io_timeout", self.io_timeout)
+            .map_err(|e| BridgeError::Initialization(e.to_string()))?;
         let addr = resolve(&self.address).map_err(|e| {
             BridgeError::Initialization(format!("Invalid address '{}': {}", self.address, e))
         })?;
@@ -212,12 +217,7 @@ impl AsyncRemoteBridge {
         conn.in_flight = true;
         timeout(self.io_timeout, conn.round_trip())
             .await
-            .map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    format!("no response from proxy within {:?}", self.io_timeout),
-                )
-            })??;
+            .map_err(|_| timed_out("proxy", self.io_timeout))??;
         conn.in_flight = false;
 
         decode_frame(&conn.response_buffer)

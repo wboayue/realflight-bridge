@@ -78,7 +78,8 @@ impl AsyncProxyServer {
 
     /// Sets the time allowed for each simulator request (default 50 ms). A request
     /// that takes longer is answered with an error, so the client isn't left
-    /// waiting. Keep it below the client's I/O timeout.
+    /// waiting. Keep it below the client's I/O timeout. Must be non-zero; a
+    /// zero timeout fails each client's session at startup.
     #[must_use]
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;

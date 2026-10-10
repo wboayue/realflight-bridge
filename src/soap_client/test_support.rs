@@ -21,7 +21,7 @@
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{
     Arc, Mutex,
@@ -160,6 +160,55 @@ fn content_length(reader: &mut BufReader<TcpStream>) -> usize {
         }
     }
     content_length.unwrap_or(0)
+}
+
+/// TCP server that accepts connections and holds them open without ever
+/// replying, like a stalled simulator. Connections close when it is dropped.
+pub struct SilentServer {
+    addr: SocketAddr,
+    running: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl SilentServer {
+    /// Binds to a free port on 127.0.0.1.
+    pub fn new() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let running = Arc::new(AtomicBool::new(true));
+        let worker_running = Arc::clone(&running);
+        let handle = thread::spawn(move || {
+            let mut held = Vec::new();
+            for stream in listener.incoming() {
+                if !worker_running.load(Ordering::Relaxed) {
+                    break;
+                }
+                if let Ok(stream) = stream {
+                    held.push(stream);
+                }
+            }
+        });
+        SilentServer {
+            addr,
+            running,
+            handle: Some(handle),
+        }
+    }
+
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+}
+
+impl Drop for SilentServer {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Relaxed);
+        // wake the worker if it is blocked in accept
+        let _ = TcpStream::connect(self.addr);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
 }
 
 /// Loads `testdata/responses/{key}.xml`; the status code is the key's last segment.

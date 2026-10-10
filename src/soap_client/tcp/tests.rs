@@ -1,12 +1,12 @@
-use std::io::Write;
-use std::net::{SocketAddr, TcpListener};
+use std::io::{ErrorKind, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use super::*;
 use crate::StatisticsEngine;
-use crate::soap_client::test_support::Server;
+use crate::soap_client::test_support::{Server, SilentServer};
 
 fn client(addr: SocketAddr, request_timeout: Duration) -> TcpSoapClient {
     let pool = ConnectionPool::new(
@@ -20,7 +20,7 @@ fn client(addr: SocketAddr, request_timeout: Duration) -> TcpSoapClient {
 }
 
 /// Accepts one connection and runs `serve` on it.
-fn listen(serve: impl FnOnce(TcpStream) + Send + 'static) -> SocketAddr {
+fn serve_once(serve: impl FnOnce(TcpStream) + Send + 'static) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     thread::spawn(move || {
@@ -32,7 +32,10 @@ fn listen(serve: impl FnOnce(TcpStream) + Send + 'static) -> SocketAddr {
 
 fn assert_timed_out(result: Result<SoapResponse, BridgeError>) {
     match result {
-        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), ErrorKind::TimedOut),
+        Err(BridgeError::Connection(e)) => {
+            assert_eq!(e.kind(), ErrorKind::TimedOut);
+            assert!(e.to_string().contains("no response from simulator"), "{e}");
+        }
         other => panic!(
             "expected Connection(TimedOut), got {:?}",
             other.map(|r| r.status_code)
@@ -55,21 +58,19 @@ fn sends_request_and_receives_response() {
 
 #[test]
 fn times_out_when_simulator_never_replies() {
-    // Holds the connection open without responding
-    let addr = listen(|stream| {
-        thread::sleep(Duration::from_secs(2));
-        drop(stream);
-    });
+    let server = SilentServer::new();
 
     let start = Instant::now();
-    assert_timed_out(client(addr, Duration::from_millis(50)).send_action("ResetAircraft", ""));
+    assert_timed_out(
+        client(server.addr(), Duration::from_millis(50)).send_action("ResetAircraft", ""),
+    );
     assert!(start.elapsed() < Duration::from_secs(1));
 }
 
 #[test]
 fn deadline_covers_whole_response() {
     // Trickles bytes faster than the timeout, so only a whole-request deadline trips
-    let addr = listen(|mut stream| {
+    let addr = serve_once(|mut stream| {
         for _ in 0..100 {
             if stream.write_all(b"X").is_err() {
                 break;
@@ -81,4 +82,19 @@ fn deadline_covers_whole_response() {
     let start = Instant::now();
     assert_timed_out(client(addr, Duration::from_millis(100)).send_action("ResetAircraft", ""));
     assert!(start.elapsed() < Duration::from_millis(500));
+}
+
+#[test]
+fn connect_failure_keeps_its_error() {
+    let addr = "127.0.0.1:1".parse().unwrap();
+
+    match client(addr, Duration::from_millis(50)).send_action("ResetAircraft", "") {
+        Err(BridgeError::Connection(e)) => {
+            assert!(!e.to_string().contains("no response"), "{e}")
+        }
+        other => panic!(
+            "expected Connection error, got {:?}",
+            other.map(|r| r.status_code)
+        ),
+    }
 }
