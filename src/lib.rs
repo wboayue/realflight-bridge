@@ -24,7 +24,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum BridgeError {
-    /// Connection to the simulator failed
+    /// Connection failed
+    ///
+    /// From a local bridge, the connection to the simulator failed or timed out.
     ///
     /// From a remote bridge, the connection to the proxy failed or is out of sync;
     /// create a new bridge to reconnect.
