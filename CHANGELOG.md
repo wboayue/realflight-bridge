@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `BridgeError::Simulator`: a remote bridge's error when the proxy couldn't complete the request with the simulator (e.g. timed out). The connection to the proxy is still usable; retry on the same bridge ([#72](https://github.com/wboayue/realflight-bridge/issues/72))
+
+### Changed
+- Default timeouts raised to fit RealFlight, whose resets and post-reset exchanges can exceed 50 ms ([#72](https://github.com/wboayue/realflight-bridge/issues/72)):
+  - Local and proxy request timeout (and proxy `--request-timeout-ms`): 50 ms → 150 ms
+  - Remote I/O timeout: 100 ms → 250 ms
+- Remote bridges return `BridgeError::Simulator` instead of `BridgeError::Connection` (with a `proxy: ` message prefix) for proxy-side simulator failures. `Connection` from a remote bridge now always means reconnect
+
 ### Fixed
 - Proxy served clients serially, so a client that timed out and reconnected while its old connection stayed open never got answers. Any new connection, even one that sends nothing (e.g. a port probe), now replaces the current client: the old one gets the request timeout to finish its in-flight request, then it's disconnected and its simulator connections closed ([#71](https://github.com/wboayue/realflight-bridge/issues/71))
 

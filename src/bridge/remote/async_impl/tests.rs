@@ -249,6 +249,26 @@ async fn relays_simulator_fault_from_proxy() {
 }
 
 #[tokio::test]
+async fn simulator_error_keeps_connection_usable() {
+    let timed_out = BridgeError::Connection(std::io::Error::other("timed out"));
+    let mut calls = 0;
+    let proxy = MockProxy::handle(move |_| {
+        calls += 1;
+        match calls {
+            1 => Response::error(&timed_out),
+            _ => Response::success(),
+        }
+    });
+    let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
+
+    match bridge.reset_aircraft().await {
+        Err(BridgeError::Simulator(msg)) => assert_eq!(msg, "timed out"),
+        other => panic!("expected Simulator error, got {:?}", other),
+    }
+    bridge.reset_aircraft().await.unwrap();
+}
+
+#[tokio::test]
 async fn server_disconnect_returns_error() {
     let proxy = MockProxy::hang_up();
     let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();

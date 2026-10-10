@@ -231,6 +231,28 @@ fn relays_simulator_fault_from_proxy() {
 }
 
 #[test]
+fn simulator_error_keeps_connection_usable() {
+    let mut calls = 0;
+    let proxy = MockProxy::handle(move |_| {
+        calls += 1;
+        match calls {
+            1 => Response {
+                status: ResponseStatus::Error(RemoteError::Connection("timed out".into())),
+                payload: None,
+            },
+            _ => success(None),
+        }
+    });
+    let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
+
+    match client.reset_aircraft() {
+        Err(BridgeError::Simulator(msg)) => assert_eq!(msg, "timed out"),
+        other => panic!("expected Simulator error, got {:?}", other),
+    }
+    client.reset_aircraft().unwrap();
+}
+
+#[test]
 fn server_disconnect_returns_error() {
     let proxy = MockProxy::hang_up();
     let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();

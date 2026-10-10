@@ -18,10 +18,13 @@ pub(crate) const POOL_SIZE: usize = 0;
 pub(crate) const REMOTE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Read/write timeout for each remote proxy call. Keep it above the proxy's
-/// [`REQUEST_TIMEOUT`] so a stalled simulator surfaces as an error reply rather
-/// than a client timeout, which forces a reconnect.
-pub(crate) const REMOTE_IO_TIMEOUT: Duration = Duration::from_millis(100);
+/// [`REQUEST_TIMEOUT`] so a stalled simulator surfaces as
+/// [`BridgeError::Simulator`](crate::BridgeError::Simulator) rather than a client
+/// timeout, which forces a reconnect.
+pub(crate) const REMOTE_IO_TIMEOUT: Duration = Duration::from_millis(250);
+
+const _: () = assert!(REMOTE_IO_TIMEOUT.as_millis() > REQUEST_TIMEOUT.as_millis());
 
 /// Time allowed for one SOAP request to the simulator, from getting a
 /// connection to reading the full response.
-pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_millis(50);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_millis(150);

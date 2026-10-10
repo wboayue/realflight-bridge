@@ -51,7 +51,6 @@ impl MockProxy {
     }
 
     /// Replies to each request with the response built by `handler`.
-    #[cfg_attr(not(feature = "rt-tokio"), allow(dead_code))] // used by async tests
     pub(crate) fn handle<F>(mut handler: F) -> Self
     where
         F: FnMut(&Request) -> Response + Send + 'static,

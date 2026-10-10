@@ -24,10 +24,12 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum BridgeError {
-    /// Connection to the simulator failed
+    /// Connection failed
     ///
-    /// From a remote bridge, a message starting with `proxy: ` means the proxy could
-    /// not reach the simulator; the client-to-proxy connection is still usable.
+    /// From a local bridge, the connection to the simulator failed or timed out.
+    ///
+    /// From a remote bridge, the connection to the proxy failed or is out of sync;
+    /// create a new bridge to reconnect.
     #[error("Connection failed: {0}")]
     Connection(#[from] std::io::Error),
 
@@ -48,6 +50,12 @@ pub enum BridgeError {
     /// Failed to parse simulator response
     #[error("Parse error for field '{field}': {message}")]
     Parse { field: String, message: String },
+
+    /// The proxy could not complete the request with the simulator (e.g. timed out
+    /// or refused). Only returned by remote bridges; the connection to the proxy is
+    /// still usable, so retry on the same bridge.
+    #[error("Simulator error (via proxy): {0}")]
+    Simulator(String),
 }
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::decode_simulator_state;
