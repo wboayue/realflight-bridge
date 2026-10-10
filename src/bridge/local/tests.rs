@@ -210,4 +210,33 @@ mod tcp_integration {
 
         drop(server);
     }
+
+    #[test]
+    fn request_timeout_bounds_stalled_simulator() {
+        // Accepts and holds the connection without responding
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_millis(500));
+        });
+        let config = Configuration {
+            simulator_host: format!("127.0.0.1:{}", port),
+            ..Configuration::default()
+        };
+        let bridge = RealFlightLocalBridge::with_configuration(&config)
+            .unwrap()
+            .request_timeout(Duration::from_millis(50));
+
+        let start = std::time::Instant::now();
+        match bridge.reset_aircraft() {
+            Err(BridgeError::Connection(e)) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::TimedOut)
+            }
+            other => panic!("expected Connection(TimedOut), got {:?}", other),
+        }
+        assert!(start.elapsed() < Duration::from_millis(400));
+        assert_eq!(bridge.statistics().error_count, 1);
+        handle.join().unwrap();
+    }
 }

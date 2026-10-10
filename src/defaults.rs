@@ -24,5 +24,4 @@ pub(crate) const REMOTE_IO_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Time allowed for one SOAP request to the simulator, from getting a
 /// connection to reading the full response.
-#[cfg(feature = "rt-tokio")]
 pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_millis(50);

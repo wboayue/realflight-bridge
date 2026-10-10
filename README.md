@@ -97,6 +97,8 @@ let config = Configuration {
 let bridge = RealFlightLocalBridge::with_configuration(&config)?;
 ```
 
+Each request is bounded by a request timeout (default 50 ms), from getting a connection to reading the full response, so a stalled simulator returns `BridgeError::Connection` (kind `TimedOut`) instead of blocking. Change it with `RealFlightLocalBridge::new()?.request_timeout(..)` or `AsyncLocalBridge::builder().request_timeout(..)`.
+
 ### Remote Connection
 
 Use the remote bridge when your code cannot run on the simulator host, e.g. developing on a Mac while RealFlight runs on Windows. The proxy forwards requests to the simulator over loopback.

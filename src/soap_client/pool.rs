@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use log::{debug, error};
 
 use crate::BridgeError;
@@ -55,14 +55,17 @@ impl ConnectionPool {
         }
     }
 
-    /// Gets a new connection, consuming it.
-    pub fn get_connection(&self) -> Result<TcpStream, BridgeError> {
+    /// Gets a new connection, consuming it, waiting at most `max_wait`.
+    pub fn get_connection(&self, max_wait: Duration) -> Result<TcpStream, BridgeError> {
         match self {
             Self::OnDemand {
                 addr,
                 connect_timeout,
-            } => Ok(TcpStream::connect_timeout(addr, *connect_timeout)?),
-            Self::Prefetch(prefetcher) => prefetcher.get_connection(),
+            } => Ok(TcpStream::connect_timeout(
+                addr,
+                (*connect_timeout).min(max_wait),
+            )?),
+            Self::Prefetch(prefetcher) => prefetcher.get_connection(max_wait),
         }
     }
 }
@@ -204,10 +207,19 @@ impl Prefetcher {
         Ok(())
     }
 
-    fn get_connection(&self) -> Result<TcpStream, BridgeError> {
-        self.next_socket.recv().map_err(|e| {
-            BridgeError::Initialization(format!("Failed to get connection from pool: {}", e))
-        })
+    fn get_connection(&self, max_wait: Duration) -> Result<TcpStream, BridgeError> {
+        self.next_socket
+            .recv_timeout(max_wait)
+            .map_err(|e| match e {
+                RecvTimeoutError::Timeout => BridgeError::Connection(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("No pooled connection within {:?}", max_wait),
+                )),
+                RecvTimeoutError::Disconnected => BridgeError::Initialization(format!(
+                    "Failed to get connection from pool: {}",
+                    e
+                )),
+            })
     }
 }
 

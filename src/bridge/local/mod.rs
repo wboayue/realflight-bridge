@@ -3,7 +3,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use super::RealFlightBridge;
 use crate::defaults;
 use crate::soap_client::pool::ConnectionPool;
-use crate::soap_client::{SoapClient, SoapResponse, tcp::TcpSoapClient};
+use crate::soap_client::{Client, SoapClient, SoapResponse, tcp::TcpSoapClient};
 use crate::{BridgeError, ControlInputs, SimulatorState, Statistics, StatisticsEngine};
 use ops::{Op, decode_exchange, decode_unit};
 use session::Session;
@@ -338,8 +338,36 @@ impl RealFlightLocalBridge {
         pool.ensure_initialized(defaults::INIT_TIMEOUT)?;
 
         Ok(RealFlightLocalBridge {
-            session: Session::new(TcpSoapClient::new(pool), statistics),
+            session: Session::new(
+                TcpSoapClient::new(pool, defaults::REQUEST_TIMEOUT),
+                statistics,
+            ),
         })
+    }
+
+    /// Sets the time allowed for each request to the simulator (default 50 ms),
+    /// from getting a connection to reading the full response. A request that
+    /// takes longer fails with [BridgeError::Connection] of kind
+    /// [`TimedOut`](std::io::ErrorKind::TimedOut), so a stalled simulator can't
+    /// block the caller.
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use realflight_bridge::{BridgeError, RealFlightLocalBridge};
+    ///
+    /// fn main() -> Result<(), BridgeError> {
+    ///     let bridge = RealFlightLocalBridge::new()?.request_timeout(Duration::from_millis(20));
+    ///     Ok(())
+    /// }
+    /// ```
+    #[must_use]
+    pub fn request_timeout(mut self, timeout: Duration) -> Self {
+        match &mut self.session.client {
+            Client::Tcp(client) => client.set_request_timeout(timeout),
+            #[cfg(test)]
+            Client::Stub(_) => {}
+        }
+        self
     }
 
     /// Creates a bridge backed by a stub SOAP client (no network).
