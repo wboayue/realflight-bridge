@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 ///
 /// Starts an async proxy server that listens for remote connections and forwards them
 /// to the RealFlight simulator. The proxy is expected to run on the same machine as the simulator.
+/// It serves one client at a time; any new connection replaces the current client.
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {

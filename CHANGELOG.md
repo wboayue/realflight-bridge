@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Proxy served clients serially, so a client that timed out and reconnected while its old connection stayed open never got answers. A new connection now replaces the current client: the old one's in-flight request finishes, then it's disconnected and its simulator connections closed ([#71](https://github.com/wboayue/realflight-bridge/issues/71))
+- Proxy served clients serially, so a client that timed out and reconnected while its old connection stayed open never got answers. Any new connection, even one that sends nothing (e.g. a port probe), now replaces the current client: the old one gets the request timeout to finish its in-flight request, then it's disconnected and its simulator connections closed ([#71](https://github.com/wboayue/realflight-bridge/issues/71))
 
 ## [2.1.0] - 2026-10-10
 

@@ -13,7 +13,7 @@ mod tests;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use log::{error, info};
+use log::{error, info, warn};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
 
@@ -25,9 +25,9 @@ use handler::handle_client;
 
 /// Async server for forwarding requests to the RealFlight simulator.
 ///
-/// Serves one client at a time. A new connection replaces the current client,
-/// so a client that reconnects (e.g. after a timeout) is never blocked by its
-/// stale connection.
+/// Serves one client at a time. Any new connection, even one that never sends a
+/// request (e.g. a port probe), replaces the current client, so a client that
+/// reconnects (e.g. after a timeout) is never blocked by its stale connection.
 pub struct AsyncProxyServer {
     listener: TcpListener,
     local_addr: SocketAddr,
@@ -80,7 +80,8 @@ impl AsyncProxyServer {
     /// Sets the time allowed for each simulator request (default 50 ms). A request
     /// that takes longer is answered with an error, so the client isn't left
     /// waiting. Keep it below the client's I/O timeout. Must be non-zero; a
-    /// zero timeout fails each client's session at startup.
+    /// zero timeout fails each client's session at startup. Also bounds how long
+    /// a replaced client gets to finish before it's dropped.
     #[must_use]
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
@@ -99,9 +100,9 @@ impl AsyncProxyServer {
     /// own connection; with [`preconnect`](Self::preconnect) one connection is held
     /// open ahead of use while a client is connected.
     ///
-    /// A new connection replaces the current client: the old one is
-    /// disconnected, and its simulator connections closed, before the new one is
-    /// served.
+    /// Any new connection replaces the current client: the old one gets the
+    /// request timeout to finish its in-flight request, then is disconnected and
+    /// its simulator connections closed before the new one is served.
     ///
     /// # Arguments
     /// * `cancel` - Cancellation token for graceful shutdown.
@@ -139,11 +140,6 @@ impl AsyncProxyServer {
     }
 
     /// Accepts clients until cancelled, serving one at a time with `on_client`.
-    ///
-    /// A new connection replaces the current client: its session is cancelled
-    /// (an in-flight request finishes first) and awaited before the new one
-    /// starts. A client that timed out and reconnects without closing its old
-    /// socket would otherwise be stuck behind it.
     async fn serve<F, Fut>(
         &self,
         cancel: CancellationToken,
@@ -155,53 +151,80 @@ impl AsyncProxyServer {
     {
         info!("Async server listening on {}", self.local_addr);
 
-        let mut next: Option<(TcpStream, SocketAddr)> = None;
-        loop {
+        let mut next = None;
+        while !cancel.is_cancelled() {
             let (stream, addr) = match next.take() {
                 Some(client) => client,
                 None => tokio::select! {
                     _ = cancel.cancelled() => break,
-                    result = self.listener.accept() => match result {
-                        Ok(client) => client,
-                        Err(e) => {
-                            error!("Failed to accept connection: {}", e);
-                            continue;
-                        }
-                    },
+                    client = self.accept() => client,
                 },
             };
 
             info!("New client connected: {}", addr);
             let client_cancel = cancel.child_token();
             let client = on_client(stream, client_cancel.clone());
-            tokio::pin!(client);
-
-            let result = loop {
-                tokio::select! {
-                    biased;
-                    result = &mut client => break result,
-                    // Parent cancellation propagates to the client's child token
-                    _ = cancel.cancelled() => break client.await,
-                    result = self.listener.accept() => match result {
-                        Ok((stream, new_addr)) => {
-                            info!("Replacing client {} with {}", addr, new_addr);
-                            client_cancel.cancel();
-                            next = Some((stream, new_addr));
-                            break client.await;
-                        }
-                        Err(e) => error!("Failed to accept connection: {}", e),
-                    },
-                }
-            };
-            if let Err(e) = result {
-                error!("Error handling client: {}", e);
-            }
-            if cancel.is_cancelled() {
-                break;
-            }
+            next = self.run_client(client, client_cancel, &cancel, addr).await;
         }
 
         info!("Server shutdown requested");
         Ok(())
+    }
+
+    /// Accepts the next connection, logging failed accepts.
+    async fn accept(&self) -> (TcpStream, SocketAddr) {
+        loop {
+            match self.listener.accept().await {
+                Ok(client) => return client,
+                Err(e) => error!("Failed to accept connection: {}", e),
+            }
+        }
+    }
+
+    /// Runs `client` until it ends, the server is cancelled, or a new connection
+    /// replaces it. Returns the replacement, if any.
+    ///
+    /// A stopped client gets the request timeout to finish its in-flight request,
+    /// then is dropped, so one stuck mid-write can't block the next.
+    async fn run_client<Fut>(
+        &self,
+        client: Fut,
+        client_cancel: CancellationToken,
+        cancel: &CancellationToken,
+        addr: SocketAddr,
+    ) -> Option<(TcpStream, SocketAddr)>
+    where
+        Fut: Future<Output = Result<(), BridgeError>>,
+    {
+        tokio::pin!(client);
+        let next = tokio::select! {
+            biased;
+            result = &mut client => {
+                log_client_result(result);
+                return None;
+            }
+            // Parent cancellation propagates to the client's child token
+            _ = cancel.cancelled() => None,
+            (stream, new_addr) = self.accept() => {
+                info!("Replacing client {} with {}", addr, new_addr);
+                client_cancel.cancel();
+                Some((stream, new_addr))
+            }
+        };
+
+        match tokio::time::timeout(self.request_timeout, client).await {
+            Ok(result) => log_client_result(result),
+            Err(_) => warn!(
+                "Client {} didn't stop within {:?}, dropping it",
+                addr, self.request_timeout
+            ),
+        }
+        next
+    }
+}
+
+fn log_client_result(result: Result<(), BridgeError>) {
+    if let Err(e) = result {
+        error!("Error handling client: {}", e);
     }
 }
