@@ -730,3 +730,177 @@ async fn oversized_response_returns_protocol_error() {
     cancel.cancel();
     let _ = handle.await;
 }
+
+// ========================================================================
+// Client Replacement Tests
+// ========================================================================
+
+mod client_replacement {
+    use super::*;
+    use std::io::Read;
+    use std::time::Duration;
+
+    fn enable_rc() -> Request {
+        Request {
+            request_type: RequestType::EnableRC,
+            payload: None,
+        }
+    }
+
+    /// Connects a blocking client with `timeout` on reads.
+    async fn connect(addr: SocketAddr, timeout: Duration) -> std::net::TcpStream {
+        tokio::task::spawn_blocking(move || {
+            let stream = std::net::TcpStream::connect(addr).unwrap();
+            stream.set_read_timeout(Some(timeout)).unwrap();
+            stream
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Sends `request` on a new connection; the response must arrive within `timeout`.
+    async fn request_within(addr: SocketAddr, request: Request, timeout: Duration) -> Response {
+        let mut stream = connect(addr, timeout).await;
+        tokio::task::spawn_blocking(move || {
+            send(&mut stream, &request).unwrap();
+            recv(&mut stream).expect("no response within timeout")
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Bridge whose first `enable_rc` takes `delay`; later calls answer at once.
+    struct SlowFirstBridge {
+        delay: Duration,
+        calls: AtomicUsize,
+    }
+
+    impl AsyncBridge for SlowFirstBridge {
+        async fn exchange_data(
+            &self,
+            _control: &ControlInputs,
+        ) -> Result<crate::SimulatorState, BridgeError> {
+            Ok(crate::SimulatorState::default())
+        }
+
+        async fn enable_rc(&self) -> Result<(), BridgeError> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                tokio::time::sleep(self.delay).await;
+            }
+            Ok(())
+        }
+
+        async fn disable_rc(&self) -> Result<(), BridgeError> {
+            Ok(())
+        }
+
+        async fn reset_aircraft(&self) -> Result<(), BridgeError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn new_client_answered_while_stale_client_open() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr();
+        let cancel = CancellationToken::new();
+        let bridge = StubBridge::new();
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        // Stale client stays connected and idle
+        let _stale = connect(addr, Duration::from_secs(5)).await;
+
+        let response = request_within(addr, enable_rc(), Duration::from_millis(100)).await;
+        assert_eq!(response.status, ResponseStatus::Success);
+
+        cancel.cancel();
+        assert!(handle.await.unwrap().is_ok());
+    }
+
+    #[tokio::test]
+    async fn new_client_answered_after_stale_client_timed_out() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr();
+        let cancel = CancellationToken::new();
+        let bridge = SlowFirstBridge {
+            delay: Duration::from_millis(50),
+            calls: AtomicUsize::new(0),
+        };
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        // Stale client times out waiting for its reply, but keeps the socket open
+        let mut stale = connect(addr, Duration::from_millis(10)).await;
+        let stale = tokio::task::spawn_blocking(move || {
+            send(&mut stale, &enable_rc()).unwrap();
+            assert!(recv::<Response>(&mut stale).is_err());
+            stale
+        })
+        .await
+        .unwrap();
+
+        // Waits at most for the stale client's in-flight request to finish
+        let response = request_within(addr, enable_rc(), Duration::from_millis(200)).await;
+        assert_eq!(response.status, ResponseStatus::Success);
+
+        drop(stale);
+        cancel.cancel();
+        assert!(handle.await.unwrap().is_ok());
+    }
+
+    #[tokio::test]
+    async fn stale_client_disconnected_on_replace() {
+        let server = AsyncProxyServer::new("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr();
+        let cancel = CancellationToken::new();
+        let bridge = StubBridge::new();
+        let server_cancel = cancel.clone();
+        let handle =
+            tokio::spawn(async move { server.run_with_bridge(&bridge, server_cancel).await });
+
+        let mut stale = connect(addr, Duration::from_secs(5)).await;
+        request_within(addr, enable_rc(), Duration::from_secs(5)).await;
+
+        // Proxy closed the stale connection: read sees EOF
+        let n = tokio::task::spawn_blocking(move || stale.read(&mut [0u8; 1]).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+
+        cancel.cancel();
+        assert!(handle.await.unwrap().is_ok());
+    }
+
+    #[tokio::test]
+    async fn replaced_client_releases_simulator_connections() {
+        let sim = CountingSimulator::start().await;
+        let server = AsyncProxyServer::new("127.0.0.1:0")
+            .await
+            .unwrap()
+            .simulator_addr(sim.addr)
+            .preconnect(true);
+        let proxy_addr = server.local_addr();
+        let cancel = CancellationToken::new();
+        let server_cancel = cancel.clone();
+        let handle = tokio::spawn(async move { server.run(server_cancel).await });
+
+        let _stale = tokio::net::TcpStream::connect(proxy_addr).await.unwrap();
+        wait_until("stale client's pre-opened connection", || sim.opened() >= 1).await;
+
+        let _client = tokio::net::TcpStream::connect(proxy_addr).await.unwrap();
+        wait_until("stale connection closed, new one opened", || {
+            sim.closed() >= 1 && sim.opened() >= 2
+        })
+        .await;
+
+        // Only the new client's connection remains open
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(sim.opened() - sim.closed(), 1);
+
+        cancel.cancel();
+        assert!(handle.await.unwrap().is_ok());
+    }
+}

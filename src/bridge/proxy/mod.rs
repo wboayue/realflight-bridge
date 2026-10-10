@@ -25,8 +25,9 @@ use handler::handle_client;
 
 /// Async server for forwarding requests to the RealFlight simulator.
 ///
-/// Currently handles one client at a time (serial). Future versions may support
-/// concurrent clients for multiplayer scenarios.
+/// Serves one client at a time. A new connection replaces the current client,
+/// so a client that reconnects (e.g. after a timeout) is never blocked by its
+/// stale connection.
 pub struct AsyncProxyServer {
     listener: TcpListener,
     local_addr: SocketAddr,
@@ -98,6 +99,10 @@ impl AsyncProxyServer {
     /// own connection; with [`preconnect`](Self::preconnect) one connection is held
     /// open ahead of use while a client is connected.
     ///
+    /// A new connection replaces the current client: the old one is
+    /// disconnected, and its simulator connections closed, before the new one is
+    /// served.
+    ///
     /// # Arguments
     /// * `cancel` - Cancellation token for graceful shutdown.
     ///
@@ -133,7 +138,12 @@ impl AsyncProxyServer {
         .await
     }
 
-    /// Accepts clients until cancelled, handling each serially with `on_client`.
+    /// Accepts clients until cancelled, serving one at a time with `on_client`.
+    ///
+    /// A new connection replaces the current client: its session is cancelled
+    /// (an in-flight request finishes first) and awaited before the new one
+    /// starts. A client that timed out and reconnects without closing its old
+    /// socket would otherwise be stuck behind it.
     async fn serve<F, Fut>(
         &self,
         cancel: CancellationToken,
@@ -145,29 +155,53 @@ impl AsyncProxyServer {
     {
         info!("Async server listening on {}", self.local_addr);
 
+        let mut next: Option<(TcpStream, SocketAddr)> = None;
         loop {
-            tokio::select! {
-                _ = cancel.cancelled() => {
-                    info!("Server shutdown requested");
-                    break;
-                }
-                result = self.listener.accept() => {
-                    match result {
-                        Ok((stream, addr)) => {
-                            info!("New client connected: {}", addr);
-                            // Clients are handled serially; could spawn tasks for concurrent clients
-                            if let Err(e) = on_client(stream, cancel.clone()).await {
-                                error!("Error handling client: {}", e);
-                            }
-                        }
+            let (stream, addr) = match next.take() {
+                Some(client) => client,
+                None => tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    result = self.listener.accept() => match result {
+                        Ok(client) => client,
                         Err(e) => {
                             error!("Failed to accept connection: {}", e);
+                            continue;
                         }
-                    }
+                    },
+                },
+            };
+
+            info!("New client connected: {}", addr);
+            let client_cancel = cancel.child_token();
+            let client = on_client(stream, client_cancel.clone());
+            tokio::pin!(client);
+
+            let result = loop {
+                tokio::select! {
+                    biased;
+                    result = &mut client => break result,
+                    // Parent cancellation propagates to the client's child token
+                    _ = cancel.cancelled() => break client.await,
+                    result = self.listener.accept() => match result {
+                        Ok((stream, new_addr)) => {
+                            info!("Replacing client {} with {}", addr, new_addr);
+                            client_cancel.cancel();
+                            next = Some((stream, new_addr));
+                            break client.await;
+                        }
+                        Err(e) => error!("Failed to accept connection: {}", e),
+                    },
                 }
+            };
+            if let Err(e) = result {
+                error!("Error handling client: {}", e);
+            }
+            if cancel.is_cancelled() {
+                break;
             }
         }
 
+        info!("Server shutdown requested");
         Ok(())
     }
 }
