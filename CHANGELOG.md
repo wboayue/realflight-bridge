@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-10
+
+### Added
+- Timeouts so a stalled proxy or simulator can't block a call forever ([#68](https://github.com/wboayue/realflight-bridge/issues/68)):
+  - Remote: `RealFlightRemoteBridge::with_timeouts(addr, connect, io)` and `AsyncRemoteBridgeBuilder::io_timeout`. `io` bounds each call's full round trip (default 100 ms)
+  - Local and proxy: `request_timeout` (default 50 ms) on `AsyncLocalBridgeBuilder` and `AsyncProxyServer`, and proxy `--request-timeout-ms`. Bounds each simulator request, from getting a connection to reading the full response; the proxy answers its client with an error instead of going quiet
+  - `RealFlightLocalBridge::builder()` / `RealFlightLocalBridgeBuilder`, with `request_timeout` plus the `Configuration` settings and `init_timeout`
+  - Timeouts return `BridgeError::Connection` with kind `TimedOut`. `Duration::MAX` disables a timeout; zero is rejected
+
+### Changed
+- Calls that previously could block indefinitely now fail after the defaults above. Raise them if a slow RealFlight operation exceeds them. Keep the proxy's request timeout below the client's I/O timeout, so a stalled simulator comes back as an error reply rather than a client timeout, which forces a reconnect
+- `RealFlightRemoteBridge::new` / `with_timeout` apply the default 100 ms I/O timeout; `with_timeout`'s argument still bounds only the connect
+
 ## [2.0.1] - 2026-10-06
 
 ### Fixed
