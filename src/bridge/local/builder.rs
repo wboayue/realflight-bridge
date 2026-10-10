@@ -64,7 +64,7 @@ macro_rules! settings_setters {
             self
         }
 
-        /// Sets the time allowed for each request to the simulator (default 50 ms),
+        /// Sets the time allowed for each request to the simulator (default 150 ms),
         /// from getting a connection to reading the full response. A request that
         /// takes longer fails with [BridgeError::Connection](crate::BridgeError::Connection)
         /// of kind [`TimedOut`](std::io::ErrorKind::TimedOut), so a stalled simulator

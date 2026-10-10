@@ -328,6 +328,31 @@ mod simulator_connections {
     }
 
     #[tokio::test]
+    async fn remote_client_stays_usable_after_simulator_timeout() {
+        let sim = CountingSimulator::start().await;
+        let server = AsyncProxyServer::new("127.0.0.1:0")
+            .await
+            .unwrap()
+            .simulator_addr(sim.addr)
+            .request_timeout(Duration::from_millis(50));
+        let proxy = Proxy::forwarding(server);
+        let bridge = crate::AsyncRemoteBridge::new(&proxy.addr.to_string())
+            .await
+            .unwrap();
+
+        // Both calls get the proxy's reply, so the connection stayed in sync
+        for _ in 0..2 {
+            match bridge.reset_aircraft().await {
+                Err(BridgeError::Simulator(msg)) => assert!(msg.contains("within"), "{msg}"),
+                other => panic!("expected Simulator error, got {:?}", other),
+            }
+        }
+
+        drop(bridge);
+        proxy.stop().await;
+    }
+
+    #[tokio::test]
     async fn default_opens_none_without_requests() {
         let sim = CountingSimulator::start().await;
         let server = AsyncProxyServer::new("127.0.0.1:0")

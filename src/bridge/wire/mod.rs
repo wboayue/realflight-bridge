@@ -66,7 +66,8 @@ pub enum ResponseStatus {
 /// same major version.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteError {
-    /// Proxy could not reach the simulator ([BridgeError::Connection])
+    /// Proxy could not reach the simulator ([BridgeError::Connection] on the proxy,
+    /// [BridgeError::Simulator] on the client)
     Connection(String),
     /// Proxy failed to initialize its simulator bridge ([BridgeError::Initialization])
     Initialization(String),
@@ -78,7 +79,8 @@ pub enum RemoteError {
     Protocol(String),
 }
 
-/// Prefix for relayed errors that would otherwise look like client-side failures.
+/// Prefix for relayed initialization errors, which would otherwise look like
+/// client-side failures.
 const PROXY_PREFIX: &str = "proxy: ";
 
 impl From<&BridgeError> for RemoteError {
@@ -92,19 +94,18 @@ impl From<&BridgeError> for RemoteError {
                 message: message.clone(),
             },
             BridgeError::Protocol(msg) => RemoteError::Protocol(msg.clone()),
+            BridgeError::Simulator(msg) => RemoteError::Connection(msg.clone()),
         }
     }
 }
 
-/// Rebuilds the proxy-side error. `Connection` and `Initialization` messages are
-/// prefixed with `"proxy: "` so they can be told apart from failures of the
-/// client-to-proxy link.
+/// Rebuilds the proxy-side error. A proxy-side `Connection` failure becomes
+/// [BridgeError::Simulator], so it isn't mistaken for a failure of the
+/// client-to-proxy link; `Initialization` messages are prefixed with `"proxy: "`.
 impl From<RemoteError> for BridgeError {
     fn from(err: RemoteError) -> Self {
         match err {
-            RemoteError::Connection(msg) => {
-                BridgeError::Connection(std::io::Error::other(format!("{PROXY_PREFIX}{msg}")))
-            }
+            RemoteError::Connection(msg) => BridgeError::Simulator(msg),
             RemoteError::Initialization(msg) => {
                 BridgeError::Initialization(format!("{PROXY_PREFIX}{msg}"))
             }

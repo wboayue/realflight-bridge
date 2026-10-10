@@ -97,7 +97,7 @@ let config = Configuration {
 let bridge = RealFlightLocalBridge::with_configuration(&config)?;
 ```
 
-Each request is bounded by a request timeout (default 50 ms), from getting a connection to reading the full response, so a stalled simulator returns `BridgeError::Connection` (kind `TimedOut`) instead of blocking. Change it with `RealFlightLocalBridge::builder().request_timeout(..).build()?` or `AsyncLocalBridge::builder().request_timeout(..)`; `Duration::MAX` disables it.
+Each request is bounded by a request timeout (default 150 ms), from getting a connection to reading the full response, so a stalled simulator returns `BridgeError::Connection` (kind `TimedOut`) instead of blocking. Change it with `RealFlightLocalBridge::builder().request_timeout(..).build()?` or `AsyncLocalBridge::builder().request_timeout(..)`; `Duration::MAX` disables it.
 
 ### Remote Connection
 
@@ -143,7 +143,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-Each call's round trip is bounded by an I/O timeout (default 100 ms), so a stalled proxy returns `BridgeError::Connection` (kind `TimedOut`) instead of blocking. After a timeout the connection is out of sync; create a new bridge to reconnect. Set it with `RealFlightRemoteBridge::with_timeouts(addr, connect, io)` or `AsyncRemoteBridge::builder(addr).io_timeout(..)`. Keep it above the proxy's request timeout, so a stalled simulator comes back as an error reply and the connection stays usable.
+Each call's round trip is bounded by an I/O timeout (default 250 ms), so a stalled proxy returns `BridgeError::Connection` (kind `TimedOut`) instead of blocking. After a timeout the connection is out of sync; create a new bridge to reconnect. Set it with `RealFlightRemoteBridge::with_timeouts(addr, connect, io)` or `AsyncRemoteBridge::builder(addr).io_timeout(..)`. Keep it above the proxy's request timeout, so a stalled simulator comes back as `BridgeError::Simulator` and the connection stays usable; retry on the same bridge.
 
 ### Async
 

@@ -76,7 +76,11 @@ mod remote_error {
         let cases = [
             (
                 BridgeError::Connection(std::io::Error::other("refused")),
-                "Connection failed: proxy: refused",
+                "Simulator error (via proxy): refused",
+            ),
+            (
+                BridgeError::Simulator("timed out".into()),
+                "Simulator error (via proxy): timed out",
             ),
             (
                 BridgeError::Initialization("no pool".into()),

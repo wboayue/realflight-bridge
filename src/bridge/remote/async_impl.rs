@@ -45,12 +45,13 @@ impl AsyncRemoteBridgeBuilder {
     }
 
     /// Sets the timeout for each call's request/response round trip (default
-    /// 100 ms). Must be non-zero; `Duration::MAX` disables it.
+    /// 250 ms). Must be non-zero; `Duration::MAX` disables it.
     ///
     /// A call that times out returns [BridgeError::Connection] with kind
     /// [`TimedOut`](std::io::ErrorKind::TimedOut) and leaves the connection out of
     /// sync; create a new bridge to recover. Keep it above the proxy's request
-    /// timeout so a stalled simulator comes back as an error reply instead.
+    /// timeout so a stalled simulator comes back as [BridgeError::Simulator]
+    /// instead, leaving the connection usable.
     #[must_use]
     pub fn io_timeout(mut self, timeout: Duration) -> Self {
         self.io_timeout = timeout;
@@ -129,7 +130,7 @@ impl AsyncRemoteBridgeBuilder {
 /// # Timeouts and cancellation
 ///
 /// Calls are serialized over one connection, and each round trip is bounded by
-/// the I/O timeout (default 100 ms, see [`AsyncRemoteBridgeBuilder::io_timeout`]).
+/// the I/O timeout (default 250 ms, see [`AsyncRemoteBridgeBuilder::io_timeout`]).
 /// If a call times out, fails or is cancelled mid-exchange, the connection is out
 /// of sync and later calls return [BridgeError::Connection]; create a new bridge
 /// to recover.

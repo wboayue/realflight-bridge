@@ -62,7 +62,7 @@ pub(crate) fn resolve(address: &str) -> std::io::Result<SocketAddr> {
 
 /// Client struct for managing TCP communication with the simulator server.
 ///
-/// Each call's round trip is bounded by an I/O timeout (default 100 ms), so a
+/// Each call's round trip is bounded by an I/O timeout (default 250 ms), so a
 /// stalled proxy returns an error rather than blocking the caller.
 ///
 /// If a call fails mid-exchange (e.g. I/O error, timeout or invalid response frame), the
@@ -109,7 +109,7 @@ impl RealFlightBridge for RealFlightRemoteBridge {
 impl RealFlightRemoteBridge {
     /// Creates a new client instance connected to the specified address.
     ///
-    /// Uses a 5 s connect timeout and a 100 ms I/O timeout; see
+    /// Uses a 5 s connect timeout and a 250 ms I/O timeout; see
     /// [`with_timeouts`](Self::with_timeouts).
     ///
     /// # Arguments
@@ -127,7 +127,7 @@ impl RealFlightRemoteBridge {
 
     /// Creates a new client instance with a custom connect timeout.
     ///
-    /// `timeout` bounds only the connect; the I/O timeout stays at the 100 ms
+    /// `timeout` bounds only the connect; the I/O timeout stays at the 250 ms
     /// default. Use [`with_timeouts`](Self::with_timeouts) to set both.
     ///
     /// # Arguments
@@ -146,7 +146,7 @@ impl RealFlightRemoteBridge {
     /// [BridgeError::Connection] with kind [`TimedOut`](std::io::ErrorKind::TimedOut)
     /// and leaves the connection out of sync; create a new bridge to recover.
     /// Keep `io` above the proxy's request timeout so a stalled simulator comes
-    /// back as an error reply instead.
+    /// back as [BridgeError::Simulator] instead, leaving the connection usable.
     ///
     /// # Arguments
     /// * `address` - The server address (e.g., "127.0.0.1:18083").

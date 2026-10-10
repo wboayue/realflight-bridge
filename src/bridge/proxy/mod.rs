@@ -77,7 +77,7 @@ impl AsyncProxyServer {
         self
     }
 
-    /// Sets the time allowed for each simulator request (default 50 ms). A request
+    /// Sets the time allowed for each simulator request (default 150 ms). A request
     /// that takes longer is answered with an error, so the client isn't left
     /// waiting. Keep it below the client's I/O timeout. Must be non-zero; a
     /// zero timeout fails each client's session at startup. Also bounds how long
