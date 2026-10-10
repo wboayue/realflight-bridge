@@ -11,6 +11,7 @@ mod handler;
 mod tests;
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use log::{error, info};
 use tokio::net::{TcpListener, TcpStream};
@@ -31,6 +32,7 @@ pub struct AsyncProxyServer {
     local_addr: SocketAddr,
     simulator_addr: SocketAddr,
     preconnect: bool,
+    request_timeout: Duration,
 }
 
 impl AsyncProxyServer {
@@ -50,6 +52,7 @@ impl AsyncProxyServer {
             local_addr,
             simulator_addr: crate::DEFAULT_SIMULATOR_HOST.parse().unwrap(),
             preconnect: false,
+            request_timeout: crate::defaults::REQUEST_TIMEOUT,
         })
     }
 
@@ -70,6 +73,15 @@ impl AsyncProxyServer {
     #[must_use]
     pub fn preconnect(mut self, preconnect: bool) -> Self {
         self.preconnect = preconnect;
+        self
+    }
+
+    /// Sets the time allowed for each simulator request (default 50 ms). A request
+    /// that takes longer is answered with an error, so the client isn't left
+    /// waiting. Keep it below the client's I/O timeout.
+    #[must_use]
+    pub fn request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = timeout;
         self
     }
 
@@ -94,7 +106,8 @@ impl AsyncProxyServer {
         let pool_size = if self.preconnect { 1 } else { 0 };
         let builder = AsyncLocalBridge::builder()
             .addr(self.simulator_addr)
-            .pool_size(pool_size);
+            .pool_size(pool_size)
+            .request_timeout(self.request_timeout);
         self.serve(cancel, |stream, cancel| {
             let builder = builder.clone();
             async move {

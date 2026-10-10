@@ -40,6 +40,17 @@ fn with_timeout_connection_failure() {
     assert!(elapsed < Duration::from_secs(2));
 }
 
+#[test]
+fn new_sets_default_io_timeout() {
+    let proxy = MockProxy::respond(success(None));
+    let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
+
+    let stream = client.writer.borrow();
+    let expected = Some(crate::defaults::REMOTE_IO_TIMEOUT);
+    assert_eq!(stream.get_ref().read_timeout().unwrap(), expected);
+    assert_eq!(stream.get_ref().write_timeout().unwrap(), expected);
+}
+
 /// Tests invalid address handling
 #[test]
 fn invalid_address() {
@@ -135,6 +146,29 @@ fn failed_call_marks_connection_out_of_sync() {
     match client.enable_rc() {
         Err(BridgeError::Connection(e)) => assert!(e.to_string().contains("out of sync")),
         other => panic!("expected Connection error, got {:?}", other),
+    }
+}
+
+#[test]
+fn times_out_when_proxy_never_replies() {
+    let proxy = MockProxy::silent();
+    let client = RealFlightRemoteBridge::with_timeouts(
+        &proxy.addr,
+        Duration::from_secs(1),
+        Duration::from_millis(50),
+    )
+    .unwrap();
+
+    let start = std::time::Instant::now();
+    match client.exchange_data(&ControlInputs::default()) {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), ErrorKind::TimedOut),
+        other => panic!("expected Connection(TimedOut), got {:?}", other),
+    }
+    assert!(start.elapsed() < Duration::from_secs(1));
+
+    match client.enable_rc() {
+        Err(BridgeError::Connection(e)) => assert!(e.to_string().contains("out of sync")),
+        other => panic!("expected out-of-sync error, got {:?}", other),
     }
 }
 

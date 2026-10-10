@@ -20,11 +20,42 @@ async fn sends_request_and_receives_response() {
     pool.ensure_initialized(Duration::from_secs(5))
         .await
         .unwrap();
-    let client = AsyncTcpSoapClient::new(pool);
+    let client = AsyncTcpSoapClient::new(pool, Duration::from_secs(5));
 
     let response = client.send_action("ResetAircraft", "").await.unwrap();
 
     assert_eq!(response.status_code, 200);
     assert!(response.body.contains("ResetAircraftResponse"));
     assert!(server.requests()[0].contains("<ResetAircraft>"));
+}
+
+#[tokio::test]
+async fn times_out_when_simulator_never_replies() {
+    // Accepts and holds the connection without responding
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let silent = tokio::spawn(async move {
+        let (_stream, _) = listener.accept().await.unwrap();
+        std::future::pending::<()>().await;
+    });
+    let pool = AsyncConnectionPool::new(
+        addr,
+        Duration::from_secs(1),
+        0,
+        Arc::new(StatisticsEngine::new()),
+    )
+    .await
+    .unwrap();
+    let client = AsyncTcpSoapClient::new(pool, Duration::from_millis(50));
+
+    let start = std::time::Instant::now();
+    match client.send_action("ResetAircraft", "").await {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
+        other => panic!(
+            "expected Connection(TimedOut), got {:?}",
+            other.map(|r| r.status_code)
+        ),
+    }
+    assert!(start.elapsed() < Duration::from_secs(1));
+    silent.abort();
 }

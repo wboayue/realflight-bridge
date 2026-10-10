@@ -213,6 +213,41 @@ mod simulator_connections {
     }
 
     #[tokio::test]
+    async fn answers_error_when_simulator_never_replies() {
+        // CountingSimulator accepts and reads but never responds
+        let sim = CountingSimulator::start().await;
+        let server = AsyncProxyServer::new("127.0.0.1:0")
+            .await
+            .unwrap()
+            .simulator_addr(sim.addr)
+            .request_timeout(std::time::Duration::from_millis(50));
+        let proxy_addr = server.local_addr().to_string();
+        let cancel = CancellationToken::new();
+        let server_cancel = cancel.clone();
+        let handle = tokio::spawn(async move { server.run(server_cancel).await });
+
+        let start = std::time::Instant::now();
+        let request = Request {
+            request_type: RequestType::EnableRC,
+            payload: None,
+        };
+        let response = send_request_async(proxy_addr, request).await;
+
+        assert!(
+            matches!(
+                response.status,
+                ResponseStatus::Error(RemoteError::Connection(_))
+            ),
+            "expected Connection error, got {:?}",
+            response.status
+        );
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+
+        cancel.cancel();
+        assert!(handle.await.unwrap().is_ok());
+    }
+
+    #[tokio::test]
     async fn default_opens_none_without_requests() {
         let sim = CountingSimulator::start().await;
         let server = AsyncProxyServer::new("127.0.0.1:0")

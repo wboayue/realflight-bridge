@@ -110,6 +110,7 @@ cargo install realflight-bridge --features rt-tokio
 realflight_bridge_proxy                     # binds 0.0.0.0:8080
 realflight_bridge_proxy --bind-address 127.0.0.1:9000
 realflight_bridge_proxy --preconnect        # pre-open sim connections (older RealFlight only)
+realflight_bridge_proxy --request-timeout-ms 30  # sim request timeout (default 50)
 ```
 
 The proxy connects to the simulator only while a client is connected, opening a new connection per request. `--preconnect` hides connect latency by keeping the next connection open, but newer RealFlight versions stall while that connection sits idle.
@@ -139,6 +140,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 ```
+
+Each call is bounded by an I/O timeout (default 100 ms), so a stalled proxy returns `BridgeError::Connection` (kind `TimedOut`) instead of blocking. After a timeout the connection is out of sync; create a new bridge to reconnect. Set it with `RealFlightRemoteBridge::with_timeouts(addr, connect, io)` or `AsyncRemoteBridge::builder(addr).io_timeout(..)`. Keep it above the proxy's request timeout, so a stalled simulator comes back as an error reply and the connection stays usable.
 
 ### Async
 

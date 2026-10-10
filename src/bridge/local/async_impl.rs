@@ -21,6 +21,7 @@ use super::session::Session;
 pub struct AsyncLocalBridgeBuilder {
     connect_timeout: Duration,
     init_timeout: Duration,
+    request_timeout: Duration,
     addr: SocketAddr,
     pool_size: usize,
 }
@@ -30,6 +31,7 @@ impl Default for AsyncLocalBridgeBuilder {
         Self {
             connect_timeout: defaults::CONNECT_TIMEOUT,
             init_timeout: defaults::INIT_TIMEOUT,
+            request_timeout: defaults::REQUEST_TIMEOUT,
             addr: crate::DEFAULT_SIMULATOR_HOST.parse().unwrap(),
             pool_size: defaults::POOL_SIZE,
         }
@@ -53,6 +55,16 @@ impl AsyncLocalBridgeBuilder {
     #[must_use]
     pub fn init_timeout(mut self, timeout: Duration) -> Self {
         self.init_timeout = timeout;
+        self
+    }
+
+    /// Sets the time allowed for each request to the simulator (default 50 ms),
+    /// from getting a connection to reading the full response. A request that
+    /// takes longer fails with [BridgeError::Connection] of kind
+    /// [`TimedOut`](std::io::ErrorKind::TimedOut).
+    #[must_use]
+    pub fn request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = timeout;
         self
     }
 
@@ -89,7 +101,10 @@ impl AsyncLocalBridgeBuilder {
         pool.ensure_initialized(self.init_timeout).await?;
 
         Ok(AsyncLocalBridge {
-            session: Session::new(AsyncTcpSoapClient::new(pool), statistics),
+            session: Session::new(
+                AsyncTcpSoapClient::new(pool, self.request_timeout),
+                statistics,
+            ),
         })
     }
 }

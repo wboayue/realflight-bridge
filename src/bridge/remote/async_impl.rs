@@ -23,6 +23,7 @@ use crate::bridge::wire::frame_io::read_frame_async;
 pub struct AsyncRemoteBridgeBuilder {
     address: String,
     connect_timeout: Duration,
+    io_timeout: Duration,
 }
 
 impl AsyncRemoteBridgeBuilder {
@@ -31,13 +32,26 @@ impl AsyncRemoteBridgeBuilder {
         Self {
             address: address.to_string(),
             connect_timeout: defaults::REMOTE_TIMEOUT,
+            io_timeout: defaults::REMOTE_IO_TIMEOUT,
         }
     }
 
-    /// Sets the connection timeout.
+    /// Sets the connection timeout (default 5 s).
     #[must_use]
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.connect_timeout = timeout;
+        self
+    }
+
+    /// Sets the timeout for each call's request/response round trip (default 100 ms).
+    ///
+    /// A call that times out returns [BridgeError::Connection] with kind
+    /// [`TimedOut`](std::io::ErrorKind::TimedOut) and leaves the connection out of
+    /// sync; create a new bridge to recover. Keep it above the proxy's request
+    /// timeout so a stalled simulator comes back as an error reply instead.
+    #[must_use]
+    pub fn io_timeout(mut self, timeout: Duration) -> Self {
+        self.io_timeout = timeout;
         self
     }
 
@@ -71,6 +85,7 @@ impl AsyncRemoteBridgeBuilder {
                 response_buffer: Vec::with_capacity(4096),
                 in_flight: false,
             }),
+            io_timeout: self.io_timeout,
         })
     }
 }
@@ -88,9 +103,10 @@ impl AsyncRemoteBridgeBuilder {
 ///     // Connect to a remote proxy server
 ///     let bridge = AsyncRemoteBridge::new("192.168.1.100:18083").await?;
 ///
-///     // Or with custom timeout
+///     // Or with custom timeouts
 ///     let bridge = AsyncRemoteBridge::builder("192.168.1.100:18083")
 ///         .timeout(Duration::from_secs(10))
+///         .io_timeout(Duration::from_millis(20))
 ///         .build()
 ///         .await?;
 ///
@@ -105,13 +121,16 @@ impl AsyncRemoteBridgeBuilder {
 /// }
 /// ```
 ///
-/// # Cancellation
+/// # Timeouts and cancellation
 ///
-/// Calls are serialized over one connection. If a call is cancelled (e.g. by
-/// `tokio::time::timeout`) mid-exchange, the connection is out of sync and later
-/// calls return [BridgeError::Connection]; create a new bridge to recover.
+/// Calls are serialized over one connection, and each round trip is bounded by
+/// the I/O timeout (default 100 ms, see [`AsyncRemoteBridgeBuilder::io_timeout`]).
+/// If a call times out, fails or is cancelled mid-exchange, the connection is out
+/// of sync and later calls return [BridgeError::Connection]; create a new bridge
+/// to recover.
 pub struct AsyncRemoteBridge {
     connection: Mutex<Connection>,
+    io_timeout: Duration,
 }
 
 /// Connection state, locked for a full request/response round trip.
@@ -124,6 +143,15 @@ struct Connection {
     /// means a previous call was cancelled or failed mid-exchange, leaving the
     /// stream out of sync.
     in_flight: bool,
+}
+
+impl Connection {
+    /// Writes the encoded request and reads the response frame.
+    async fn round_trip(&mut self) -> std::io::Result<()> {
+        self.writer.write_all(&self.request_buffer).await?;
+        self.writer.flush().await?;
+        read_frame_async(&mut self.reader, &mut self.response_buffer).await
+    }
 }
 
 impl AsyncBridge for AsyncRemoteBridge {
@@ -182,10 +210,14 @@ impl AsyncRemoteBridge {
         )?;
 
         conn.in_flight = true;
-        conn.writer.write_all(&conn.request_buffer).await?;
-        conn.writer.flush().await?;
-
-        read_frame_async(&mut conn.reader, &mut conn.response_buffer).await?;
+        timeout(self.io_timeout, conn.round_trip())
+            .await
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("no response from proxy within {:?}", self.io_timeout),
+                )
+            })??;
         conn.in_flight = false;
 
         decode_frame(&conn.response_buffer)
