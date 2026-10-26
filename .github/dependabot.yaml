@@ -9,3 +9,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # tag pins MSRV toolchain, not action version
+      - dependency-name: "dtolnay/rust-toolchain"
