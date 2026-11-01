@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.0.0] - 2026-10-31
 
 `BridgeError` now means the same thing for every bridge: `Simulator` = the simulator failed, retry on the same bridge; `Connection` = this bridge is unusable, create a new one ([#75](https://github.com/wboayue/realflight-bridge/issues/75))
 
