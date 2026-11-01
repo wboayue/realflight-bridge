@@ -68,7 +68,8 @@ pub use async_impl::{AsyncLocalBridge, AsyncLocalBridgeBuilder};
 /// Methods that exchange data or mutate simulator state return `Result<T, Box<dyn Error>>`.
 /// Common errors include:
 ///
-/// - Connection timeouts
+/// - Simulator timeouts or refused connections ([BridgeError::Simulator]); retry on
+///   the same bridge
 /// - SOAP faults (e.g., simulator not ready or invalid commands)
 /// - Parsing issues for responses
 ///

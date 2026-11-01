@@ -150,10 +150,10 @@ mod get_connection {
 
         let start = std::time::Instant::now();
         match pool.get_connection(Duration::from_millis(50)) {
-            Err(BridgeError::Connection(e)) => {
+            Err(BridgeError::Simulator(e)) => {
                 assert_eq!(e.kind(), std::io::ErrorKind::TimedOut)
             }
-            other => panic!("expected Connection(TimedOut), got {:?}", other),
+            other => panic!("expected Simulator(TimedOut), got {:?}", other),
         }
         assert!(start.elapsed() < Duration::from_secs(1));
     }
@@ -302,6 +302,6 @@ mod on_demand {
         pool.ensure_initialized(INIT_TIMEOUT).unwrap();
 
         let result = pool.get_connection(GET_TIMEOUT);
-        assert!(matches!(result, Err(BridgeError::Connection(_))));
+        assert!(matches!(result, Err(BridgeError::Simulator(_))));
     }
 }

@@ -185,7 +185,7 @@ mod exchange_data {
 
 mod tcp_integration {
     use super::*;
-    use crate::soap_client::test_support::Server;
+    use crate::soap_client::test_support::{STALL, Server};
 
     fn create_bridge(port: u16) -> Result<RealFlightLocalBridge, BridgeError> {
         let config = Configuration {
@@ -222,12 +222,30 @@ mod tcp_integration {
 
         let start = std::time::Instant::now();
         match bridge.reset_aircraft() {
-            Err(BridgeError::Connection(e)) => {
+            Err(BridgeError::Simulator(e)) => {
                 assert_eq!(e.kind(), std::io::ErrorKind::TimedOut)
             }
-            other => panic!("expected Connection(TimedOut), got {:?}", other),
+            other => panic!("expected Simulator(TimedOut), got {:?}", other),
         }
         assert!(start.elapsed() < Duration::from_millis(400));
         assert_eq!(bridge.statistics().error_count, 1);
+    }
+
+    #[test]
+    fn stays_usable_after_simulator_stall() {
+        let server = Server::new(&[STALL, "reset-aircraft-200"]);
+        let bridge = RealFlightLocalBridge::builder()
+            .addr(([127, 0, 0, 1], server.port()).into())
+            .request_timeout(Duration::from_millis(50))
+            .build()
+            .unwrap();
+
+        match bridge.reset_aircraft() {
+            Err(BridgeError::Simulator(e)) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::TimedOut)
+            }
+            other => panic!("expected Simulator(TimedOut), got {:?}", other),
+        }
+        bridge.reset_aircraft().unwrap();
     }
 }

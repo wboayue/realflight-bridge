@@ -10,6 +10,7 @@ use std::{io::ErrorKind, time::Duration};
 use crate::{BridgeError, ControlInputs, RealFlightBridge, SimulatorState};
 
 use super::{RealFlightRemoteBridge, RemoteError, RequestType, Response, ResponseStatus};
+use crate::bridge::wire::IoKind;
 use crate::bridge::wire::test_support::MockProxy;
 
 // ============================================================================
@@ -22,9 +23,12 @@ fn connection_failure() {
     // Attempt to connect to a port where no server is running
     let result = RealFlightRemoteBridge::new("127.0.0.1:1");
 
-    assert!(result.is_err());
-    if let Err(e) = result {
-        assert_eq!(e.kind(), ErrorKind::ConnectionRefused);
+    match result {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), ErrorKind::ConnectionRefused),
+        other => panic!(
+            "expected Connection(ConnectionRefused), got {:?}",
+            other.err()
+        ),
     }
 }
 
@@ -54,7 +58,10 @@ fn rejects_zero_io_timeout() {
     let result =
         RealFlightRemoteBridge::with_timeouts(&proxy.addr, Duration::from_secs(1), Duration::ZERO);
 
-    assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidInput);
+    match result {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), ErrorKind::InvalidInput),
+        other => panic!("expected Connection(InvalidInput), got {:?}", other.err()),
+    }
 }
 
 /// Tests invalid address handling
@@ -237,7 +244,10 @@ fn simulator_error_keeps_connection_usable() {
         calls += 1;
         match calls {
             1 => Response {
-                status: ResponseStatus::Error(RemoteError::Connection("timed out".into())),
+                status: ResponseStatus::Error(RemoteError::Simulator {
+                    kind: IoKind::TimedOut,
+                    message: "timed out".into(),
+                }),
                 payload: None,
             },
             _ => success(None),
@@ -246,7 +256,10 @@ fn simulator_error_keeps_connection_usable() {
     let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
 
     match client.reset_aircraft() {
-        Err(BridgeError::Simulator(msg)) => assert_eq!(msg, "timed out"),
+        Err(BridgeError::Simulator(e)) => {
+            assert_eq!(e.kind(), ErrorKind::TimedOut);
+            assert_eq!(e.to_string(), "timed out");
+        }
         other => panic!("expected Simulator error, got {:?}", other),
     }
     client.reset_aircraft().unwrap();

@@ -116,8 +116,8 @@ impl RealFlightRemoteBridge {
     /// * `address` - The server address (e.g., "127.0.0.1:18083").
     ///
     /// # Returns
-    /// A `Result` containing the new client instance or an I/O error.
-    pub fn new(address: &str) -> std::io::Result<Self> {
+    /// A `Result` containing the new client instance or a [BridgeError::Connection].
+    pub fn new(address: &str) -> Result<Self, BridgeError> {
         Self::with_timeouts(
             address,
             defaults::REMOTE_TIMEOUT,
@@ -135,8 +135,8 @@ impl RealFlightRemoteBridge {
     /// * `timeout` - Connection timeout duration.
     ///
     /// # Returns
-    /// A `Result` containing the new client instance or an I/O error.
-    pub fn with_timeout(address: &str, timeout: Duration) -> std::io::Result<Self> {
+    /// A `Result` containing the new client instance or a [BridgeError::Connection].
+    pub fn with_timeout(address: &str, timeout: Duration) -> Result<Self, BridgeError> {
         Self::with_timeouts(address, timeout, defaults::REMOTE_IO_TIMEOUT)
     }
 
@@ -155,8 +155,17 @@ impl RealFlightRemoteBridge {
     ///   `Duration::MAX` disables it.
     ///
     /// # Returns
-    /// A `Result` containing the new client instance or an I/O error.
-    pub fn with_timeouts(address: &str, connect: Duration, io: Duration) -> std::io::Result<Self> {
+    /// A `Result` containing the new client instance or a [BridgeError::Connection].
+    pub fn with_timeouts(
+        address: &str,
+        connect: Duration,
+        io: Duration,
+    ) -> Result<Self, BridgeError> {
+        Self::connect(address, connect, io).map_err(BridgeError::Connection)
+    }
+
+    /// Connects to the proxy; see [`with_timeouts`](Self::with_timeouts).
+    fn connect(address: &str, connect: Duration, io: Duration) -> std::io::Result<Self> {
         ensure_nonzero("io timeout", io)?;
         let stream = TcpStream::connect_timeout(&resolve(address)?, connect)?;
         stream.set_nodelay(true)?;
@@ -204,7 +213,8 @@ impl RealFlightRemoteBridge {
 
         self.in_flight.set(true);
         let mut response_buffer = self.response_buffer.borrow_mut();
-        self.round_trip(&request_buffer, &mut response_buffer)?;
+        self.round_trip(&request_buffer, &mut response_buffer)
+            .map_err(BridgeError::Connection)?;
         self.in_flight.set(false);
         decode_frame(&response_buffer)
     }

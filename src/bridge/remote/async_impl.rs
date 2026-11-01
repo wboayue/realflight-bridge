@@ -218,7 +218,9 @@ impl AsyncRemoteBridge {
         conn.in_flight = true;
         timeout(self.io_timeout, conn.round_trip())
             .await
-            .map_err(|_| timed_out("proxy", self.io_timeout))??;
+            .map_err(|_| timed_out("proxy", self.io_timeout))
+            .and_then(|result| result)
+            .map_err(BridgeError::Connection)?;
         conn.in_flight = false;
 
         decode_frame(&conn.response_buffer)

@@ -45,8 +45,10 @@ impl AsyncProxyServer {
     /// # Returns
     /// A `Result` containing the server instance or an error if binding fails.
     pub async fn new(bind_address: &str) -> Result<Self, BridgeError> {
-        let listener = TcpListener::bind(bind_address).await?;
-        let local_addr = listener.local_addr()?;
+        let listener = TcpListener::bind(bind_address)
+            .await
+            .map_err(BridgeError::Connection)?;
+        let local_addr = listener.local_addr().map_err(BridgeError::Connection)?;
 
         Ok(AsyncProxyServer {
             listener,

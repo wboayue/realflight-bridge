@@ -308,6 +308,6 @@ mod on_demand {
             .unwrap();
 
         let result = pool.get_connection().await;
-        assert!(matches!(result, Err(BridgeError::Connection(_))));
+        assert!(matches!(result, Err(BridgeError::Simulator(_))));
     }
 }

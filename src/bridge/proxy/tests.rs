@@ -1,7 +1,7 @@
 use super::*;
 use crate::ControlInputs;
 use crate::bridge::wire::test_support::{recv, send, write_raw_frame};
-use crate::bridge::wire::{RemoteError, Request, RequestType, Response, ResponseStatus};
+use crate::bridge::wire::{IoKind, RemoteError, Request, RequestType, Response, ResponseStatus};
 use fixtures::{CountingSimulator, Proxy, connect, request_within, send_request, wait_until};
 use std::io::{Read, Write};
 use std::sync::Arc;
@@ -317,9 +317,12 @@ mod simulator_connections {
         assert!(
             matches!(
                 response.status,
-                ResponseStatus::Error(RemoteError::Connection(_))
+                ResponseStatus::Error(RemoteError::Simulator {
+                    kind: IoKind::TimedOut,
+                    ..
+                })
             ),
-            "expected Connection error, got {:?}",
+            "expected Simulator(TimedOut) error, got {:?}",
             response.status
         );
         assert!(start.elapsed() < Duration::from_secs(1));
@@ -343,7 +346,10 @@ mod simulator_connections {
         // Both calls get the proxy's reply, so the connection stayed in sync
         for _ in 0..2 {
             match bridge.reset_aircraft().await {
-                Err(BridgeError::Simulator(msg)) => assert!(msg.contains("within"), "{msg}"),
+                Err(BridgeError::Simulator(e)) => {
+                    assert_eq!(e.kind(), std::io::ErrorKind::TimedOut);
+                    assert!(e.to_string().contains("within"), "{e}");
+                }
                 other => panic!("expected Simulator error, got {:?}", other),
             }
         }

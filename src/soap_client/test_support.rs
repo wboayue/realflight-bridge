@@ -18,6 +18,8 @@
 //! - `reset-aircraft-200` - Successful reset aircraft response
 //! - `inject-uav-controller-interface-500` - Failed disable RC response
 //! - `return-data-200` - Successful exchange data response
+//!
+//! [STALL] reads the request but never replies, like a stalled simulator.
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -30,6 +32,9 @@ use std::sync::{
 use std::thread;
 
 use super::SoapResponse;
+
+/// Response key that reads the request and holds the connection without replying.
+pub const STALL: &str = "stall";
 
 /// A mock TCP server for testing SOAP client interactions.
 pub struct Server {
@@ -94,6 +99,7 @@ fn spawn_worker(
     requests: Arc<Mutex<Vec<String>>>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
+        let mut stalled = Vec::new();
         for incoming in listener.incoming() {
             if !running.load(Ordering::Relaxed) || responses.is_empty() {
                 break;
@@ -122,8 +128,10 @@ fn spawn_worker(
 
             requests.lock().unwrap().push(request_body);
 
-            if let Some(response_key) = responses.pop_front() {
-                send_response(&stream, &response_key);
+            match responses.pop_front() {
+                Some(key) if key == STALL => stalled.push(stream),
+                Some(key) => send_response(&stream, &key),
+                None => {}
             }
         }
     })

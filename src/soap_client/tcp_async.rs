@@ -19,12 +19,13 @@ pub(crate) struct AsyncTcpSoapClient {
 }
 
 impl AsyncSoapClient for AsyncTcpSoapClient {
+    /// I/O failures, including connect failures, return [BridgeError::Simulator].
     /// Fails with `TimedOut` if the full exchange, including getting a
     /// connection, takes longer than the request timeout.
     async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         timeout(self.request_timeout, self.exchange(action, body))
             .await
-            .map_err(|_| timed_out("simulator", self.request_timeout))?
+            .map_err(|_| BridgeError::Simulator(timed_out("simulator", self.request_timeout)))?
     }
 }
 
@@ -44,8 +45,11 @@ impl AsyncTcpSoapClient {
         let mut stream = self.connection_pool.get_connection().await?;
 
         // Send request
-        stream.write_all(request.as_bytes()).await?;
-        stream.flush().await?;
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .map_err(BridgeError::Simulator)?;
+        stream.flush().await.map_err(BridgeError::Simulator)?;
 
         // Read response
         let mut reader = BufReader::new(stream);
@@ -53,14 +57,20 @@ impl AsyncTcpSoapClient {
         let mut line = String::new();
         let length = loop {
             line.clear();
-            reader.read_line(&mut line).await?;
+            reader
+                .read_line(&mut line)
+                .await
+                .map_err(BridgeError::Simulator)?;
             if let Next::Body(length) = parser.feed_line(&line)? {
                 break length;
             }
         };
 
         let mut body = vec![0; length];
-        reader.read_exact(&mut body).await?;
+        reader
+            .read_exact(&mut body)
+            .await
+            .map_err(BridgeError::Simulator)?;
 
         Ok(parser.finish(body))
     }

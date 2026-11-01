@@ -30,7 +30,7 @@
 cargo add realflight-bridge
 ```
 
-Upgrading from 1.x? 2.0 renames `SimulatorState` fields and changes error variants; see the [CHANGELOG](CHANGELOG.md) migration notes.
+Upgrading? 3.0 changes which `BridgeError` variant local bridges return for simulator failures; 2.0 renamed `SimulatorState` fields. See the [CHANGELOG](CHANGELOG.md) migration notes.
 
 ## Architecture
 
@@ -97,7 +97,7 @@ let config = Configuration {
 let bridge = RealFlightLocalBridge::with_configuration(&config)?;
 ```
 
-Each request is bounded by a request timeout (default 150 ms), from getting a connection to reading the full response, so a stalled simulator returns `BridgeError::Connection` (kind `TimedOut`) instead of blocking. Change it with `RealFlightLocalBridge::builder().request_timeout(..).build()?` or `AsyncLocalBridge::builder().request_timeout(..)`; `Duration::MAX` disables it.
+Each request is bounded by a request timeout (default 150 ms), from getting a connection to reading the full response, so a stalled simulator returns `BridgeError::Simulator` (kind `TimedOut`) instead of blocking; retry on the same bridge. Change it with `RealFlightLocalBridge::builder().request_timeout(..).build()?` or `AsyncLocalBridge::builder().request_timeout(..)`; `Duration::MAX` disables it.
 
 ### Remote Connection
 

@@ -24,14 +24,10 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum BridgeError {
-    /// Connection failed
-    ///
-    /// From a local bridge, the connection to the simulator failed or timed out.
-    ///
-    /// From a remote bridge, the connection to the proxy failed or is out of sync;
-    /// create a new bridge to reconnect.
+    /// This bridge is unusable (e.g. the connection to the proxy failed or is out
+    /// of sync); create a new bridge to reconnect.
     #[error("Connection failed: {0}")]
-    Connection(#[from] std::io::Error),
+    Connection(#[source] std::io::Error),
 
     /// Initialization failed
     ///
@@ -51,11 +47,12 @@ pub enum BridgeError {
     #[error("Parse error for field '{field}': {message}")]
     Parse { field: String, message: String },
 
-    /// The proxy could not complete the request with the simulator (e.g. timed out
-    /// or refused). Only returned by remote bridges; the connection to the proxy is
-    /// still usable, so retry on the same bridge.
-    #[error("Simulator error (via proxy): {0}")]
-    Simulator(String),
+    /// The simulator could not complete the request (e.g. timed out or refused the
+    /// connection), whether reached directly or through the proxy. The bridge is
+    /// still usable; retry on the same bridge. [`kind()`](std::io::Error::kind)
+    /// tells a timeout (`TimedOut`) from a refusal (`ConnectionRefused`).
+    #[error("Simulator error: {0}")]
+    Simulator(#[source] std::io::Error),
 }
 #[cfg(any(test, feature = "bench-internals"))]
 pub use decoders::decode_simulator_state;
