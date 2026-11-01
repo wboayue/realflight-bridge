@@ -10,6 +10,7 @@ use std::{io::ErrorKind, time::Duration};
 use crate::{BridgeError, ControlInputs, RealFlightBridge, SimulatorState};
 
 use super::{RealFlightRemoteBridge, RemoteError, RequestType, Response, ResponseStatus};
+use crate::bridge::wire::IoKind;
 use crate::bridge::wire::test_support::MockProxy;
 
 // ============================================================================
@@ -237,7 +238,10 @@ fn simulator_error_keeps_connection_usable() {
         calls += 1;
         match calls {
             1 => Response {
-                status: ResponseStatus::Error(RemoteError::Connection("timed out".into())),
+                status: ResponseStatus::Error(RemoteError::Simulator {
+                    kind: IoKind::TimedOut,
+                    message: "timed out".into(),
+                }),
                 payload: None,
             },
             _ => success(None),
@@ -246,7 +250,10 @@ fn simulator_error_keeps_connection_usable() {
     let client = RealFlightRemoteBridge::new(&proxy.addr).unwrap();
 
     match client.reset_aircraft() {
-        Err(BridgeError::Simulator(msg)) => assert_eq!(msg, "timed out"),
+        Err(BridgeError::Simulator(e)) => {
+            assert_eq!(e.kind(), ErrorKind::TimedOut);
+            assert_eq!(e.to_string(), "timed out");
+        }
         other => panic!("expected Simulator error, got {:?}", other),
     }
     client.reset_aircraft().unwrap();

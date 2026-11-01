@@ -250,7 +250,10 @@ async fn relays_simulator_fault_from_proxy() {
 
 #[tokio::test]
 async fn simulator_error_keeps_connection_usable() {
-    let timed_out = BridgeError::Connection(std::io::Error::other("timed out"));
+    let timed_out = BridgeError::Simulator(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        "timed out",
+    ));
     let mut calls = 0;
     let proxy = MockProxy::handle(move |_| {
         calls += 1;
@@ -262,7 +265,10 @@ async fn simulator_error_keeps_connection_usable() {
     let bridge = AsyncRemoteBridge::new(&proxy.addr).await.unwrap();
 
     match bridge.reset_aircraft().await {
-        Err(BridgeError::Simulator(msg)) => assert_eq!(msg, "timed out"),
+        Err(BridgeError::Simulator(e)) => {
+            assert_eq!(e.kind(), std::io::ErrorKind::TimedOut);
+            assert_eq!(e.to_string(), "timed out");
+        }
         other => panic!("expected Simulator error, got {:?}", other),
     }
     bridge.reset_aircraft().await.unwrap();

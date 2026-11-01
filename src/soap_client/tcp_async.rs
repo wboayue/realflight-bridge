@@ -10,7 +10,7 @@ use crate::timeout::timed_out;
 
 use super::http::{Next, ResponseParser};
 use super::pool_async::AsyncConnectionPool;
-use super::{AsyncSoapClient, SoapResponse, encode_request};
+use super::{AsyncSoapClient, SoapResponse, encode_request, simulator_failure};
 
 /// Async implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct AsyncTcpSoapClient {
@@ -19,12 +19,14 @@ pub(crate) struct AsyncTcpSoapClient {
 }
 
 impl AsyncSoapClient for AsyncTcpSoapClient {
+    /// I/O failures, including connect failures, return [BridgeError::Simulator].
     /// Fails with `TimedOut` if the full exchange, including getting a
     /// connection, takes longer than the request timeout.
     async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         timeout(self.request_timeout, self.exchange(action, body))
             .await
-            .map_err(|_| timed_out("simulator", self.request_timeout))?
+            .unwrap_or_else(|_| Err(timed_out("simulator", self.request_timeout).into()))
+            .map_err(simulator_failure)
     }
 }
 

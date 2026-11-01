@@ -5,7 +5,7 @@ use super::*;
 use crate::bridge::AsyncBridge;
 use crate::soap_client::encode_envelope;
 use crate::soap_client::stub::StubSoapClient;
-use crate::soap_client::test_support::Server;
+use crate::soap_client::test_support::{STALL, Server};
 
 async fn create_bridge(port: u16) -> Result<AsyncLocalBridge, BridgeError> {
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
@@ -142,5 +142,23 @@ mod tcp_integration {
         assert_eq!(stats.request_count, 1);
         assert_eq!(stats.error_count, 0);
         assert!(server.requests()[0].contains("<ResetAircraft>"));
+    }
+    #[tokio::test]
+    async fn stays_usable_after_simulator_stall() {
+        let server = Server::new(&[STALL, "reset-aircraft-200"]);
+        let bridge = AsyncLocalBridge::builder()
+            .addr(([127, 0, 0, 1], server.port()).into())
+            .request_timeout(Duration::from_millis(50))
+            .build()
+            .await
+            .unwrap();
+
+        match bridge.reset_aircraft().await {
+            Err(BridgeError::Simulator(e)) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::TimedOut)
+            }
+            other => panic!("expected Simulator(TimedOut), got {:?}", other),
+        }
+        bridge.reset_aircraft().await.unwrap();
     }
 }

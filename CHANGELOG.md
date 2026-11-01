@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+`BridgeError` now means the same thing for every bridge: `Simulator` = the simulator failed, retry on the same bridge; `Connection` = this bridge is unusable, create a new one ([#75](https://github.com/wboayue/realflight-bridge/issues/75))
+
+### Changed
+- **Breaking:** local bridges return `BridgeError::Simulator` instead of `BridgeError::Connection` for simulator connect, I/O and timeout failures. Migrate `Connection` matches on local bridges to `Simulator`
+- **Breaking:** `BridgeError::Simulator` wraps `std::io::Error` instead of `String`; use `kind()` to tell a timeout (`TimedOut`) from a refusal (`ConnectionRefused`). Remote bridges keep the proxy-side kind
+- **Breaking:** `BridgeError::Simulator` displays as `Simulator error: ...` (dropped `(via proxy)`)
+- **Breaking:** wire protocol: `RemoteError::Connection(String)` replaced by `RemoteError::Simulator { kind, message }`. Proxy and clients must both be 3.0
+
 ## [2.2.0] - 2026-10-10
 
 ### Added

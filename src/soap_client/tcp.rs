@@ -8,7 +8,7 @@ use crate::timeout::{Deadline, DeadlineStream};
 
 use super::http::{Next, ResponseParser};
 use super::pool::ConnectionPool;
-use super::{SoapClient, SoapResponse, encode_request};
+use super::{SoapClient, SoapResponse, encode_request, simulator_failure};
 
 #[cfg(test)]
 mod tests;
@@ -23,9 +23,26 @@ pub(crate) struct TcpSoapClient {
 }
 
 impl SoapClient for TcpSoapClient {
+    /// I/O failures, including connect failures, return [BridgeError::Simulator].
     /// Fails with `TimedOut` if the full exchange, including getting a
     /// connection, takes longer than the request timeout.
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
+        self.exchange(action, body).map_err(simulator_failure)
+    }
+}
+
+impl TcpSoapClient {
+    /// Creates a TCP SOAP client sending over connections from
+    /// `connection_pool`, bounding each request by `request_timeout`.
+    pub fn new(connection_pool: ConnectionPool, request_timeout: Duration) -> Self {
+        TcpSoapClient {
+            connection_pool,
+            request_timeout,
+        }
+    }
+
+    /// Sends one request and reads its response within the request timeout.
+    fn exchange(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         let deadline = Deadline::after(self.request_timeout);
         let request = encode_request(action, body);
         let max_wait = deadline.remaining(PEER)?.unwrap_or(Duration::MAX);
@@ -52,16 +69,5 @@ impl SoapClient for TcpSoapClient {
         reader.read_exact(&mut body)?;
 
         Ok(parser.finish(body))
-    }
-}
-
-impl TcpSoapClient {
-    /// Creates a TCP SOAP client sending over connections from
-    /// `connection_pool`, bounding each request by `request_timeout`.
-    pub fn new(connection_pool: ConnectionPool, request_timeout: Duration) -> Self {
-        TcpSoapClient {
-            connection_pool,
-            request_timeout,
-        }
     }
 }

@@ -25,6 +25,15 @@ pub(crate) fn encode_request(action: &str, body: &str) -> String {
     http::build_http_request(action, &encode_envelope(action, body))
 }
 
+/// Reclassifies an I/O failure talking to the simulator as
+/// [BridgeError::Simulator]: the simulator failed, but the bridge is still usable.
+pub(crate) fn simulator_failure(err: BridgeError) -> BridgeError {
+    match err {
+        BridgeError::Connection(e) => BridgeError::Simulator(e),
+        other => other,
+    }
+}
+
 /// Response from a SOAP request to the RealFlight simulator
 #[derive(Debug)]
 pub(crate) struct SoapResponse {

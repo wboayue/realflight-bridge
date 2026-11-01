@@ -1,6 +1,8 @@
 //! Wire protocol shared by remote bridges (clients) and the proxy (server):
 //! message types, length-prefixed framing, and response interpretation.
 
+use std::io;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{BridgeError, ControlInputs, SimulatorState};
@@ -66,9 +68,8 @@ pub enum ResponseStatus {
 /// same major version.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteError {
-    /// Proxy could not reach the simulator ([BridgeError::Connection] on the proxy,
-    /// [BridgeError::Simulator] on the client)
-    Connection(String),
+    /// Proxy could not complete the request with the simulator ([BridgeError::Simulator])
+    Simulator { kind: IoKind, message: String },
     /// Proxy failed to initialize its simulator bridge ([BridgeError::Initialization])
     Initialization(String),
     /// Simulator returned a SOAP fault ([BridgeError::SoapFault])
@@ -79,6 +80,57 @@ pub enum RemoteError {
     Protocol(String),
 }
 
+/// Wire form of [io::ErrorKind], which isn't serializable. Kinds without a
+/// variant travel as `Other`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IoKind {
+    TimedOut,
+    ConnectionRefused,
+    ConnectionReset,
+    ConnectionAborted,
+    BrokenPipe,
+    UnexpectedEof,
+    Other,
+}
+
+impl From<io::ErrorKind> for IoKind {
+    fn from(kind: io::ErrorKind) -> Self {
+        match kind {
+            io::ErrorKind::TimedOut => IoKind::TimedOut,
+            io::ErrorKind::ConnectionRefused => IoKind::ConnectionRefused,
+            io::ErrorKind::ConnectionReset => IoKind::ConnectionReset,
+            io::ErrorKind::ConnectionAborted => IoKind::ConnectionAborted,
+            io::ErrorKind::BrokenPipe => IoKind::BrokenPipe,
+            io::ErrorKind::UnexpectedEof => IoKind::UnexpectedEof,
+            _ => IoKind::Other,
+        }
+    }
+}
+
+impl From<IoKind> for io::ErrorKind {
+    fn from(kind: IoKind) -> Self {
+        match kind {
+            IoKind::TimedOut => io::ErrorKind::TimedOut,
+            IoKind::ConnectionRefused => io::ErrorKind::ConnectionRefused,
+            IoKind::ConnectionReset => io::ErrorKind::ConnectionReset,
+            IoKind::ConnectionAborted => io::ErrorKind::ConnectionAborted,
+            IoKind::BrokenPipe => io::ErrorKind::BrokenPipe,
+            IoKind::UnexpectedEof => io::ErrorKind::UnexpectedEof,
+            IoKind::Other => io::ErrorKind::Other,
+        }
+    }
+}
+
+impl RemoteError {
+    /// Simulator failure carrying `err`'s kind and message.
+    fn simulator(err: &io::Error) -> Self {
+        RemoteError::Simulator {
+            kind: err.kind().into(),
+            message: err.to_string(),
+        }
+    }
+}
+
 /// Prefix for relayed initialization errors, which would otherwise look like
 /// client-side failures.
 const PROXY_PREFIX: &str = "proxy: ";
@@ -86,7 +138,9 @@ const PROXY_PREFIX: &str = "proxy: ";
 impl From<&BridgeError> for RemoteError {
     fn from(err: &BridgeError) -> Self {
         match err {
-            BridgeError::Connection(e) => RemoteError::Connection(e.to_string()),
+            // A proxy-side `Connection` (e.g. invalid local bridge config) isn't a
+            // failure of the client's link, so it's relayed as a simulator failure
+            BridgeError::Connection(e) | BridgeError::Simulator(e) => RemoteError::simulator(e),
             BridgeError::Initialization(msg) => RemoteError::Initialization(msg.clone()),
             BridgeError::SoapFault(msg) => RemoteError::SoapFault(msg.clone()),
             BridgeError::Parse { field, message } => RemoteError::Parse {
@@ -94,18 +148,18 @@ impl From<&BridgeError> for RemoteError {
                 message: message.clone(),
             },
             BridgeError::Protocol(msg) => RemoteError::Protocol(msg.clone()),
-            BridgeError::Simulator(msg) => RemoteError::Connection(msg.clone()),
         }
     }
 }
 
-/// Rebuilds the proxy-side error. A proxy-side `Connection` failure becomes
-/// [BridgeError::Simulator], so it isn't mistaken for a failure of the
-/// client-to-proxy link; `Initialization` messages are prefixed with `"proxy: "`.
+/// Rebuilds the proxy-side error; `Initialization` messages are prefixed with
+/// `"proxy: "`.
 impl From<RemoteError> for BridgeError {
     fn from(err: RemoteError) -> Self {
         match err {
-            RemoteError::Connection(msg) => BridgeError::Simulator(msg),
+            RemoteError::Simulator { kind, message } => {
+                BridgeError::Simulator(io::Error::new(kind.into(), message))
+            }
             RemoteError::Initialization(msg) => {
                 BridgeError::Initialization(format!("{PROXY_PREFIX}{msg}"))
             }

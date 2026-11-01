@@ -44,9 +44,9 @@ async fn times_out_when_simulator_never_replies() {
 
     let start = std::time::Instant::now();
     match client.send_action("ResetAircraft", "").await {
-        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
+        Err(BridgeError::Simulator(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
         other => panic!(
-            "expected Connection(TimedOut), got {:?}",
+            "expected Simulator(TimedOut), got {:?}",
             other.map(|r| r.status_code)
         ),
     }

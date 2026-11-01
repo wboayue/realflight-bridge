@@ -76,11 +76,11 @@ mod remote_error {
         let cases = [
             (
                 BridgeError::Connection(std::io::Error::other("refused")),
-                "Simulator error (via proxy): refused",
+                "Simulator error: refused",
             ),
             (
-                BridgeError::Simulator("timed out".into()),
-                "Simulator error (via proxy): timed out",
+                BridgeError::Simulator(std::io::Error::other("timed out")),
+                "Simulator error: timed out",
             ),
             (
                 BridgeError::Initialization("no pool".into()),
@@ -111,6 +111,43 @@ mod remote_error {
                 std::mem::discriminant(&RemoteError::from(&rebuilt)),
                 std::mem::discriminant(&sent),
             );
+        }
+    }
+
+    #[test]
+    fn simulator_error_keeps_io_kind() {
+        use std::io::ErrorKind;
+
+        let kinds = [
+            ErrorKind::TimedOut,
+            ErrorKind::ConnectionRefused,
+            ErrorKind::ConnectionReset,
+            ErrorKind::ConnectionAborted,
+            ErrorKind::BrokenPipe,
+            ErrorKind::UnexpectedEof,
+            ErrorKind::Other,
+        ];
+        for kind in kinds {
+            let err = BridgeError::Simulator(std::io::Error::new(kind, "failed"));
+            match round_trip(err) {
+                BridgeError::Simulator(e) => assert_eq!(e.kind(), kind),
+                other => panic!("expected Simulator({kind:?}), got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn unmapped_io_kind_becomes_other() {
+        let err = BridgeError::Simulator(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "denied",
+        ));
+        match round_trip(err) {
+            BridgeError::Simulator(e) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::Other);
+                assert_eq!(e.to_string(), "denied");
+            }
+            other => panic!("expected Simulator(Other), got {other:?}"),
         }
     }
 }

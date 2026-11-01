@@ -32,12 +32,12 @@ fn serve_once(serve: impl FnOnce(TcpStream) + Send + 'static) -> SocketAddr {
 
 fn assert_timed_out(result: Result<SoapResponse, BridgeError>) {
     match result {
-        Err(BridgeError::Connection(e)) => {
+        Err(BridgeError::Simulator(e)) => {
             assert_eq!(e.kind(), ErrorKind::TimedOut);
             assert!(e.to_string().contains("no response from simulator"), "{e}");
         }
         other => panic!(
-            "expected Connection(TimedOut), got {:?}",
+            "expected Simulator(TimedOut), got {:?}",
             other.map(|r| r.status_code)
         ),
     }
@@ -85,15 +85,16 @@ fn deadline_covers_whole_response() {
 }
 
 #[test]
-fn connect_failure_keeps_its_error() {
+fn connect_failure_is_simulator_error() {
     let addr = "127.0.0.1:1".parse().unwrap();
 
     match client(addr, Duration::from_millis(50)).send_action("ResetAircraft", "") {
-        Err(BridgeError::Connection(e)) => {
+        Err(BridgeError::Simulator(e)) => {
+            assert_eq!(e.kind(), ErrorKind::ConnectionRefused);
             assert!(!e.to_string().contains("no response"), "{e}")
         }
         other => panic!(
-            "expected Connection error, got {:?}",
+            "expected Simulator(ConnectionRefused), got {:?}",
             other.map(|r| r.status_code)
         ),
     }
