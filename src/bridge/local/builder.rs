@@ -68,7 +68,8 @@ macro_rules! settings_setters {
         /// from getting a connection to reading the full response. A request that
         /// takes longer fails with [BridgeError::Simulator](crate::BridgeError::Simulator)
         /// of kind [`TimedOut`](std::io::ErrorKind::TimedOut), so a stalled simulator
-        /// can't block the caller; the bridge stays usable. Must be non-zero; `Duration::MAX` disables it.
+        /// can't block the caller; the bridge stays usable. Must be non-zero;
+        /// `Duration::MAX` disables it.
         #[must_use]
         pub fn request_timeout(mut self, timeout: std::time::Duration) -> Self {
             self.settings.request_timeout = timeout;

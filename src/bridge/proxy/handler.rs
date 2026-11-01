@@ -19,7 +19,7 @@ pub(super) async fn handle_client<B: AsyncBridge>(
     bridge: &B,
     cancel: CancellationToken,
 ) -> Result<(), BridgeError> {
-    stream.set_nodelay(true)?;
+    stream.set_nodelay(true).map_err(BridgeError::Connection)?;
 
     let (read_half, write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
@@ -72,8 +72,11 @@ async fn send_response(
         let fallback = BridgeError::Protocol(format!("proxy failed to encode response: {e}"));
         encode_frame_into(&Response::error(&fallback), buf)?;
     }
-    writer.write_all(buf).await?;
-    writer.flush().await?;
+    writer
+        .write_all(buf)
+        .await
+        .map_err(BridgeError::Connection)?;
+    writer.flush().await.map_err(BridgeError::Connection)?;
 
     Ok(())
 }

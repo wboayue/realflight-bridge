@@ -10,7 +10,7 @@ use crate::timeout::timed_out;
 
 use super::http::{Next, ResponseParser};
 use super::pool_async::AsyncConnectionPool;
-use super::{AsyncSoapClient, SoapResponse, encode_request, simulator_failure};
+use super::{AsyncSoapClient, SoapResponse, encode_request};
 
 /// Async implementation of a SOAP client for RealFlight Link that uses the TCP protocol.
 pub(crate) struct AsyncTcpSoapClient {
@@ -25,8 +25,7 @@ impl AsyncSoapClient for AsyncTcpSoapClient {
     async fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
         timeout(self.request_timeout, self.exchange(action, body))
             .await
-            .unwrap_or_else(|_| Err(timed_out("simulator", self.request_timeout).into()))
-            .map_err(simulator_failure)
+            .map_err(|_| BridgeError::Simulator(timed_out("simulator", self.request_timeout)))?
     }
 }
 
@@ -46,8 +45,11 @@ impl AsyncTcpSoapClient {
         let mut stream = self.connection_pool.get_connection().await?;
 
         // Send request
-        stream.write_all(request.as_bytes()).await?;
-        stream.flush().await?;
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .map_err(BridgeError::Simulator)?;
+        stream.flush().await.map_err(BridgeError::Simulator)?;
 
         // Read response
         let mut reader = BufReader::new(stream);
@@ -55,14 +57,20 @@ impl AsyncTcpSoapClient {
         let mut line = String::new();
         let length = loop {
             line.clear();
-            reader.read_line(&mut line).await?;
+            reader
+                .read_line(&mut line)
+                .await
+                .map_err(BridgeError::Simulator)?;
             if let Next::Body(length) = parser.feed_line(&line)? {
                 break length;
             }
         };
 
         let mut body = vec![0; length];
-        reader.read_exact(&mut body).await?;
+        reader
+            .read_exact(&mut body)
+            .await
+            .map_err(BridgeError::Simulator)?;
 
         Ok(parser.finish(body))
     }

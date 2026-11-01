@@ -61,10 +61,10 @@ impl ConnectionPool {
             Self::OnDemand {
                 addr,
                 connect_timeout,
-            } => Ok(TcpStream::connect_timeout(
-                addr,
-                (*connect_timeout).min(max_wait),
-            )?),
+            } => Ok(
+                TcpStream::connect_timeout(addr, (*connect_timeout).min(max_wait))
+                    .map_err(BridgeError::Simulator)?,
+            ),
             Self::Prefetch(prefetcher) => prefetcher.get_connection(max_wait),
         }
     }
@@ -211,7 +211,7 @@ impl Prefetcher {
         self.next_socket
             .recv_timeout(max_wait)
             .map_err(|e| match e {
-                RecvTimeoutError::Timeout => BridgeError::Connection(std::io::Error::new(
+                RecvTimeoutError::Timeout => BridgeError::Simulator(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     format!("No pooled connection within {:?}", max_wait),
                 )),

@@ -80,46 +80,46 @@ pub enum RemoteError {
     Protocol(String),
 }
 
-/// Wire form of [io::ErrorKind], which isn't serializable. Kinds without a
-/// variant travel as `Other`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum IoKind {
+/// Defines [IoKind] with one variant per listed [io::ErrorKind] plus `Other`,
+/// and conversions both ways; kinds not listed travel as `Other`.
+macro_rules! io_kinds {
+    ($($kind:ident),+ $(,)?) => {
+        /// Wire form of [io::ErrorKind], which isn't serializable.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        pub enum IoKind {
+            $($kind,)+
+            Other,
+        }
+
+        impl From<io::ErrorKind> for IoKind {
+            fn from(kind: io::ErrorKind) -> Self {
+                match kind {
+                    $(io::ErrorKind::$kind => IoKind::$kind,)+
+                    _ => IoKind::Other,
+                }
+            }
+        }
+
+        impl From<IoKind> for io::ErrorKind {
+            fn from(kind: IoKind) -> Self {
+                match kind {
+                    $(IoKind::$kind => io::ErrorKind::$kind,)+
+                    IoKind::Other => io::ErrorKind::Other,
+                }
+            }
+        }
+    };
+}
+
+// Variants are encoded by index, so editing this list changes the wire format
+io_kinds!(
     TimedOut,
     ConnectionRefused,
     ConnectionReset,
     ConnectionAborted,
     BrokenPipe,
     UnexpectedEof,
-    Other,
-}
-
-impl From<io::ErrorKind> for IoKind {
-    fn from(kind: io::ErrorKind) -> Self {
-        match kind {
-            io::ErrorKind::TimedOut => IoKind::TimedOut,
-            io::ErrorKind::ConnectionRefused => IoKind::ConnectionRefused,
-            io::ErrorKind::ConnectionReset => IoKind::ConnectionReset,
-            io::ErrorKind::ConnectionAborted => IoKind::ConnectionAborted,
-            io::ErrorKind::BrokenPipe => IoKind::BrokenPipe,
-            io::ErrorKind::UnexpectedEof => IoKind::UnexpectedEof,
-            _ => IoKind::Other,
-        }
-    }
-}
-
-impl From<IoKind> for io::ErrorKind {
-    fn from(kind: IoKind) -> Self {
-        match kind {
-            IoKind::TimedOut => io::ErrorKind::TimedOut,
-            IoKind::ConnectionRefused => io::ErrorKind::ConnectionRefused,
-            IoKind::ConnectionReset => io::ErrorKind::ConnectionReset,
-            IoKind::ConnectionAborted => io::ErrorKind::ConnectionAborted,
-            IoKind::BrokenPipe => io::ErrorKind::BrokenPipe,
-            IoKind::UnexpectedEof => io::ErrorKind::UnexpectedEof,
-            IoKind::Other => io::ErrorKind::Other,
-        }
-    }
-}
+);
 
 impl RemoteError {
     /// Simulator failure carrying `err`'s kind and message.
@@ -138,8 +138,8 @@ const PROXY_PREFIX: &str = "proxy: ";
 impl From<&BridgeError> for RemoteError {
     fn from(err: &BridgeError) -> Self {
         match err {
-            // A proxy-side `Connection` (e.g. invalid local bridge config) isn't a
-            // failure of the client's link, so it's relayed as a simulator failure
+            // The proxy's local bridge doesn't return `Connection` for requests;
+            // if one appears, it's still not a failure of the client's link
             BridgeError::Connection(e) | BridgeError::Simulator(e) => RemoteError::simulator(e),
             BridgeError::Initialization(msg) => RemoteError::Initialization(msg.clone()),
             BridgeError::SoapFault(msg) => RemoteError::SoapFault(msg.clone()),

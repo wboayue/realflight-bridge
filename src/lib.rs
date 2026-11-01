@@ -27,7 +27,7 @@ pub enum BridgeError {
     /// This bridge is unusable (e.g. the connection to the proxy failed or is out
     /// of sync); create a new bridge to reconnect.
     #[error("Connection failed: {0}")]
-    Connection(#[from] std::io::Error),
+    Connection(#[source] std::io::Error),
 
     /// Initialization failed
     ///

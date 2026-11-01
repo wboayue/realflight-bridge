@@ -8,7 +8,7 @@ use crate::timeout::{Deadline, DeadlineStream};
 
 use super::http::{Next, ResponseParser};
 use super::pool::ConnectionPool;
-use super::{SoapClient, SoapResponse, encode_request, simulator_failure};
+use super::{SoapClient, SoapResponse, encode_request};
 
 #[cfg(test)]
 mod tests;
@@ -27,7 +27,41 @@ impl SoapClient for TcpSoapClient {
     /// Fails with `TimedOut` if the full exchange, including getting a
     /// connection, takes longer than the request timeout.
     fn send_action(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
-        self.exchange(action, body).map_err(simulator_failure)
+        let deadline = Deadline::after(self.request_timeout);
+        let request = encode_request(action, body);
+        let max_wait = deadline
+            .remaining(PEER)
+            .map_err(BridgeError::Simulator)?
+            .unwrap_or(Duration::MAX);
+        let mut stream = DeadlineStream::new(self.connection_pool.get_connection(max_wait)?, PEER);
+        stream.set_deadline(deadline);
+
+        // Send request
+        stream
+            .write_all(request.as_bytes())
+            .map_err(BridgeError::Simulator)?;
+        stream.flush().map_err(BridgeError::Simulator)?;
+
+        // Read response
+        let mut reader = BufReader::new(stream);
+        let mut parser = ResponseParser::new();
+        let mut line = String::new();
+        let length = loop {
+            line.clear();
+            reader
+                .read_line(&mut line)
+                .map_err(BridgeError::Simulator)?;
+            if let Next::Body(length) = parser.feed_line(&line)? {
+                break length;
+            }
+        };
+
+        let mut body = vec![0; length];
+        reader
+            .read_exact(&mut body)
+            .map_err(BridgeError::Simulator)?;
+
+        Ok(parser.finish(body))
     }
 }
 
@@ -39,35 +73,5 @@ impl TcpSoapClient {
             connection_pool,
             request_timeout,
         }
-    }
-
-    /// Sends one request and reads its response within the request timeout.
-    fn exchange(&self, action: &str, body: &str) -> Result<SoapResponse, BridgeError> {
-        let deadline = Deadline::after(self.request_timeout);
-        let request = encode_request(action, body);
-        let max_wait = deadline.remaining(PEER)?.unwrap_or(Duration::MAX);
-        let mut stream = DeadlineStream::new(self.connection_pool.get_connection(max_wait)?, PEER);
-        stream.set_deadline(deadline);
-
-        // Send request
-        stream.write_all(request.as_bytes())?;
-        stream.flush()?;
-
-        // Read response
-        let mut reader = BufReader::new(stream);
-        let mut parser = ResponseParser::new();
-        let mut line = String::new();
-        let length = loop {
-            line.clear();
-            reader.read_line(&mut line)?;
-            if let Next::Body(length) = parser.feed_line(&line)? {
-                break length;
-            }
-        };
-
-        let mut body = vec![0; length];
-        reader.read_exact(&mut body)?;
-
-        Ok(parser.finish(body))
     }
 }

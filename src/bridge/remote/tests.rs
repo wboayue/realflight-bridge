@@ -23,9 +23,12 @@ fn connection_failure() {
     // Attempt to connect to a port where no server is running
     let result = RealFlightRemoteBridge::new("127.0.0.1:1");
 
-    assert!(result.is_err());
-    if let Err(e) = result {
-        assert_eq!(e.kind(), ErrorKind::ConnectionRefused);
+    match result {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), ErrorKind::ConnectionRefused),
+        other => panic!(
+            "expected Connection(ConnectionRefused), got {:?}",
+            other.err()
+        ),
     }
 }
 
@@ -55,7 +58,10 @@ fn rejects_zero_io_timeout() {
     let result =
         RealFlightRemoteBridge::with_timeouts(&proxy.addr, Duration::from_secs(1), Duration::ZERO);
 
-    assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidInput);
+    match result {
+        Err(BridgeError::Connection(e)) => assert_eq!(e.kind(), ErrorKind::InvalidInput),
+        other => panic!("expected Connection(InvalidInput), got {:?}", other.err()),
+    }
 }
 
 /// Tests invalid address handling

@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** local bridges return `BridgeError::Simulator` instead of `BridgeError::Connection` for simulator connect, I/O and timeout failures. Migrate `Connection` matches on local bridges to `Simulator`
 - **Breaking:** `BridgeError::Simulator` wraps `std::io::Error` instead of `String`; use `kind()` to tell a timeout (`TimedOut`) from a refusal (`ConnectionRefused`). Remote bridges keep the proxy-side kind
 - **Breaking:** `BridgeError::Simulator` displays as `Simulator error: ...` (dropped `(via proxy)`)
+- **Breaking:** removed `From<std::io::Error> for BridgeError`, so `?` no longer silently turns any I/O error into `Connection`. Map explicitly, e.g. `.map_err(BridgeError::Connection)`
+- **Breaking:** `RealFlightRemoteBridge::new` / `with_timeout` / `with_timeouts` return `Result<Self, BridgeError>` (I/O failures as `Connection`) instead of `std::io::Result<Self>`
 - **Breaking:** wire protocol: `RemoteError::Connection(String)` replaced by `RemoteError::Simulator { kind, message }`. Proxy and clients must both be 3.0
 
 ## [2.2.0] - 2026-10-10

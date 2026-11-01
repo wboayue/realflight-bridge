@@ -73,8 +73,8 @@ impl AsyncConnectionPool {
                 addr,
                 connect_timeout,
             } => match timeout(*connect_timeout, TcpStream::connect(addr)).await {
-                Ok(result) => Ok(result?),
-                Err(_) => Err(BridgeError::Connection(std::io::Error::new(
+                Ok(result) => result.map_err(BridgeError::Simulator),
+                Err(_) => Err(BridgeError::Simulator(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     format!("Connection timeout to simulator at {}", addr),
                 ))),
