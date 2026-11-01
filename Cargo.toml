@@ -41,7 +41,7 @@ clap = "4.5.54"
 rand = "0.10"
 criterion = { version = "0.8", features = ["html_reports"] }
 approx = "0.5.1"
-nalgebra = { version = "0.34", features = ["mint"] }
+nalgebra = { version = "0.35", features = ["mint"] }
 
 [[bin]]
 name = "realflight_bridge_proxy"
